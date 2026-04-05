@@ -176,7 +176,7 @@ Two entities, two funding paths. The fish is MIT. The infrastructure around it e
 
 ## Origin
 
-Named for Caroline Marie Dill (2021-2023). LN = Lina. ia = intelligence, artificially constructed. She saw deeply and loved fiercely. Two verbs. The whole product.
+Named for Caroline Marie Dill (2001-2023). LN = Lina. ia = intelligence, artificially constructed. She saw deeply and loved fiercely. Two verbs. The whole product.
 
 Built by Scott Dill. Superintendent turned builder. "Every kid, every day" was district policy. RTI for the species. The fish is how that scales.
 

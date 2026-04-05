@@ -8,7 +8,7 @@ This is the product. Everything assembles itself. The human points,
 the fish learns, the portrait appears. No configuration. No math.
 No onboarding wizard. Just: "where do you write?"
 
-Named for Caroline Marie Dill (2021-2023).
+Named for Caroline Marie Dill (2001-2023).
 She saw deeply and loved fiercely.
 """
 

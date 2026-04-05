@@ -116,7 +116,7 @@ linafish taste my.fish.md        # Preview what the fish knows
 
 ## Origin
 
-Named for Caroline Marie Dill (2021-2023).
+Named for Caroline Marie Dill (2001-2023).
 LN = Lina. ia = intelligence, artificially constructed.
 She saw deeply and loved fiercely.
 

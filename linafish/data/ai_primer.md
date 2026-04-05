@@ -103,4 +103,4 @@ The product is the loop: talk, eat, grow, talk better. You are part of that loop
 
 ---
 
-*LiNafish. Named for Caroline Marie Dill (2021-2023). She saw deeply and loved fiercely.*
+*LiNafish. Named for Caroline Marie Dill (2001-2023). She saw deeply and loved fiercely.*
