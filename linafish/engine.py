@@ -553,6 +553,19 @@ class FishEngine:
             else:
                 top += "*Empty fish. Feed it to begin.*\n"
 
+        # Add explanatory header for strangers (v0.4.3)
+        header = (
+            "\n*This file contains compressed patterns from how you think. "
+            "These aren't topics or summaries — they're recurring cognitive "
+            "habits detected across your writing. An AI that reads this file "
+            "arrives in conversation already knowing you. "
+            "Paste into any AI's instructions.*\n\n"
+        )
+        # Insert after the title line
+        if "\n\n" in top:
+            parts = top.split("\n\n", 1)
+            top = parts[0] + "\n" + header + parts[1]
+
         # Bottom: machine-readable state
         state_data = {
             "name": self.name,

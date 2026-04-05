@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "linafish"
-version = "0.4.2"
+version = "0.4.3"
 description = "Your mind, versioned. The grammar eats your writing and tells you how you think."
 requires-python = ">=3.8"
 dependencies = []

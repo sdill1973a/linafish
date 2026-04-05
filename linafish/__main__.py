@@ -88,6 +88,18 @@ def cmd_eat(args):
     output.write_text(codebook, encoding="utf-8")
     print(f"\nFish: {output} ({len(codebook)} chars, {len(formations)} formations)")
 
+    # Explain what just happened — the WHY (v0.4.3)
+    if formations:
+        try:
+            from .quickstart import build_full_portrait, explain_the_why
+            crystal_map = {c.id: c for c in all_crystals}
+            portrait = build_full_portrait(formations, len(all_crystals), len(all_crystals), crystal_map)
+            print(f"\n{portrait}")
+            why = explain_the_why(len(all_crystals), len(all_crystals), formations, crystal_map)
+            print(f"\n{why}")
+        except Exception:
+            pass  # Portrait is bonus, not critical
+
 
 def cmd_taste(args):
     """Preview what a fish knows."""

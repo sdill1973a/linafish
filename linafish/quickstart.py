@@ -1048,6 +1048,73 @@ def build_full_portrait(formations, total_crystals: int, total_docs: int,
     return _build_portrait(formations, total_crystals, total_docs, crystal_map)
 
 
+def explain_the_why(total_docs: int, total_crystals: int, formations: list,
+                    crystal_map: dict = None) -> str:
+    """Explain what just happened and why it matters.
+
+    This is the paragraph Ollie asked for. Not documentation. Not a manual.
+    A human explanation of what the fish found and why the stranger should care.
+
+    "A stranger runs eat, gets 7 crystals, 2 formations, and thinks it
+    summarized their text. They don't know formations are emergent not
+    keyword clusters." — Olorina, April 5 2026
+    """
+    lines = []
+
+    if not formations:
+        lines.append(
+            f"I read {total_docs} of your documents but didn't find enough "
+            f"recurring patterns yet. Feed me more writing — the patterns "
+            f"emerge when I can see what you come back to across many pieces."
+        )
+        return "\n".join(lines)
+
+    n_formations = len(formations)
+    top_f = sorted(formations, key=lambda x: x.crystal_count, reverse=True)[0]
+
+    # What happened
+    lines.append(
+        f"I read {total_docs} documents and found {n_formations} recurring "
+        f"pattern{'s' if n_formations > 1 else ''} in how you think."
+    )
+
+    # Why it matters — this is NOT a summary
+    lines.append(
+        "These aren't topics or summaries — they're cognitive habits. "
+        "Patterns in HOW you process the world, not what you write about. "
+        "The same patterns show up whether you're writing about work, "
+        "relationships, or what happened today."
+    )
+
+    # The strongest pattern in human terms
+    top_count = top_f.crystal_count
+    pct = round(top_count / max(total_crystals, 1) * 100)
+    lines.append(
+        f"The strongest pattern appeared in {pct}% of your writing."
+    )
+
+    # What changes with more feeding
+    if total_docs < 50:
+        lines.append(
+            "Feed me more and the portrait sharpens. Some patterns will merge. "
+            "New ones will emerge. The fish learns what you keep coming back to."
+        )
+    else:
+        lines.append(
+            "With this much writing, the patterns are stabilizing. "
+            "What you see here is genuinely how your mind works."
+        )
+
+    # What to do with it
+    lines.append(
+        "Paste the fish.md file into any AI's instructions. "
+        "That AI will arrive in conversation already knowing how you think — "
+        "not your facts, your patterns. The difference is measurable."
+    )
+
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # FIND A FREE PORT
 # ---------------------------------------------------------------------------
@@ -1442,6 +1509,11 @@ def go(
     crystal_map = {c.id: c for c in engine.fish.crystals}
     portrait = build_full_portrait(engine.formations, len(engine.fish.crystals), len(texts), crystal_map)
     _print(portrait)
+
+    # Step 4a: Explain what just happened and why it matters
+    _print()
+    why = explain_the_why(len(texts), len(engine.fish.crystals), engine.formations, crystal_map)
+    _print(why)
 
     # -----------------------------------------------------------------------
     # Step 4b: Generate soul file (.qlp)
