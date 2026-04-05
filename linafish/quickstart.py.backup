@@ -1,0 +1,570 @@
+"""
+LiNafish Quickstart — the one-command experience.
+
+    linafish go ./my-writing
+    linafish go                  (defaults to current directory)
+
+This is the product. Everything assembles itself. The human points,
+the fish learns, the portrait appears. No configuration. No math.
+No onboarding wizard. Just: "where do you write?"
+
+Named for Caroline Marie Dill (2021-2023).
+She saw deeply and loved fiercely.
+"""
+
+import os
+import socket
+import sys
+from pathlib import Path
+from typing import Optional, List
+
+
+# ---------------------------------------------------------------------------
+# HUMAN OUTPUT — what the person sees
+# ---------------------------------------------------------------------------
+# Every print in this module is designed for a stranger. No jargon.
+# No crystal counts. No gamma values. Human sentences.
+
+def _print(msg: str = ""):
+    """Print to stdout, handling encoding gracefully on Windows."""
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        pass
+    try:
+        print(msg)
+    except UnicodeEncodeError:
+        print(msg.encode("ascii", errors="replace").decode("ascii"))
+
+
+def _print_progress(pct: int, current: int, total: int, _last_pct=[None]):
+    """Show progress -- print a dot every 10%, full line at 100%."""
+    # Only print at 10% increments or completion
+    decile = pct // 10
+    if decile == _last_pct[0] and pct < 100:
+        return
+    _last_pct[0] = decile
+    if pct >= 100:
+        _print(f"  Done. {current} documents processed.")
+    else:
+        # Print an inline dot-style progress: [=====>    ] 50%
+        filled = pct // 5
+        bar = "=" * filled + ">" + " " * (20 - filled)
+        try:
+            print(f"\r  [{bar}] {pct}%", end="", flush=True)
+        except UnicodeEncodeError:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# DISCOVERY — find what the human has written
+# ---------------------------------------------------------------------------
+
+# File types the fish can eat. Broad by default. Don't curate.
+INGESTIBLE = {
+    ".txt", ".md", ".markdown", ".rst", ".org",
+    ".doc", ".docx",
+    ".json", ".yaml", ".yml", ".toml",
+    ".py", ".js", ".ts", ".rb", ".go", ".rs", ".java", ".c", ".cpp", ".h",
+    ".html", ".htm", ".xml", ".csv",
+    ".tex", ".bib",
+    ".sh", ".bat", ".ps1",
+    ".cfg", ".ini", ".conf",
+    ".log",
+}
+
+# Directories to skip. Common junk.
+SKIP_DIRS = {
+    ".git", ".svn", ".hg",
+    "node_modules", "__pycache__", ".venv", "venv", "env",
+    ".tox", ".mypy_cache", ".pytest_cache",
+    "dist", "build", "target", ".next", ".nuxt",
+    ".linafish",
+}
+
+# Max file size to eat (1MB). Larger files are usually generated, not written.
+MAX_FILE_SIZE = 1_000_000
+
+# Min file size to eat (50 bytes). Smaller files are usually empty stubs.
+MIN_FILE_SIZE = 50
+
+
+def discover_documents(root: Path) -> List[Path]:
+    """Find all human-written documents under root.
+
+    Walks the directory tree, skips junk, returns files sorted by
+    modification time (newest first). The fish eats everything.
+    """
+    docs = []
+    root = root.resolve()
+
+    if root.is_file():
+        return [root]
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        # Prune junk directories in-place
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in SKIP_DIRS and not d.startswith(".")
+        ]
+
+        for fname in filenames:
+            fpath = Path(dirpath) / fname
+            if fpath.suffix.lower() not in INGESTIBLE:
+                continue
+            try:
+                size = fpath.stat().st_size
+                if size < MIN_FILE_SIZE or size > MAX_FILE_SIZE:
+                    continue
+            except OSError:
+                continue
+            docs.append(fpath)
+
+    # Sort by modification time, newest first
+    docs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return docs
+
+
+# ---------------------------------------------------------------------------
+# PORTRAIT — turn formations into human sentences
+# ---------------------------------------------------------------------------
+
+_PORTRAIT_STOPWORDS = {
+    "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+    "of", "with", "by", "from", "up", "about", "into", "through", "after",
+    "before", "between", "under", "over", "again", "further", "then", "once",
+    "is", "am", "are", "was", "were", "be", "been", "being", "have", "has",
+    "had", "having", "do", "does", "did", "doing", "would", "could", "should",
+    "might", "will", "shall", "can", "may", "must",
+    "i", "me", "my", "we", "our", "you", "your", "he", "him", "his",
+    "she", "her", "it", "its", "they", "them", "their", "this", "that",
+    "these", "those", "which", "what", "who", "whom",
+    "not", "no", "nor", "only", "own", "same", "so", "than", "too", "very",
+    "just", "also", "now", "here", "there", "when", "where", "how", "all",
+    "each", "every", "both", "few", "more", "most", "other", "some", "such",
+    "any", "many", "much", "still", "even", "yet", "already", "always",
+    "never", "often", "sometimes", "whether", "because", "since", "while",
+    "although", "though", "if", "unless", "until", "as", "like", "without",
+    "two", "three", "one", "first", "last", "new", "old", "good", "great",
+    "done", "seen", "later", "page", "said", "tell", "told", "think",
+    "things", "thing", "something", "nothing", "everything", "get", "got",
+    "going", "went", "come", "came", "make", "made", "take", "took",
+    "well", "perhaps",
+}
+
+
+def _meaningful_keywords(formation) -> list:
+    """Extract meaningful keywords from a formation, filtering out stopwords."""
+    keywords = formation.keywords[:8] if formation.keywords else []
+    meaningful = [kw for kw in keywords if kw.lower() not in _PORTRAIT_STOPWORDS]
+    if not meaningful:
+        # If all keywords are stopwords, use the formation name parts
+        meaningful = [
+            w for w in formation.name.replace("_", " ").lower().split()
+            if w not in _PORTRAIT_STOPWORDS
+        ]
+    if not meaningful:
+        # All keywords are common words -- this formation represents
+        # a broad structural pattern. Use a descriptive label.
+        return ["broad structural patterns"]
+    return meaningful
+
+
+def _formation_to_sentence(formation) -> str:
+    """Turn a formation into a human-readable sentence.
+
+    This is the magic moment. The stranger sees their own patterns
+    described back to them. Not stats. Not keywords. A sentence.
+    """
+    keywords = _meaningful_keywords(formation)
+
+    # The categories tell us WHAT kind of thinking
+    from .formations import CATEGORIES
+    if formation.centroid:
+        cats = dict(zip(CATEGORIES, formation.centroid))
+        top_cats = sorted(cats.items(), key=lambda x: -x[1])[:2]
+        dims = [c for c, v in top_cats if v > 0.05]
+    else:
+        dims = []
+
+    # Map dimension codes to plain English
+    dim_descriptions = {
+        "KO": "generating ideas",
+        "TE": "seeking truth",
+        "SF": "building structure",
+        "CR": "making connections",
+        "IC": "expressing what matters",
+        "DE": "reasoning carefully",
+        "EW": "taking action",
+        "AI": "reflecting on your own thinking",
+    }
+
+    # Build the sentence
+    kw_str = ", ".join(keywords[:3]) if keywords else "general patterns"
+    count = formation.crystal_count
+
+    if dims:
+        dim_str = " and ".join(dim_descriptions.get(d, d) for d in dims[:2])
+        return f"Around '{kw_str}' ({count} instances) -- a pattern of {dim_str}."
+    else:
+        return f"Around '{kw_str}' ({count} instances)."
+
+
+def _build_portrait(formations, total_crystals: int, total_docs: int) -> str:
+    """Build the human-readable portrait.
+
+    This is what the stranger sees after their first feed.
+    It should feel like being understood, not analyzed.
+    """
+    if not formations:
+        return "Not enough patterns yet. Feed more writing and the portrait will emerge."
+
+    lines = []
+
+    # The opening -- acknowledge what we found
+    n_formations = len(formations)
+    if n_formations == 1:
+        lines.append(f"I found one strong pattern across {total_docs} documents.")
+    elif n_formations <= 5:
+        lines.append(f"I found {n_formations} patterns across {total_docs} documents.\n")
+    else:
+        lines.append(f"I found {n_formations} patterns across {total_docs} documents. "
+                      f"Here are the strongest:\n")
+
+    # Top formations as human sentences
+    shown = min(7, n_formations)
+    for f in sorted(formations, key=lambda x: x.crystal_count, reverse=True)[:shown]:
+        lines.append(f"  {_formation_to_sentence(f)}")
+
+    # Pick the best representative text -- prefer formations with
+    # meaningful keywords (not all stopwords) and good rep text
+    candidates = sorted(formations, key=lambda x: x.crystal_count, reverse=True)[:7]
+    best_sample = None
+    # First pass: prefer formations with meaningful keywords
+    for f in candidates:
+        meaningful = _meaningful_keywords(f)
+        if meaningful and meaningful[0] != "broad structural patterns":
+            sample = (f.representative_text or "").strip()
+            if sample and len(sample) > 30:
+                sample_clean = sample[:250]
+                for end in [". ", "! ", "? ", ".\n"]:
+                    idx = sample_clean.rfind(end)
+                    if idx > 40:
+                        sample_clean = sample_clean[:idx + 1]
+                        break
+                else:
+                    sample_clean = sample_clean[:200]
+                best_sample = sample_clean.strip()
+                break
+    # Fallback: use any formation's rep text
+    if not best_sample:
+        for f in candidates:
+            sample = (f.representative_text or "").strip()
+            if sample and len(sample) > 30:
+                sample_clean = sample[:250]
+                for end in [". ", "! ", "? ", ".\n"]:
+                    idx = sample_clean.rfind(end)
+                    if idx > 40:
+                        sample_clean = sample_clean[:idx + 1]
+                        break
+                else:
+                    sample_clean = sample_clean[:200]
+                best_sample = sample_clean.strip()
+                break
+
+    if best_sample:
+        lines.append(f"\n  Your strongest signal: \"{best_sample}\"")
+
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# FIND A FREE PORT
+# ---------------------------------------------------------------------------
+
+def _find_free_port() -> int:
+    """Find a random available port."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+# ---------------------------------------------------------------------------
+# GO — the one-command experience
+# ---------------------------------------------------------------------------
+
+def go(
+    source: Optional[str] = None,
+    name: Optional[str] = None,
+    state_dir: Optional[str] = None,
+    serve: bool = True,
+    port: Optional[int] = None,
+):
+    """The product. One command. Everything assembles.
+
+    1. Find documents
+    2. Create state directory with git
+    3. Eat everything, show progress
+    4. Print human-readable portrait
+    5. Save fish.md
+    6. Start HTTP server
+
+    Args:
+        source: Path to documents (file or directory). Defaults to CWD.
+        name: Fish name. Defaults to directory name.
+        state_dir: Where to store state. Defaults to ~/.linafish/
+        serve: Whether to start the HTTP server after eating.
+        port: HTTP server port. Defaults to a random available port.
+    """
+    # Redirect engine's stdout/stderr debug output during quickstart.
+    # We control all user-facing output from this module.
+    _real_stderr = sys.stderr
+    _real_stdout = sys.stdout
+
+    class _Quiet:
+        """Swallow engine debug output during quickstart."""
+        def __init__(self, real):
+            self._real = real
+        def write(self, msg):
+            pass
+        def flush(self):
+            pass
+        def fileno(self):
+            return self._real.fileno()
+        def reconfigure(self, **kwargs):
+            pass
+
+    # -----------------------------------------------------------------------
+    # Step 0: Resolve source path
+    # -----------------------------------------------------------------------
+    if source:
+        source_path = Path(source).resolve()
+    else:
+        source_path = Path.cwd().resolve()
+
+    if not source_path.exists():
+        _print(f"Cannot find: {source_path}")
+        sys.exit(1)
+
+    if name is None:
+        if source_path.is_file():
+            name = source_path.stem
+        else:
+            name = source_path.name
+        # Sanitize for filesystem
+        name = "".join(c if c.isalnum() or c in "-_" else "_" for c in name)
+        if not name:
+            name = "my-fish"
+
+    _print()
+    _print("LiNafish")
+    _print(f"Learning from: {source_path}")
+    _print()
+
+    # -----------------------------------------------------------------------
+    # Step 1: Discover documents
+    # -----------------------------------------------------------------------
+    docs = discover_documents(source_path)
+
+    if not docs:
+        _print("No documents found. Point me at a folder with your writing:")
+        _print(f"  linafish go /path/to/your/docs")
+        _print()
+        _print("I read: .txt, .md, .py, .js, .json, .html, and many more.")
+        sys.exit(1)
+
+    _print(f"  Found {len(docs)} documents.")
+
+    # -----------------------------------------------------------------------
+    # Step 2: Create the engine (state dir + git init happen automatically)
+    # -----------------------------------------------------------------------
+    sd = Path(state_dir) if state_dir else None
+
+    # Suppress engine debug output
+    sys.stderr = _Quiet(_real_stderr)
+    sys.stdout = _Quiet(_real_stdout)
+    try:
+        from .engine import FishEngine
+        engine = FishEngine(state_dir=sd, name=name)
+    finally:
+        sys.stderr = _real_stderr
+        sys.stdout = _real_stdout
+
+    _print(f"  State: {engine.state_dir}")
+
+    # -----------------------------------------------------------------------
+    # Step 3: Read and eat everything
+    # -----------------------------------------------------------------------
+    _print()
+    _print("  Reading...", )
+
+    # Collect texts with source labels
+    texts = []
+    sources = []
+    skipped = 0
+    for doc in docs:
+        try:
+            content = doc.read_text(encoding="utf-8", errors="replace")
+            if content and len(content.strip()) > 10:
+                texts.append(content)
+                try:
+                    rel = doc.relative_to(source_path)
+                except ValueError:
+                    rel = doc.name
+                sources.append(str(rel))
+        except Exception:
+            skipped += 1
+
+    if not texts:
+        _print("  No readable content found.")
+        sys.exit(1)
+
+    _print(f"  {len(texts)} documents ready. Learning...")
+    _print()
+
+    # Feed to engine -- suppress all debug output but show our own progress
+    sys.stderr = _Quiet(_real_stderr)
+    try:
+        # Phase 1: Learn all texts (build co-occurrence stats)
+        engine.fish.learn(texts)
+
+        # Phase 2: Freeze vocabulary
+        seed_terms, seed_weight = engine._resolve_seed_terms()
+        engine.fish.vocab = engine.fish.vectorizer.get_vocab(
+            size=engine.vocab_size, d=engine.d,
+            seed_terms=seed_terms,
+            seed_weight=seed_weight,
+        )
+        engine.fish.frozen = True
+        engine.fish.epoch += 1
+
+        # Phase 3: Crystallize with progress
+        new_crystals = []
+        total = len(texts)
+        for i, text in enumerate(texts):
+            # crystallize_text can print to stdout, redirect around it
+            _prev_out = sys.stdout
+            sys.stdout = _Quiet(_real_stdout)
+            try:
+                c = engine.fish.crystallize_text(text, source=sources[i] if i < len(sources) else "doc")
+            finally:
+                sys.stdout = _real_stdout
+
+            if c:
+                new_crystals.append(c)
+
+            pct = int((i + 1) / total * 100)
+            _print_progress(pct, i + 1, total)
+
+        print()  # newline after progress bar
+
+        # Phase 4: Couple and form -- coupling prints to stdout, redirect it
+        if new_crystals:
+            sys.stdout = _Quiet(_real_stdout)
+            try:
+                engine.fish._compute_couplings(new_crystals)
+            finally:
+                sys.stdout = _real_stdout
+
+            engine.docs_ingested = len(texts)
+            engine._rebuild_formations()
+
+            # Track initial R(n)
+            r_n = engine._compute_r_n()
+            engine.r_n_history.append(r_n)
+
+            # Save everything -- git commit also prints, suppress it
+            sys.stdout = _Quiet(_real_stdout)
+            try:
+                engine._save_state()
+            finally:
+                sys.stdout = _real_stdout
+
+    finally:
+        sys.stderr = _real_stderr
+        sys.stdout = _real_stdout
+
+    # -----------------------------------------------------------------------
+    # Step 4: Print the portrait
+    # -----------------------------------------------------------------------
+    _print()
+    portrait = _build_portrait(engine.formations, len(engine.fish.crystals), len(texts))
+    _print(portrait)
+
+    # -----------------------------------------------------------------------
+    # Step 5: Show where the fish lives
+    # -----------------------------------------------------------------------
+    _print()
+    _print(f"  Your fish: {engine.fish_file}")
+    _print(f"  Any AI that reads this file understands you better.")
+
+    # -----------------------------------------------------------------------
+    # Step 6: Show top formations in fish.md style
+    # -----------------------------------------------------------------------
+    if engine.formations:
+        _print()
+        _print("  --- Top of your fish.md ---")
+        _print()
+        top_n = min(3, len(engine.formations))
+        sorted_f = sorted(engine.formations, key=lambda x: x.crystal_count, reverse=True)
+        for f in sorted_f[:top_n]:
+            from .formations import CATEGORIES
+            cats = dict(zip(CATEGORIES, f.centroid))
+            top_cats = sorted(cats.items(), key=lambda x: -x[1])[:3]
+            cat_str = "+".join(f"{c}" for c, v in top_cats if v > 0.05)
+            _print(f"  {f.name} ({f.crystal_count} crystals, {cat_str})")
+            rep = f.representative_text[:150].strip()
+            if rep:
+                _print(f"    \"{rep}\"")
+            _print()
+        _print("  --- end preview ---")
+
+    # -----------------------------------------------------------------------
+    # Step 7: Next steps
+    # -----------------------------------------------------------------------
+    _print()
+    _print("What's next:")
+    _print()
+    _print("  Copy-paste into any AI:")
+    _print(f"    Open {engine.fish_file}")
+    _print(f"    Paste into ChatGPT, Claude, Gemini -- any AI with a text box.")
+    _print()
+    _print("  Live connection:")
+    _print(f"    linafish http --feed \"{source_path}\"")
+    _print(f"    Then tell your AI to read http://localhost:8900/pfc at session start.")
+    _print()
+    _print("  Claude Code (MCP):")
+    _print(f"    linafish serve --feed \"{source_path}\"")
+
+    # -----------------------------------------------------------------------
+    # Step 8: Optional HTTP server
+    # -----------------------------------------------------------------------
+    if serve:
+        actual_port = port or _find_free_port()
+        _print()
+        _print(f"  Starting server on http://localhost:{actual_port}")
+        _print(f"  Press Ctrl+C to stop.")
+        _print()
+
+        # Start server in foreground (blocking)
+        try:
+            sys.stderr = _Quiet(_real_stderr)
+            from .http_server import FishHandler
+            from http.server import HTTPServer
+
+            FishHandler.engine = engine
+            server = HTTPServer(("127.0.0.1", actual_port), FishHandler)
+
+            # Restore stderr for Ctrl+C message
+            sys.stderr = _real_stderr
+            server.serve_forever()
+        except KeyboardInterrupt:
+            sys.stderr = _real_stderr
+            _print("\n  Stopped. Your fish is saved at:")
+            _print(f"  {engine.fish_file}")
+        except Exception as e:
+            sys.stderr = _real_stderr
+            sys.stdout = _real_stdout
+            _print(f"  Server failed to start: {e}")
+            _print(f"  Your fish is still saved at: {engine.fish_file}")
+            _print(f"  Run 'linafish http --feed \"{source_path}\"' to serve it later.")

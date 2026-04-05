@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+logs/
+*.egg-info/
+dist/
+build/
+.eggs/
+*.crystals.json
+*.state.json
+*.manifest.jsonl
