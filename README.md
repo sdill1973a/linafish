@@ -7,7 +7,22 @@ A cognitive overlay that sits between you and any AI. The AI reads your fish and
 Same model. Same prompt.
 Without fish: **1.9**/10.
 With fish: **8.7**/10.
-[Peer reviewed. N=46 conversations. p < 0.001.](https://doi.org/10.5281/zenodo.18477225)
+[N=46 conversations. d=2.245. p < 0.001. Full methodology.](docs/research.md) · [DOI](https://doi.org/10.5281/zenodo.18477225)
+
+## What This Is
+
+**LiNafish reads your writing and produces a cognitive overlay — a `.fish.md` file.**
+
+- **Input:** Your writing. Journals, emails, notes, code, docs — anything you wrote.
+- **Output:** A `.fish.md` file describing HOW you think. Cognitive patterns, not summaries.
+- **Use it:** Paste the fish into any AI's instructions. That AI arrives warm.
+
+**What it is NOT:**
+
+- Not memory or RAG — it doesn't retrieve your documents.
+- Not a chatbot — it has no conversation interface.
+- Not psychological profiling — it detects cognitive *habits*, not diagnoses.
+- Not cloud — everything runs locally. No account. No upload. No telemetry.
 
 ## Install
 
@@ -15,7 +30,15 @@ With fish: **8.7**/10.
 pip install linafish
 ```
 
-Zero dependencies. Pure Python. Runs on anything.
+Zero required dependencies. Pure Python 3.8+. Runs on anything.
+
+Optional extras for specific use cases:
+
+```bash
+pip install linafish[docs]    # PDF and DOCX support
+pip install linafish[http]    # HTTP server mode
+pip install linafish[all]     # Everything
+```
 
 ## Quick Start
 
@@ -154,7 +177,25 @@ Every fish has three legs:
 
 The fish.md file IS all three. One file, three readers. Switch AIs anytime. The fish doesn't care.
 
+## Best Fit / Bad Fit
+
+**LiNafish works best when:**
+- You have a body of writing (10+ documents, more is better)
+- The writing is genuinely yours — your voice, your thoughts
+- You write reflectively (journals, emails, notes, creative work)
+- You want an AI that adapts to you over time, not just retrieves your docs
+
+**LiNafish works less well when:**
+- You have very little writing (under 5 documents — the fish needs material)
+- The writing is heavily ghostwritten, templated, or boilerplate
+- You want factual memory ("what did I say on Tuesday") rather than cognitive adaptation
+- The writing is from multiple people mixed together without attribution
+
+The fish finds patterns in HOW you think. If the writing doesn't contain your thinking, the fish can't find it.
+
 ## Privacy
+
+For a detailed threat model, see [docs/privacy.md](docs/privacy.md).
 
 The fish.md contains your patterns in plain English — you control who sees it. Under the human-readable layer, a compressed cognitive fingerprint contains only the SHAPES of your thought (which modes fire, in what order, where you strain) with zero private content. Two fish can compare fingerprints to see if they think similarly without exposing what they think about.
 
@@ -162,14 +203,23 @@ Privacy by compression. The relationship is the key.
 
 ## Research
 
-46 conversations were scored blind by independent raters on a 1-10 scale. The same AI model, same prompt, same evaluator — the only variable was whether the AI had read the person's fish.
+46 conversations were scored blind on a 1-10 scale. Same AI model, same prompt — only variable was fish presence.
 
-- **Without fish:** 1.9/10 average
-- **With fish:** 8.7/10 average
-- **Delta:** 6.7 points (d=2.245, p=6.95×10⁻¹⁰)
-- **Substrate independent:** Works on Claude, Gemini, Mistral — the fish helps smaller models MORE
-- **Shuffle invariant:** Same formations regardless of document order
-- **DOI:** [10.5281/zenodo.18477225](https://doi.org/10.5281/zenodo.18477225)
+| Condition | Score | Notes |
+|-----------|-------|-------|
+| Without fish | 1.9/10 | Generic, no personalization |
+| With fish | 8.7/10 | Recognized patterns, named specifics |
+| **Delta** | **6.7 points** | d=2.245, p=6.95×10⁻¹⁰ |
+
+Key findings:
+- **Selective, not universal:** The effect is strongest on emotional/relational content (d=2.245). Factual content shows a smaller effect (d=1.036). Speculative content shows no effect (d=-0.10). The fish helps where understanding matters most.
+- **Substrate independent:** Tested on Claude, Gemini Flash, and Mistral 7B. The fish helps smaller models MORE — Mistral jumped from 1.4 to 4.4.
+- **Shuffle invariant:** Same formations regardless of document order across 7 trials.
+- **Same-model control:** Capability confound eliminated. The delta comes from the fish, not model differences.
+
+For full methodology, study design, limitations, and how to reproduce: **[docs/research.md](docs/research.md)**
+
+DOI: [10.5281/zenodo.18477225](https://doi.org/10.5281/zenodo.18477225)
 
 ## Python API
 
@@ -222,6 +272,15 @@ If it helps you, give to the people who help others stay alive:
 [988 Lifeline](https://988lifeline.org/donate/) ·
 [The OLLIE Foundation](https://theolliefoundation.org/) ·
 [AFSP](https://afsp.org/donate)
+
+## Documentation
+
+- **[How It Works](docs/how-it-works.md)** — The cognitive model in detail
+- **[Architecture](docs/architecture.md)** — Pipeline, modules, design decisions
+- **[Research](docs/research.md)** — Study design, methodology, results, limitations
+- **[Privacy & Threat Model](docs/privacy.md)** — What the fish stores, what to avoid, how to review
+- **[Configuration](docs/configuration.md)** — All options and settings
+- **[Vision](docs/vision.md)** — Where this is going
 
 ## License
 
