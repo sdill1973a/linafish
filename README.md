@@ -171,6 +171,22 @@ Privacy by compression. The relationship is the key.
 - **Shuffle invariant:** Same formations regardless of document order
 - **DOI:** [10.5281/zenodo.18477225](https://doi.org/10.5281/zenodo.18477225)
 
+## Python API
+
+```python
+from linafish import FishEngine, go
+
+# One-liner — same as the CLI
+go("~/my-writing")
+
+# Full control
+engine = FishEngine(name="my-fish")
+engine.eat("Today I realized I always start projects by talking to someone first.")
+engine.eat("The API docs are done. I rewrote them three times until a junior dev said they made sense.")
+print(engine.formations)    # recurring patterns
+print(engine.fish_file)     # path to your fish.md
+```
+
 ## CLI Reference
 
 ```bash
