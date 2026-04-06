@@ -20,7 +20,7 @@ from datetime import datetime
 sys.path.insert(0, 'D:/GTC/SovereignCore_Runtime/projects/linafish')
 
 from linafish.crystallizer_v3 import UniversalFish, Crystal
-from linafish.formations_v3 import detect_formations
+from linafish.formations import detect_formations
 
 
 # ---------------------------------------------------------------------------

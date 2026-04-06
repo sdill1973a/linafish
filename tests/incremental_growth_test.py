@@ -24,7 +24,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from linafish.crystallizer_v3 import UniversalFish
-from linafish.formations_v3 import detect_formations
+from linafish.formations import detect_formations
 
 # ==========================================================================
 # WAVE 1 — Month 1: Fresh grief. Raw. Chaotic. Fragmented.

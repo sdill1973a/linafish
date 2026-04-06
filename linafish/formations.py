@@ -18,7 +18,9 @@ from collections import Counter, deque
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from .crystallizer import Crystal, CATEGORIES
+from .crystallizer_v3 import Crystal
+
+CATEGORIES = ["KO", "TE", "SF", "CR", "IC", "DE", "EW", "AI"]
 
 
 # Constants from Mind
@@ -346,7 +348,7 @@ def hierarchical_merge(
     if len(formations) <= target:
         return formations
 
-    from .crystallizer import gamma_coefficient
+    from .crystallizer_v3 import gamma as gamma_coefficient
 
     # Couple formations by centroid similarity
     for i, a in enumerate(formations):
