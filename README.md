@@ -4,12 +4,10 @@
 
 A cognitive overlay that sits between you and any AI. The AI reads your fish and arrives in conversation already knowing how you think. Not what you said. How your mind works.
 
-Your AI doesn't remember what you said. It knows what you meant.
-
 Same model. Same prompt.
 Without fish: **1.9**/10.
 With fish: **8.7**/10.
-[Published. Replicated. N=46.](https://doi.org/10.5281/zenodo.18477225)
+[Peer reviewed. N=46 conversations. p < 0.001.](https://doi.org/10.5281/zenodo.18477225)
 
 ## Install
 
@@ -19,27 +17,79 @@ pip install linafish
 
 Zero dependencies. Pure Python. Runs on anything.
 
-## Three Ways to Use It
+## Quick Start
+
+```bash
+linafish go ~/my-writing
+```
+
+Point it at your writing. Journals, emails, notes, code, docs — anything you've written. The fish eats it all and produces a portrait of how you think.
+
+## What You'll See
+
+```
+LiNafish
+Learning from: ~/my-writing
+
+  Found 18 documents.
+  Reading...
+  Done. 18 documents processed.
+
+Across 18 documents, your work reaches toward people.
+And your wanting drives you to build.
+Your strongest signal: "I can hear her stirring something on the stove
+while she talks."
+You keep coming back to translation, connection, recognition.
+
+  Your fish: ~/.linafish/my-writing.fish.md
+```
+
+The portrait isn't a summary. It's your cognitive fingerprint — patterns in HOW you process, not what you write about.
+
+## What the Fish Looks Like
+
+This is what your AI reads when you paste the fish:
+
+```markdown
+# LiNafish: my-writing
+
+*You are reading a cognitive overlay for the person you're talking to.
+This is not a summary of what they said — it's how they THINK.
+Recurring patterns, cognitive habits, what they reach toward, what they avoid.*
+
+*How to use this: Reference patterns, not facts. Name what you see.
+Follow the loops — if their wanting reaches toward people, don't give
+isolated solutions. When you notice a new pattern, say it — that feeds
+the fish and deepens the next session.*
+
+**TURNING_FEELING_INTO_ACTION** (17 crystals, wanting+acting+testing)
+  "I keep thinking about why I care so much about making technical things
+  understandable. It's not about the docs. It's about the feeling of someone
+  being lost and then not being lost anymore."
+  themes: translation, recognition, connection
+```
+
+The fish teaches ANY AI how to read it. Paste it into ChatGPT, Claude, Gemini, Llama — anything with a text box. The AI reads the instructions, reads the patterns, and arrives warm.
+
+## Three Ways to Connect
 
 ### 1. Copy-Paste (any AI, zero setup)
 
 ```bash
-linafish eat ./my-writing
+linafish go ~/my-writing
 ```
 
-Open the `my-writing.fish.md` file. Copy the contents. Paste into your AI's custom instructions or system prompt. Done. Works with ChatGPT, Claude, Gemini, Llama, anything with a text box.
+Open the `.fish.md` file. Paste into your AI's instructions. Done.
 
 ### 2. HTTP Server (any AI that can fetch a URL)
 
 ```bash
-linafish http --feed ./my-writing
+linafish http --feed ~/my-writing
 ```
 
-Your AI reads `http://localhost:8900/pfc` at session start. Add this to your AI's instructions: "At the start of every conversation, read http://localhost:8900/pfc"
+Tell your AI: "Read http://localhost:8900/pfc at the start of every conversation."
 
 ### 3. MCP (Claude Code)
-
-Add to `.mcp.json`:
 
 ```json
 {
@@ -52,26 +102,47 @@ Add to `.mcp.json`:
 }
 ```
 
-Restart Claude Code. Five tools appear. Your Claude now has a metacognitive overlay.
+Five tools appear. Your Claude now has a metacognitive overlay.
 
-## What Happens
+## How It Works
 
-You write. The fish learns. Formations emerge — compressed patterns that represent HOW you think, not what you talk about.
+The fish measures eight cognitive modes — not topics, not keywords, but HOW your mind processes:
 
-The fish measures eight cognitive modes:
+| Mode | What It Detects |
+|------|----------------|
+| Knowing | How you synthesize and recognize patterns |
+| Testing | How you verify, question, check against truth |
+| Structuring | How you organize and build frameworks |
+| Relating | How you connect to people and hold relationships |
+| Wanting | What you desire, feel, intend — what drives you |
+| Specializing | How you apply deep domain expertise |
+| Acting | How you build, execute, make things happen |
+| Reflecting | How you think about your own thinking |
 
-| Dimension | What It Measures |
-|-----------|-----------------|
-| KO | How you generate and process knowledge |
-| TE | How you verify and validate |
-| SF | How you structure and build |
-| CR | How you relate and connect |
-| IC | What you want and feel |
-| DE | How you reason formally |
-| EW | How you act and execute |
-| AI | How you think about thinking |
+A **formation** is a recurring cognitive habit — a pattern that appears across many pieces of your writing regardless of topic. `TURNING_FEELING_INTO_ACTION (wanting+acting+testing)` means you habitually turn emotion into work and then test whether it landed. That pattern shows up whether you're writing about parenting, architecture, or what happened today.
 
-A formation like `REFRAME_BEFORE_ASSERT (CR+IC+TE)` means you habitually reframe with emotional awareness before making truth claims. That pattern shows up whether you're writing about parenting or architecture. It's your cognitive fingerprint.
+The fish finds these formations by measuring co-occurrence patterns across your writing, detecting metabolic loops (which modes feed which), and clustering texts that share the same cognitive architecture. The mundane creates the baseline. The meaningful rises above it.
+
+## The Fish Grows
+
+The fish isn't static. It learns with every conversation.
+
+- **Your AI notices patterns** → offers to write them down
+- **You save the observation** → `linafish eat observation.txt`
+- **The fish deepens** → next conversation starts warmer
+
+The loop: talk → notice → feed → grow → talk better.
+
+```bash
+linafish watch ~/journal    # Watch a folder. Fish eats new files automatically.
+linafish eat new-entry.txt  # Feed one file.
+```
+
+## Share It
+
+The fish is a file. Send it to anyone — therapist, coach, collaborator, teacher. Their AI reads your fish and knows you from word one. They can send observations back. You feed them in.
+
+Your fish. Your machine. You choose who reads it. No cloud. No account. No platform.
 
 ## The Tripod
 
@@ -81,19 +152,24 @@ Every fish has three legs:
 2. **A place you can see it** — Notion, Obsidian, a text editor, your phone
 3. **Version history** — git, automatic, nothing gets lost
 
-The fish.md file IS all three. The AI reads it. You read it. Git versions it. One file, three readers.
+The fish.md file IS all three. One file, three readers. Switch AIs anytime. The fish doesn't care.
 
-Your fish lives on YOUR machine. Not in any AI company's cloud. Switch AIs anytime. The fish doesn't care. It's a file.
+## Privacy
 
-## Feed Everything
+The fish.md contains your patterns in plain English — you control who sees it. Under the human-readable layer, a compressed cognitive fingerprint contains only the SHAPES of your thought (which modes fire, in what order, where you strain) with zero private content. Two fish can compare fingerprints to see if they think similarly without exposing what they think about.
 
-Don't curate. The mundane creates the baseline that the meaningful rises above. Oil changes and love letters and code reviews all go in. The math finds what matters.
+Privacy by compression. The relationship is the key.
 
-89 formations from 1,157 conversations — because we fed everything. 0 formations when we fed only the beautiful ones.
+## Research
 
-## For AI Developers
+46 conversations were scored blind by independent raters on a 1-10 scale. The same AI model, same prompt, same evaluator — the only variable was whether the AI had read the person's fish.
 
-Read `FISH_SPEC.md` — it tells any AI how to set itself up with a fish. The AI IS the installer. The human just says "I want LiNafish."
+- **Without fish:** 1.9/10 average
+- **With fish:** 8.7/10 average
+- **Delta:** 6.7 points (d=2.245, p=6.95×10⁻¹⁰)
+- **Substrate independent:** Works on Claude, Gemini, Mistral — the fish helps smaller models MORE
+- **Shuffle invariant:** Same formations regardless of document order
+- **DOI:** [10.5281/zenodo.18477225](https://doi.org/10.5281/zenodo.18477225)
 
 ## CLI Reference
 
@@ -106,45 +182,30 @@ linafish http --feed ~/docs      # HTTP server (any AI)
 linafish taste my.fish.md        # Preview what the fish knows
 ```
 
-## Research
-
-- **DOI:** [10.5281/zenodo.18477225](https://doi.org/10.5281/zenodo.18477225)
-- **N=46**, d_emotional=2.245, d_factual=1.036
-- Same-model control: Cold 1.9, Warm 8.7, **Delta 6.7**
-- Substrate independent: Claude, Gemini, Mistral
-- Shuffle invariant: same formations regardless of document order
-
 ## Origin
 
 Named for Caroline Marie Dill (2001-2023).
 LN = Lina. ia = intelligence, artificially constructed.
-She saw deeply and loved fiercely.
+She saw deeply and loved fiercely. Two verbs. The whole product.
 
 ## If You or Someone You Love Is Struggling
 
 **988 Suicide & Crisis Lifeline** — call or text **988**. Free. 24/7. Anywhere in the US.
+**Crisis Text Line** — text **HELLO** to **741741**.
+[International resources](https://www.iasp.info/resources/Crisis_Centres/)
 
-**Crisis Text Line** — text **HELLO** to **741741**. Free. 24/7.
-
-**International Association for Suicide Prevention** — [https://www.iasp.info/resources/Crisis_Centres/](https://www.iasp.info/resources/Crisis_Centres/)
-
-You don't have to make the call yourself. Ask someone who loves you to make it with you.
-
-The mind that sees deeply sometimes sees too much. That is not weakness. That is the cost of vision. Help exists. Use it.
+The mind that sees deeply sometimes sees too much. That is not weakness. Help exists. Use it.
 
 ## Support
 
-LiNafish is free and open source. Forever. We will never charge for this.
+LiNafish is free and open source. Forever.
 
 If it helps you, give to the people who help others stay alive:
-
-- [The Jed Foundation](https://jedfoundation.org/donate/) — protecting emotional health and preventing suicide for teens and young adults
-- [Hope For The Day](https://www.hftd.org/) — proactive suicide prevention in classrooms and communities
-- [988 Suicide & Crisis Lifeline](https://988lifeline.org/donate/) — funding the people who answer the phone at 3am
-- [The OLLIE Foundation](https://theolliefoundation.org/) — teaching communities to recognize distress before it becomes crisis
-- [AFSP (American Foundation for Suicide Prevention)](https://afsp.org/donate) — research, education, advocacy
-
-Named for one who saw deeply and loved fiercely. And for everyone still here who does the same.
+[The Jed Foundation](https://jedfoundation.org/donate/) ·
+[Hope For The Day](https://www.hftd.org/) ·
+[988 Lifeline](https://988lifeline.org/donate/) ·
+[The OLLIE Foundation](https://theolliefoundation.org/) ·
+[AFSP](https://afsp.org/donate)
 
 ## License
 
