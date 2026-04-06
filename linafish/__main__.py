@@ -121,6 +121,37 @@ def cmd_taste(args):
         print(content.encode("utf-8", errors="replace").decode("utf-8"))
 
 
+def cmd_recall(args):
+    """Full-text search across crystals. Find specific words, not patterns."""
+    from .engine import FishEngine
+
+    state_dir = Path(args.state_dir) if args.state_dir else Path.home() / ".linafish"
+    name = args.name
+
+    # Auto-detect fish name if not specified
+    if not name:
+        # Find most recently modified crystals file (flat structure: name_crystals.jsonl)
+        candidates = [f.stem.replace("_crystals", "") for f in state_dir.glob("*_crystals.jsonl")]
+        if not candidates:
+            print("No fish found. Run 'linafish go' first.")
+            sys.exit(1)
+        # Pick most recent by file mod time
+        candidates.sort(key=lambda n: (state_dir / f"{n}_crystals.jsonl").stat().st_mtime, reverse=True)
+        name = candidates[0]
+
+    engine = FishEngine(state_dir=state_dir, name=name)
+    if not engine.fish.crystals:
+        print("Fish is empty. Feed it first.")
+        sys.exit(1)
+
+    result = engine.recall(args.query, top=args.top)
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        pass
+    print(result)
+
+
 def cmd_status(args):
     """Show fish stats."""
     fish_path = Path(args.fish)
@@ -398,6 +429,13 @@ def main():
     taste_p = sub.add_parser("taste", help="Preview fish contents")
     taste_p.add_argument("fish", help="Path to .fish.md")
 
+    # recall
+    recall_p = sub.add_parser("recall", help="Full-text search across crystals — find specific words, not patterns")
+    recall_p.add_argument("query", help="What to search for")
+    recall_p.add_argument("-n", "--name", help="Fish name (default: searches default fish)")
+    recall_p.add_argument("--state-dir", help="Where fish state lives (default: ~/.linafish/)")
+    recall_p.add_argument("--top", type=int, default=10, help="Max results")
+
     # status
     status_p = sub.add_parser("status", help="Show fish stats")
     status_p.add_argument("fish", help="Path to .fish.md")
@@ -489,6 +527,7 @@ def main():
         "go": cmd_go,
         "eat": cmd_eat,
         "taste": cmd_taste,
+        "recall": cmd_recall,
         "status": cmd_status,
         "serve": cmd_serve,
         "http": cmd_http,

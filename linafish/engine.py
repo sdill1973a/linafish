@@ -1036,6 +1036,57 @@ class FishEngine:
 
         return "\n".join(results)
 
+    def recall(self, query: str, top: int = 10) -> str:
+        """Full-text search across all crystals. Find specific words, not patterns.
+
+        This is the retrieval complement to taste/match (which find patterns).
+        Use recall when you need to find what was actually said, not how it
+        couples with existing formations.
+
+        'What's the SSH password?' is a recall question.
+        'How does she handle loss?' is a taste question.
+        """
+        if not self.fish.crystals:
+            return "Fish is empty."
+
+        query_lower = query.lower()
+        terms = query_lower.split()
+        hits = []
+
+        for c in self.fish.crystals:
+            text_lower = (c.text or "").lower()
+            # Score: how many query terms appear in the crystal text
+            term_hits = sum(1 for t in terms if t in text_lower)
+            if term_hits > 0:
+                # Bonus for exact phrase match
+                phrase_bonus = 2.0 if query_lower in text_lower else 0.0
+                score = term_hits / len(terms) + phrase_bonus
+                hits.append((score, term_hits, c))
+
+        hits.sort(key=lambda x: x[0], reverse=True)
+
+        if not hits:
+            return f"No crystals contain '{query}'."
+
+        results = [f"Found {len(hits)} crystals matching '{query}':\n"]
+        for score, term_count, c in hits[:top]:
+            source = c.source or "unknown"
+            # Show context around the match
+            text = c.text or ""
+            # Find the best snippet containing query terms
+            snippet = text[:300]
+            for t in terms:
+                idx = text.lower().find(t)
+                if idx >= 0:
+                    start = max(0, idx - 50)
+                    end = min(len(text), idx + 200)
+                    snippet = ("..." if start > 0 else "") + text[start:end] + ("..." if end < len(text) else "")
+                    break
+            results.append(f"[{term_count}/{len(terms)} terms] ({source})")
+            results.append(f"  {snippet}\n")
+
+        return "\n".join(results)
+
     def match(self, text: str, top: int = 3) -> str:
         """Tight recall. Higher threshold than taste."""
         if not self.fish.crystals or not self.fish.frozen:
