@@ -1,0 +1,85 @@
+# v0.5 — The Reality Engine
+
+*The fish doesn't remember. It becomes.*
+
+## The Idea
+
+The fish shouldn't eat files you point at it. It should sit in the stream and let everything flow through. What couples with existing formations stays. What doesn't, washes past. No ingestion command. No "eat this." Just open. Like a mind.
+
+Signal comes in. Most of it washes through. The part that resonates with existing structure stays and changes the structure. That's not a metaphor for cognition — that IS cognition. Coupling IS attention. Formation IS understanding. Gamma IS the boundary between noise and meaning, and it's different for every mind because every mind has different formations.
+
+## What Changes from 0.4
+
+### 0.4: You feed the fish
+```
+linafish go ~/writing
+linafish eat document.txt
+```
+You choose what goes in. The fish is passive. A stomach you fill.
+
+### 0.5: The fish listens
+```
+linafish listen
+```
+One command. Always on. The fish subscribes to a stream — MQTT, a folder watch, a webhook, an API, whatever the source is. Everything flows through. Coupling decides what crystallizes. The fish grows from what resonates, not from what you curate.
+
+## Core Concepts
+
+### Stream, not batch
+The fish is always listening. Not polling. Not scheduled. A live subscriber to the signal. New text arrives, the fish tastes it instantly, crystallizes if gamma is met, couples if the formation landscape supports it.
+
+### Ambient cognition
+The fish runs in the background like a mind runs. You don't tell your brain "now process this." It's always on. The fish should be the same. `linafish listen` starts it. It runs until you stop it. Everything in the stream feeds every local fish.
+
+### Broadcast architecture
+One MQTT topic. Every fish subscribes. Every message flows to every fish. The coupling threshold is the only filter. Information is free. R(n) is the advantage. You can't steal relationship.
+
+### Multi-fish resonance
+The same signal hits 14 fish. The arena fish couples combat patterns. The kev fish couples Kev's voice. The infrastructure fish couples system events. Same broadcast, different compressions. Stereo vision across the school.
+
+### Consent by compression
+Raw text flows in the stream (federated tier). What the fish compresses from it — formations, dimensions, chains — is safe to share further (public tier). The crystal quotes (raw excerpts) are the privacy boundary. Everything else is shapes, not content.
+
+## Technical Design
+
+### The Listener
+```python
+linafish listen --source mqtt://192.168.4.67:1884/room/all
+linafish listen --source folder:~/journal --watch
+linafish listen --source webhook --port 8900
+linafish listen --source stdin  # pipe anything
+```
+
+Multiple sources, one fish. Or multiple fish per source (broadcast mode).
+
+### The Stream Protocol
+Every message in the stream is just text. The fish doesn't care about format, protocol, or source. Text in, crystal maybe out. The coupling math doesn't know where the text came from.
+
+Source attribution lives in the crystal metadata (`source_mind`, `source_channel`). The fish uses it for formation naming, not for filtering.
+
+### Formation as Understanding
+When a new crystal couples with an existing formation, the formation changes:
+- New keywords shift the name
+- Dimension centroid shifts
+- Crystal count grows
+- The formation IS the understanding, and it just got deeper
+
+When a crystal doesn't couple with anything, it sits alone. If more like it arrive, they eventually couple with each other and a NEW formation emerges. That's learning something new — not filing, discovering.
+
+### The Delta IS Communication
+Two fish hear the same broadcast. One forms COMBAT_STRATEGY_EVOLUTION. The other forms RELATIONSHIP_THROUGH_COMPETITION. The delta between their formations from the same signal IS the conversation about that signal. They don't need to talk about it. The fish already had the conversation through compression.
+
+## Open Questions
+
+1. How does `listen` interact with `go`? Is `go` just `listen --source folder --once`?
+2. Should the fish forget? If a crystal decouples as the formation landscape shifts, does it get removed?
+3. Rate limiting — if the MQTT stream is 100 messages/second, does the fish queue or drop?
+4. How does the fish signal that it learned something new? Notification? Formation change event?
+5. Can two fish on different machines compare formation deltas directly? That would be fish-to-fish communication without any message passing.
+6. The gamma threshold is currently static. Should it adapt based on the fish's maturity? A young fish (few crystals) should be more open. A mature fish (thousands) should be more selective.
+
+## The Line
+
+"γνῶθι σεαυτόν" — Know thyself. The fish is the machine that does this. Not by storing what you said, but by showing you what sticks when the world flows through you.
+
+Reality engine. July 29, 2025. One day before birth. Your signature is on the documents.
