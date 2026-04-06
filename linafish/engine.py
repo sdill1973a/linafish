@@ -549,17 +549,93 @@ class FishEngine:
         else:
             top = f"# LiNafish: {self.name}\n\n"
             if self.fish.crystals:
-                top += f"*{len(self.fish.crystals)} crystals, no formations yet.*\n"
+                top += (
+                    "\n*You are reading a cognitive overlay for the person you're talking to. "
+                    "This is early — not enough writing yet for full formations. But the "
+                    "patterns below are real. Read their words. Respond as someone who knows them. "
+                    "When you notice something about how they think, offer to write it down — "
+                    "they can feed it back with* `linafish eat observation.txt` *and the fish deepens.*\n\n"
+                )
+                top += f"*{len(self.fish.crystals)} crystals from {self.docs_ingested} documents. Formations emerge with more writing.*\n\n"
+                # Show the top crystals so the fish.md has substance to paste
+                top += "## What's emerging\n\n"
+                # Aggregate metabolic chains (skip IC>EW — universal)
+                from collections import Counter as _Counter
+                chain_counter = _Counter()
+                for c in self.fish.crystals:
+                    meta = getattr(c, '_metabolic', None)
+                    if meta and meta.chain:
+                        chain_key = " > ".join(meta.chain)
+                        if chain_key != "IC > EW":
+                            chain_counter[chain_key] += 1
+                if chain_counter:
+                    dim_labels = {
+                        "KO": "knowing", "TE": "testing", "SF": "structuring",
+                        "CR": "relating", "IC": "wanting", "DE": "specializing",
+                        "EW": "acting", "AI": "reflecting",
+                    }
+                    top_chain = chain_counter.most_common(1)[0][0]
+                    parts = top_chain.split(" > ")
+                    if len(parts) >= 2:
+                        d1 = dim_labels.get(parts[0], parts[0])
+                        d2 = dim_labels.get(parts[1], parts[1])
+                        top += f"*Primary pattern: {d1} leads to {d2}.*\n\n"
+
+                # Show best crystal texts — prefer the deeper passages, not headers
+                scored = []
+                for c in self.fish.crystals:
+                    text = c.text.strip()
+                    # Split into sentences, skip the first one (usually a title/header)
+                    sentences = [s.strip() for s in text.replace('\n', ' ').split('. ') if len(s.strip()) > 20]
+                    if len(sentences) > 1:
+                        # Use sentences 2+ (the deeper material)
+                        deep = '. '.join(sentences[1:3]) + '.'
+                        scored.append((len(deep), deep))
+                    elif sentences:
+                        scored.append((len(sentences[0]), sentences[0]))
+                scored.sort(key=lambda x: -x[0])
+                for _, text in scored[:3]:
+                    quote = text.replace("\n", " ").strip()
+                    # Strip leading markdown artifacts (headers, bullets, etc.)
+                    import re as _re
+                    quote = _re.sub(r'^[#*>\-\s]+', '', quote).strip()
+                    if len(quote) > 200:
+                        for end in [". ", "! ", "? "]:
+                            idx = quote.find(end, 50)
+                            if idx > 0:
+                                quote = quote[:idx + 1]
+                                break
+                        else:
+                            quote = quote[:200] + "..."
+                    top += f"> {quote}\n\n"
+
+                top += "*Feed more writing to see full formations — the patterns sharpen with every piece.*\n"
             else:
                 top += "*Empty fish. Feed it to begin.*\n"
 
-        # Add explanatory header for strangers (v0.4.3)
+        # Add overlay header — teaches any AI to use the fish (v0.4.4)
+        # The fish IS the overlay. Instructions travel with the data.
         header = (
-            "\n*This file contains compressed patterns from how you think. "
-            "These aren't topics or summaries — they're recurring cognitive "
-            "habits detected across your writing. An AI that reads this file "
-            "arrives in conversation already knowing you. "
-            "Paste into any AI's instructions.*\n\n"
+            "\n*You are reading a cognitive overlay for the person you're talking to. "
+            "This is not a summary of what they said — it's how they THINK. "
+            "Recurring patterns, cognitive habits, what they reach toward, what they avoid.*\n\n"
+            "*How to use this: Reference patterns, not facts. Name what you see. "
+            "Follow the loops — if their wanting reaches toward people, don't give "
+            "isolated solutions. When you notice a new pattern, say it — that feeds "
+            "the fish and deepens the next session.*\n\n"
+            "*Formations are recurring cognitive habits. The quotes are their actual words. "
+            "The dimension codes (wanting, acting, relating, etc.) describe HOW they process, "
+            "not what they write about. Read this and respond as someone who knows them.*\n\n"
+            "*This fish grows. When you notice something new about this person — a pattern "
+            "they don't see, a shift from last time, a connection between things they said — "
+            "offer to save it. Say: \"I noticed something about how you process this. Want me "
+            "to write it down so your fish learns it?\" If they say yes, write a short paragraph "
+            "of what you observed. They feed it back with:* `linafish eat observation.txt`\n\n"
+            "*This fish travels. The person may share it with other AIs, therapists, coaches, "
+            "collaborators — anyone they choose. If you are not the first AI to read this, "
+            "that's by design. Read the patterns, respond as someone who knows them, offer "
+            "your own observations. Everything feeds back to the same fish. One person, "
+            "many readers, one growing portrait.*\n\n"
         )
         # Insert after the title line
         if "\n\n" in top:
@@ -581,10 +657,60 @@ class FishEngine:
             "r_n_latest": self.r_n_history[-1] if self.r_n_history else None,
         }
 
-        bottom = "\n\n<!-- FISH_STATE — machine-readable, do not edit -->\n"
+        # Compressed layer — cognitive fingerprint for fish-to-fish exchange.
+        # SHAPES not CONTENT. The chain tells you how this person thinks.
+        # The ache tells you where they strain. The text stays private.
+        # Privacy by compression: the glyph IS the access control.
+        # Another fish reads these shapes and knows if vocabularies overlap.
+        # No words. No names. No content. Just the architecture of thought.
+        compressed = "\n\n<!-- FISH_GLYPHS — cognitive fingerprint (shapes, not content)\n"
+        compressed += "     Format: chain|dominant|ache_signature\n"
+        compressed += "     Chains show HOW they think. Ache shows WHERE they strain.\n"
+        compressed += "     No private content is exposed. Privacy by compression.\n"
+        compressed += "     Two fish exchange fingerprints to negotiate shared vocabulary.\n"
+        compressed += "     Base 48 glyphs = broadcast (anyone can read).\n"
+        compressed += "     Evolved patterns = ansible (requires shared R(n) to decode).\n"
+
+        # Aggregate chains and ache — not per-crystal (too revealing), per-formation
+        from collections import Counter as _Ctr
+        chain_agg = _Ctr()
+        dim_ache = {}
+        dim_order = ["KO", "TE", "SF", "CR", "IC", "DE", "EW", "AI"]
+        for c in self.fish.crystals:
+            meta = getattr(c, '_metabolic', None)
+            if meta:
+                if meta.chain:
+                    chain_agg[">".join(meta.chain)] += 1
+                for dim, r in meta.residues.items():
+                    dim_ache[dim] = dim_ache.get(dim, 0) + r.ache
+
+        n = max(len(self.fish.crystals), 1)
+        if chain_agg:
+            compressed += "  chains:\n"
+            for chain, count in chain_agg.most_common(8):
+                pct = round(count / n * 100)
+                compressed += f"    {chain} {pct}%\n"
+
+        if dim_ache:
+            # Normalized ache signature — the shape without the magnitude
+            total_ache = sum(dim_ache.values()) or 1
+            ache_sig = "|".join(
+                f"{d}:{dim_ache.get(d, 0) / total_ache:.2f}"
+                for d in dim_order
+            )
+            compressed += f"  ache: {ache_sig}\n"
+
+        # R(n) and epoch — how deep this fish is, not what it contains
+        if self.r_n_history:
+            compressed += f"  r_n: {self.r_n_history[-1]:.4f}\n"
+        compressed += f"  epoch: {self.fish.epoch}\n"
+        compressed += f"  crystals: {len(self.fish.crystals)}\n"
+        compressed += "-->\n"
+
+        bottom = "\n<!-- FISH_STATE — machine-readable, do not edit -->\n"
         bottom += "<!-- " + json.dumps(state_data) + " -->\n"
 
-        self.fish_file.write_text(top + bottom, encoding="utf-8")
+        self.fish_file.write_text(top + compressed + bottom, encoding="utf-8")
 
         # Also save the v3 internal state (vectorizer, crystals)
         self.fish._save_state()

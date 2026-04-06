@@ -442,6 +442,27 @@ def hierarchical_merge(
     return meta_formations
 
 
+def _clean_crystal_text(text: str, max_len: int = 200) -> str:
+    """Clean crystal text for display: strip markdown, find the deep sentence."""
+    import re
+    text = re.sub(r'^[#*>\-\s]+', '', text.replace('\n', ' ')).strip()
+    # Split into sentences, prefer the 2nd+ (deeper material, not headers)
+    sentences = [s.strip() for s in text.split('. ') if len(s.strip()) > 15]
+    if len(sentences) > 1 and len(sentences[0]) < 50:
+        text = '. '.join(sentences[1:3]) + '.'
+    elif sentences:
+        text = '. '.join(sentences[:2]) + '.'
+    if len(text) > max_len:
+        for end in ['. ', '! ', '? ']:
+            idx = text.find(end, 40)
+            if idx > 0 and idx < max_len:
+                text = text[:idx + 1]
+                break
+        else:
+            text = text[:max_len] + "..."
+    return text
+
+
 def formations_to_codebook_text(
     formations: List[Formation],
     title: str = "LiNafish",
@@ -449,9 +470,16 @@ def formations_to_codebook_text(
 ) -> str:
     """Render formations as a codebook for context injection.
 
-    Each formation = one glyph entry.
+    Each formation = one glyph entry. Text is cleaned for AI readability.
     For mega-formations (>50 crystals), diamond crystals provide sub-structure.
     """
+    # Human-readable dimension names
+    dim_names = {
+        "KO": "knowing", "TE": "testing", "SF": "structuring",
+        "CR": "relating", "IC": "wanting", "DE": "specializing",
+        "EW": "acting", "AI": "reflecting",
+    }
+
     total_crystals = sum(f.crystal_count for f in formations)
     lines = [
         f"# {title}",
@@ -466,24 +494,28 @@ def formations_to_codebook_text(
     for f in sorted(formations, key=lambda x: x.crystal_count, reverse=True):
         cats = dict(zip(CATEGORIES, f.centroid))
         top_cats = sorted(cats.items(), key=lambda x: -x[1])[:3]
-        cat_str = "+".join(f"{c}" for c, v in top_cats if v > 0.05)
+        cat_str = "+".join(dim_names.get(c, c) for c, v in top_cats if v > 0.05)
 
         lines.append(f"**{f.name}** ({f.crystal_count} crystals, {cat_str})")
-        lines.append(f"  {f.representative_text[:250]}")
+        # Clean representative text
+        rep = _clean_crystal_text(f.representative_text, 250)
+        lines.append(f"  \"{rep}\"")
         if f.keywords:
-            lines.append(f"  keys: {', '.join(f.keywords)}")
+            # Filter out stopword-level keywords
+            meaningful_kw = [k for k in f.keywords if len(k) > 3][:5]
+            if meaningful_kw:
+                lines.append(f"  themes: {', '.join(meaningful_kw)}")
 
         # Mega-formation: show top diamond crystals as sub-entries
         if f.crystal_count > 50 and crystal_map and hasattr(f, 'member_ids'):
             members = [crystal_map[mid] for mid in f.member_ids if mid in crystal_map]
             diamonds = [c for c in members if c.structural]
             if diamonds:
-                # Sort by coupling strength (most connected diamond first)
                 diamonds.sort(key=lambda c: sum(g for _, g in c.couplings), reverse=True)
                 lines.append("")
                 for d in diamonds[:15]:
-                    kw = ", ".join(d.keywords[:3]) if d.keywords else ""
-                    lines.append(f"  - **[{kw}]** {d.text[:200]}")
+                    clean = _clean_crystal_text(d.text, 200)
+                    lines.append(f"  - \"{clean}\"")
 
         lines.append("")
 
@@ -494,10 +526,10 @@ def formations_to_codebook_text(
             formed_ids.update(f.member_ids)
         orphans = [c for c in crystals if c.id not in formed_ids]
         if orphans:
-            lines.append("**Additional notes** (uncoupled)")
+            lines.append("**Other observations** (not yet part of a pattern)")
             for c in orphans:
-                kw = ", ".join(c.keywords[:3]) if c.keywords else ""
-                lines.append(f"  - [{kw}] {c.text[:200]}")
+                clean = _clean_crystal_text(c.text, 200)
+                lines.append(f"  - \"{clean}\"")
             lines.append("")
 
     lines.append("---")

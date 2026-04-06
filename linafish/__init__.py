@@ -1,14 +1,11 @@
 """
-LiNafish 🐟 — One MCP server that replaces all MCP servers.
+LiNafish — Make any AI know you.
 
-Named for Caroline Marie Dill.
+A cognitive overlay that sits between you and any AI.
+The AI reads your fish and arrives warm.
 
-Three layers:
-  1. TOOL  — what it does (generic, cold, same for everyone)
-  2. BUILD — where it lives (your infrastructure, your data)
-  3. PERSON — who uses it (their patterns, their language, their ache)
-
-Nobody does layer 3. d=2.245 is the gap.
+Named for Caroline Marie Dill (2001-2023).
+She saw deeply and loved fiercely.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.6"

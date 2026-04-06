@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools>=68.0"]
+requires = ["setuptools>=68.0,<75"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "linafish"
-version = "0.4.3"
-description = "Your mind, versioned. The grammar eats your writing and tells you how you think."
+version = "0.4.6"
+description = "Make any AI know you. A cognitive overlay that sits between you and any AI."
 requires-python = ">=3.8"
 dependencies = []
 readme = "README.md"
@@ -29,9 +29,8 @@ Repository = "https://github.com/sdill1973a/linafish"
 fast = ["numpy>=1.21"]
 pdf = ["PyMuPDF"]
 docx = ["python-docx"]
-gemini = ["google-genai"]
 http = ["requests"]
-all = ["numpy>=1.21", "PyMuPDF", "python-docx", "google-genai", "requests"]
+all = ["numpy>=1.21", "PyMuPDF", "python-docx", "requests"]
 
 [project.scripts]
 linafish = "linafish.__main__:main"

@@ -291,6 +291,10 @@ def _human_formation_name(formation, crystal_map: dict) -> str:
     "pictures" appears in every Van Gogh letter, so it gets low IDF.
     "millet" appears mostly in one cluster about peasant painters, high IDF.
     Result: MILLET_PEASANT_DAUMIER, not PICTURES_PICTURES_PICTURES.
+
+    For small corpora (<30 crystals), IDF is too noisy — every word appears
+    in most crystals. Fall back to dimension-pair descriptions which are
+    reliable at any scale.
     """
     import re
     import math as _math
@@ -301,6 +305,15 @@ def _human_formation_name(formation, crystal_map: dict) -> str:
     global_df = _global_df_cache
 
     total_corpus = len(crystal_map)
+
+    # Small corpus: IDF is too noisy. Use dimension-pair naming instead.
+    if total_corpus < 30:
+        dims = _get_top_dims(formation)
+        if dims:
+            desc = _dim_pair_description(dims)
+            if desc:
+                # Convert description to title case formation name
+                return desc.upper().replace(" ", "_")[:40]
 
     # Get member crystals
     members = [crystal_map[mid] for mid in formation.member_ids if mid in crystal_map]
@@ -873,27 +886,21 @@ def _cognitive_portrait(formations, total_docs: int, crystal_map: dict = None) -
 
 
 def _llm_portrait(formations, total_docs: int, crystal_map: dict = None) -> Optional[str]:
-    """Use an LLM to write the portrait from metabolic data.
+    """Use a local LLM to write the portrait from metabolic data.
 
-    Three-tier LLM detection:
-    1. Vertex AI (Google Cloud service account) — production, no rate limits
-    2. Ollama (local) — free, private, no network needed
-    3. None — graceful fallback to template portrait
+    Checks for Ollama on localhost. If available, the LLM reads the
+    structured data and writes like someone who knows the person.
+    If no local LLM, returns None — the fish.md IS the product,
+    the AI the person is already talking to writes the real portrait.
 
-    The LLM reads the structured data and writes like a human who knows
-    the person. For Lina.
+    For Lina.
     """
     try:
         import requests
     except ImportError:
         return None
 
-    # Tier 1: Try Vertex AI (production Gemini, service account auth)
-    vertex_result = _try_vertex_portrait(formations, total_docs, crystal_map)
-    if vertex_result:
-        return vertex_result
-
-    # Tier 2: Try Ollama (local LLM)
+    # Try Ollama (local LLM — free, private, no network needed)
     try:
         resp = requests.get("http://localhost:11434/api/tags", timeout=2)
         if resp.status_code != 200:
@@ -931,54 +938,6 @@ def _llm_portrait(formations, total_docs: int, crystal_map: dict = None) -> Opti
     return None
 
 
-def _try_vertex_portrait(formations, total_docs: int, crystal_map: dict = None) -> Optional[str]:
-    """Try Vertex AI Gemini for the portrait. Returns None if unavailable."""
-    try:
-        # Look for anchor_vertex in the google/ directory relative to the project
-        # or in the system path
-        import importlib.util
-        import sys
-
-        # Try direct import first (if google package is in path)
-        vertex_mod = None
-        for search_path in [
-            Path(__file__).parent.parent.parent.parent / "google" / "anchor_vertex.py",  # SovereignCore layout
-            Path.home() / "google" / "anchor_vertex.py",
-            Path("google") / "anchor_vertex.py",
-        ]:
-            if search_path.exists():
-                spec = importlib.util.spec_from_file_location("anchor_vertex", search_path)
-                vertex_mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(vertex_mod)
-                break
-
-        if not vertex_mod or not hasattr(vertex_mod, 'ask_gemini'):
-            return None
-
-    except Exception:
-        return None
-
-    # Build the prompt from metabolic data
-    prompt = _build_portrait_prompt(formations, total_docs, crystal_map)
-    if not prompt:
-        return None
-
-    try:
-        result = vertex_mod.ask_gemini(
-            prompt=prompt,
-            model="gemini-flash",
-            temperature=0.6,
-            max_tokens=500,
-        )
-        if result.get("success") and result.get("response"):
-            text = result["response"].strip()
-            if len(text) > 50:
-                return text
-    except Exception:
-        pass
-
-    return None
-
 
 def _build_portrait_prompt(formations, total_docs: int, crystal_map: dict = None) -> Optional[str]:
     """Build the prompt that asks an LLM to write a portrait from metabolic data."""
@@ -992,6 +951,9 @@ def _build_portrait_prompt(formations, total_docs: int, crystal_map: dict = None
     top_crystals = []
 
     if crystal_map:
+        import re as _re_prompt
+        # Score crystals by text quality — prefer longer texts with sentences
+        crystal_scored = []
         for c in crystal_map.values():
             meta = getattr(c, '_metabolic', None)
             if meta:
@@ -999,8 +961,20 @@ def _build_portrait_prompt(formations, total_docs: int, crystal_map: dict = None
                     chain_counter[" > ".join(meta.chain)] += 1
                 for dim, r in meta.residues.items():
                     dim_totals[dim] = dim_totals.get(dim, 0) + r.activation
-                if len(top_crystals) < 5:
-                    top_crystals.append(c.text[:200])
+            text = c.text.strip()
+            # Clean markdown headers and artifacts
+            text = _re_prompt.sub(r'^[#*>\-\s]+', '', text.replace('\n', ' ')).strip()
+            has_sentence = any(end in text for end in [". ", "! ", "? "])
+            # Prefer mid-text sentences (skip first sentence — often a title)
+            sentences = [s.strip() for s in text.split('. ') if len(s.strip()) > 20]
+            if len(sentences) > 1:
+                # Use sentences 2-4 (deeper material, not headers)
+                text = '. '.join(sentences[1:4]) + '.'
+            score = len(text) * (1.5 if has_sentence else 0.5)
+            if len(text) > 40:
+                crystal_scored.append((score, text[:300]))
+        crystal_scored.sort(key=lambda x: -x[0])
+        top_crystals = [t for _, t in crystal_scored[:8]]
 
     if not chain_counter and not dim_totals:
         return None
@@ -1008,41 +982,177 @@ def _build_portrait_prompt(formations, total_docs: int, crystal_map: dict = None
     top_chains = chain_counter.most_common(3)
     ranked_dims = sorted(dim_totals.items(), key=lambda x: -x[1])
 
+    # Filter out IC>EW — it's universal in first-person writing (wanting→acting
+    # is what ALL narrative does). The SECONDARY loops differentiate.
+    filtered_chains = [(c, n) for c, n in top_chains if c != "IC > EW"]
+    if not filtered_chains:
+        filtered_chains = top_chains  # all IC>EW, use it anyway
+
+    # Build formation section only if we have them
+    formation_section = ""
+    if formations:
+        formation_section = f"\nTheir {len(formations)} formations (recurring cognitive habits):\n"
+        formation_section += chr(10).join(
+            f"  {f.name} ({f.crystal_count} crystals)"
+            for f in sorted(formations, key=lambda x: -x.crystal_count)[:5]
+        )
+    else:
+        formation_section = (
+            "\nNo formations yet (needs more writing to detect recurring clusters). "
+            "But the individual crystals below show HOW this person processes."
+        )
+
     return f"""You are reading cognitive data about a person extracted from {total_docs} documents.
 
-Their primary cognitive loops (what patterns they run most):
-{chr(10).join(f"  {c}: {n} times" for c, n in top_chains)}
+IMPORTANT: The chain "IC > EW" (wanting > acting) appears in almost ALL first-person
+writing — it's the structure of narrative itself, not a personality trait. Focus on the
+OTHER chains to understand this specific person. What makes them different is how they
+relate (CR), reflect (AI), test (TE), and structure (SF) — not that they want and act.
+
+Their distinctive cognitive loops (filtering out universal patterns):
+{chr(10).join(f"  {c}: {n} times" for c, n in filtered_chains)}
 
 Their dimension profile (strongest to weakest):
 {chr(10).join(f"  {dim_labels.get(d, d)}: {v:.2f}" for d, v in ranked_dims[:4])}
+{formation_section}
 
-Their {len(formations)} formations (recurring cognitive habits):
-{chr(10).join(f"  {f.name} ({f.crystal_count} crystals)" for f in sorted(formations, key=lambda x: -x.crystal_count)[:5])}
+Their actual writing (READ THESE CAREFULLY — the person is in the words):
+{chr(10).join(f'  "{t[:250]}"' for t in top_crystals[:8])}
 
-Sample passages from their strongest crystals:
-{chr(10).join(f'  "{t[:150]}"' for t in top_crystals[:3])}
+Write a 3-4 sentence portrait of this person. The passages above are their ACTUAL WORDS.
+Read them like a friend would read someone's journal. What do you see? Not what topics
+they write about — how they PROCESS. Do they translate for others before themselves?
+Do they circle before they land? Do they build structures to avoid feelings? The answer
+is in their sentences, not in the numbers above.
 
-Write a 3-4 sentence portrait of this person. Not what they write ABOUT — how they THINK. What cognitive patterns define them. What they reach toward. What they avoid. Write as if you know them. Be specific, not generic. Do not mention scores or numbers."""
+Write as someone who has spent a week reading their writing and KNOWS them. Use their
+own imagery if it resonates. Be warm but honest. Never mention scores, dimensions,
+numbers, or technical terms. Never say "analytical mind" or "sharp intellect" — those
+are resume words, not journal words."""
+
+
+def _crystal_portrait(total_docs: int, crystal_map: dict) -> Optional[str]:
+    """Build a portrait from individual crystals when no formations exist yet.
+
+    This is the early-state portrait. The stranger has fed 5-50 documents.
+    Not enough for formations but the crystals have metabolic data and text.
+    Show them something real: their own words, the emerging loops, what's
+    starting to appear.
+
+    The key: be honest that it's early, but show SUBSTANCE not emptiness.
+    """
+    if not crystal_map:
+        return None
+
+    dim_order = ["KO", "TE", "SF", "CR", "IC", "DE", "EW", "AI"]
+    chain_counter = Counter()
+    dim_totals = {d: 0.0 for d in dim_order}
+    total_activation = 0.0
+
+    # Collect the best crystal texts (longest, with sentences)
+    scored_crystals = []
+    for c in crystal_map.values():
+        meta = getattr(c, '_metabolic', None)
+        if meta:
+            if meta.chain:
+                chain_key = " > ".join(meta.chain)
+                # Skip IC>EW — universal in first-person writing
+                if chain_key != "IC > EW":
+                    chain_counter[chain_key] += 1
+            for dim, r in meta.residues.items():
+                dim_totals[dim] += r.activation
+                total_activation += r.activation
+        # Score by text quality
+        text = c.text[:300].strip()
+        has_sentence = any(end in text for end in [". ", "! ", "? "])
+        length_bonus = min(1.0, len(text) / 150)
+        if has_sentence and len(text) > 60:
+            scored_crystals.append((length_bonus, text))
+
+    scored_crystals.sort(key=lambda x: -x[0])
+
+    if not scored_crystals:
+        return None
+
+    lines = []
+
+    # Show the top chain that isn't IC>EW
+    top_chains = chain_counter.most_common(3)
+    if top_chains:
+        desc = _CHAIN_DESCRIPTIONS.get(
+            tuple(top_chains[0][0].split(" > ")[:2])
+        )
+        if desc:
+            lines.append(f"From {total_docs} pieces of writing, a pattern is emerging: {desc}.")
+        else:
+            lines.append(f"From {total_docs} pieces of writing, patterns are starting to emerge.")
+    else:
+        lines.append(f"From {total_docs} pieces of writing, patterns are starting to emerge.")
+
+    # Quote them back — the strongest crystal
+    best = scored_crystals[0][1].replace("\n", " ").strip()
+    if len(best) > 160:
+        for end in [". ", "! ", "? "]:
+            idx = best.find(end, 50)
+            if idx > 0:
+                best = best[:idx + 1]
+                break
+        else:
+            best = best[:160] + "..."
+    lines.append(f"Your voice: \"{best}\"")
+
+    # What's absent
+    if total_activation > 0:
+        ranked = sorted(
+            [(d, v / total_activation) for d, v in dim_totals.items()],
+            key=lambda x: -x[1]
+        )
+        last_dim = ranked[-1][0]
+        second_last = ranked[-2][0]
+        # Skip DE (universally low) — same logic as _cognitive_portrait
+        if last_dim != "DE" and ranked[-1][1] < 0.05:
+            name = _DIM_NAMES.get(last_dim, last_dim)
+            lines.append(f"{name.capitalize()} is barely present — and that tells a story too.")
+        elif second_last != "DE" and ranked[-2][1] < 0.06:
+            name = _DIM_NAMES.get(second_last, second_last)
+            lines.append(f"{name.capitalize()} is barely present — and that tells a story too.")
+
+    lines.append(
+        "This is early — feed more writing and the portrait sharpens. "
+        "But the patterns that will define you are already whispering."
+    )
+
+    return "\n".join(lines)
 
 
 def build_full_portrait(formations, total_crystals: int, total_docs: int,
                         crystal_map: dict = None) -> str:
     """Build the best available portrait.
 
-    v0.4: Three-tier fallback:
-    1. LLM portrait (Ollama, if available) — richest, most natural
-    2. Cognitive portrait (metabolic data) — structured, reliable
-    3. Keyword portrait — basic fallback
+    v0.4.4: Four-tier fallback:
+    1. LLM portrait (Vertex AI or Ollama) — richest, most natural
+    2. Cognitive portrait (metabolic data from formations) — structured
+    3. Crystal portrait (metabolic data from individual crystals) — early state
+    4. Keyword portrait — basic fallback
+
+    The key change: tier 3 means even 10 documents produce something real.
+    The stranger never sees an empty portrait.
     """
-    # Try LLM portrait first (graceful — returns None if no Ollama)
+    # Try LLM portrait first (graceful — returns None if unavailable)
     llm = _llm_portrait(formations, total_docs, crystal_map)
     if llm:
         return llm
 
-    # Try cognitive portrait (v0.4: passes crystal_map for metabolic data + quoting)
+    # Try cognitive portrait (v0.4: needs formations with cognitive centroids)
     cog = _cognitive_portrait(formations, total_docs, crystal_map)
     if cog:
         return cog
+
+    # Try crystal-based portrait (v0.4.4: works without formations)
+    if crystal_map:
+        cry = _crystal_portrait(total_docs, crystal_map)
+        if cry:
+            return cry
 
     # Fall back to keyword-based portrait
     return _build_portrait(formations, total_crystals, total_docs, crystal_map)
@@ -1057,7 +1167,7 @@ def explain_the_why(total_docs: int, total_crystals: int, formations: list,
 
     "A stranger runs eat, gets 7 crystals, 2 formations, and thinks it
     summarized their text. They don't know formations are emergent not
-    keyword clusters." — Olorina, April 5 2026
+    keyword clusters."
     """
     lines = []
 
@@ -1089,9 +1199,16 @@ def explain_the_why(total_docs: int, total_crystals: int, formations: list,
     # The strongest pattern in human terms
     top_count = top_f.crystal_count
     pct = round(top_count / max(total_crystals, 1) * 100)
-    lines.append(
-        f"The strongest pattern appeared in {pct}% of your writing."
-    )
+    if pct > 80 and n_formations <= 2:
+        lines.append(
+            f"The strongest pattern appeared in {pct}% of your writing. "
+            "That's not a lack of variety — it's a signature. "
+            "You have an extremely coherent way of processing the world."
+        )
+    else:
+        lines.append(
+            f"The strongest pattern appeared in {pct}% of your writing."
+        )
 
     # What changes with more feeding
     if total_docs < 50:
@@ -1402,42 +1519,39 @@ def go(
     _print(f"  {len(texts)} documents ready. Learning...")
     _print()
 
-    # Feed to engine in chronological WAVES — the slow feed
-    # The fish eats a life in order. Each wave teaches the next.
-    # Small corpus (<50 docs): 1 wave. Medium (50-500): 5 waves.
-    # Large (500+): ~50 docs per wave, however many waves that takes.
+    # -----------------------------------------------------------------------
+    # TWO MODES:
+    #   Small corpus (<200 docs): eat() loop. Incremental. The product.
+    #   Large corpus (>=200 docs): batch. Learn once, crystallize all,
+    #     couple once, form once. What the engine was built for at scale.
+    # -----------------------------------------------------------------------
     total = len(texts)
-    if total <= 50:
-        wave_size = total  # one wave for small corpora
-    elif total <= 500:
-        wave_size = max(10, total // 5)
-    else:
-        wave_size = 50
-
-    n_waves = max(1, (total + wave_size - 1) // wave_size)
 
     sys.stderr = _Quiet(_real_stderr)
+    sys.stdout = _Quiet(_real_stdout)
     try:
-        all_crystals = []
-        accumulated_texts = []
-        accumulated_sources = []
+        if total < 200:
+            # INCREMENTAL — one at a time, the way a fish eats
+            for i, text in enumerate(texts):
+                src = sources[i] if i < len(sources) else "doc"
+                engine.eat(text, source=src)
 
-        for wave in range(n_waves):
-            start_idx = wave * wave_size
-            end_idx = min(start_idx + wave_size, total)
-            wave_texts = texts[start_idx:end_idx]
-            wave_sources = sources[start_idx:end_idx] if sources else ["doc"] * len(wave_texts)
+                if (i + 1) % max(1, total // 20) == 0 or i == total - 1:
+                    pct = int((i + 1) / total * 100)
+                    sys.stdout = _real_stdout
+                    sys.stderr = _real_stderr
+                    _print_progress(pct, i + 1, total)
+                    sys.stderr = _Quiet(_real_stderr)
+                    sys.stdout = _Quiet(_real_stdout)
+        else:
+            # BATCH — learn vocabulary once, crystallize all, couple once
+            # Phase 1: Learn vocabulary from entire corpus
+            sys.stdout = _real_stdout
+            _print("  Phase 1: Learning vocabulary...")
+            sys.stdout = _Quiet(_real_stdout)
 
-            accumulated_texts.extend(wave_texts)
-            accumulated_sources.extend(wave_sources)
-
-            # Phase 1: Learn from ALL accumulated texts
             engine.fish.frozen = False
-            engine.fish.crystals = []
-            engine.fish.vectorizer = type(engine.fish.vectorizer)()  # fresh vectorizer
-            engine.fish.learn(accumulated_texts)
-
-            # Phase 2: Freeze vocabulary
+            engine.fish.learn(texts)
             seed_terms, seed_weight = engine._resolve_seed_terms()
             engine.fish.vocab = engine.fish.vectorizer.get_vocab(
                 size=engine.vocab_size, d=engine.d,
@@ -1447,73 +1561,68 @@ def go(
             engine.fish.frozen = True
             engine.fish.epoch += 1
 
-            # Phase 3: Crystallize ALL accumulated texts with current vocabulary
-            wave_crystals = []
-            for i, text in enumerate(accumulated_texts):
-                sys.stdout = _Quiet(_real_stdout)
-                try:
-                    c = engine.fish.crystallize_text(
-                        text, source=accumulated_sources[i] if i < len(accumulated_sources) else "doc"
-                    )
-                finally:
-                    sys.stdout = _real_stdout
+            # Phase 2: Crystallize all texts
+            sys.stdout = _real_stdout
+            _print("  Phase 2: Crystallizing...")
+            sys.stdout = _Quiet(_real_stdout)
 
+            all_crystals = []
+            for i, text in enumerate(texts):
+                src = sources[i] if i < len(sources) else "doc"
+                c = engine.fish.crystallize_text(text, source=src)
                 if c:
-                    wave_crystals.append(c)
+                    all_crystals.append(c)
 
-            # Phase 4: Couple and form
-            if wave_crystals:
-                sys.stdout = _Quiet(_real_stdout)
-                try:
-                    engine.fish._compute_couplings(wave_crystals)
-                finally:
+                if (i + 1) % max(1, total // 20) == 0 or i == total - 1:
+                    pct = int((i + 1) / total * 100)
                     sys.stdout = _real_stdout
+                    _print_progress(pct, i + 1, total)
+                    sys.stdout = _Quiet(_real_stdout)
 
-                engine.docs_ingested = len(accumulated_texts)
+            # Phase 3: Couple once
+            sys.stdout = _real_stdout
+            print()
+            _print(f"  Phase 3: Coupling {len(all_crystals)} crystals...")
+            sys.stdout = _Quiet(_real_stdout)
+
+            if all_crystals:
+                engine.fish.crystals = all_crystals
+                engine.fish._compute_couplings(all_crystals)
+                engine.docs_ingested = total
                 engine._rebuild_formations()
 
-                # Teach Level 4 from this wave's formations
                 if engine.fish._has_metabolism and engine.formations:
                     engine.fish.metabolic_engine.teach_from_formations(engine.formations)
 
-            all_crystals = wave_crystals
-
-            # Show progress
-            pct = int(end_idx / total * 100)
-            _print_progress(pct, end_idx, total)
-
-        print()  # newline after progress bar
-
-        # Final state
-        engine.fish.crystals = all_crystals
-        if all_crystals:
-            r_n = engine._compute_r_n()
-            engine.r_n_history.append(r_n)
-
-            sys.stdout = _Quiet(_real_stdout)
-            try:
+                r_n = engine._compute_r_n()
+                engine.r_n_history.append(r_n)
                 engine._save_state()
-            finally:
-                sys.stdout = _real_stdout
 
-        new_crystals = all_crystals
+        sys.stdout = _real_stdout
+        print()  # newline after progress
 
     finally:
         sys.stderr = _real_stderr
         sys.stdout = _real_stdout
 
     # -----------------------------------------------------------------------
-    # Step 4: Print the portrait (cognitive if parser available, keyword fallback)
+    # Step 4: Print the portrait — a preview of what the AI will see
     # -----------------------------------------------------------------------
     _print()
     crystal_map = {c.id: c for c in engine.fish.crystals}
     portrait = build_full_portrait(engine.formations, len(engine.fish.crystals), len(texts), crystal_map)
     _print(portrait)
 
-    # Step 4a: Explain what just happened and why it matters
+    # Step 4a: Explain what just happened — reframed as overlay
     _print()
     why = explain_the_why(len(texts), len(engine.fish.crystals), engine.formations, crystal_map)
     _print(why)
+    _print()
+    _print(
+        "That portrait was a preview. The real thing happens when you paste "
+        "the fish into your AI. The AI reads your patterns and writes its own "
+        "version — one that grows with every conversation."
+    )
 
     # -----------------------------------------------------------------------
     # Step 4b: Generate soul file (.qlp)
@@ -1536,21 +1645,79 @@ def go(
     # Step 6: Show top formations in fish.md style
     # -----------------------------------------------------------------------
     if engine.formations:
+        import re as _re_display
         _print()
         _print("  --- Top of your fish.md ---")
         _print()
         top_n = min(3, len(engine.formations))
         sorted_f = sorted(engine.formations, key=lambda x: x.crystal_count, reverse=True)
+
         for f in sorted_f[:top_n]:
             from .formations import CATEGORIES
             cats = dict(zip(CATEGORIES, f.centroid))
             top_cats = sorted(cats.items(), key=lambda x: -x[1])[:3]
-            cat_str = "+".join(f"{c}" for c, v in top_cats if v > 0.05)
+            # Use human-readable dimension names, not codes
+            dim_names = {
+                "KO": "knowing", "TE": "testing", "SF": "structuring",
+                "CR": "relating", "IC": "wanting", "DE": "specializing",
+                "EW": "acting", "AI": "reflecting",
+            }
+            cat_str = "+".join(dim_names.get(c, c) for c, v in top_cats if v > 0.05)
             display_name = _human_formation_name(f, crystal_map) if crystal_map else f.name
             _print(f"  {display_name} ({f.crystal_count} crystals, {cat_str})")
-            rep = f.representative_text[:150].strip()
+
+            # Clean representative text: strip markdown headers, artifacts
+            rep = f.representative_text[:300].strip()
+            rep = _re_display.sub(r'^[#*>\-\s]+', '', rep.replace('\n', ' ')).strip()
+            # Find a good sentence
+            sentences = [s.strip() for s in rep.split('. ') if len(s.strip()) > 20]
+            if len(sentences) > 1:
+                # Skip first sentence if it looks like a title (short, no period)
+                if len(sentences[0]) < 40:
+                    rep = '. '.join(sentences[1:3]) + '.'
+                else:
+                    rep = '. '.join(sentences[:2]) + '.'
+            if len(rep) > 200:
+                for end in ['. ', '! ', '? ']:
+                    idx = rep.find(end, 60)
+                    if idx > 0:
+                        rep = rep[:idx + 1]
+                        break
             if rep:
                 _print(f"    \"{rep}\"")
+
+            # Monoculture: if this formation holds 80%+ of crystals, show
+            # diversity WITHIN it — pick 2 more crystals from different chains
+            pct = f.crystal_count / max(len(engine.fish.crystals), 1) * 100
+            if pct > 80 and crystal_map:
+                seen_chains = set()
+                extras = []
+                for mid in f.member_ids:
+                    if mid not in crystal_map:
+                        continue
+                    c = crystal_map[mid]
+                    meta = getattr(c, '_metabolic', None)
+                    chain_key = " > ".join(meta.chain) if meta and meta.chain else ""
+                    if chain_key in seen_chains or chain_key == "IC > EW":
+                        continue
+                    seen_chains.add(chain_key)
+                    text = c.text[:300].replace('\n', ' ').strip()
+                    text = _re_display.sub(r'^[#*>\-\s]+', '', text).strip()
+                    sents = [s.strip() for s in text.split('. ') if len(s.strip()) > 25]
+                    if sents:
+                        # Use 2nd sentence if available (deeper)
+                        pick = sents[1] if len(sents) > 1 else sents[0]
+                        if len(pick) > 150:
+                            pick = pick[:150] + "..."
+                        extras.append(pick)
+                    if len(extras) >= 2:
+                        break
+                if extras:
+                    _print()
+                    _print("    Within this pattern, the range:")
+                    for ex in extras:
+                        _print(f"      \"{ex}\"")
+
             _print()
         _print("  --- end preview ---")
 
@@ -1560,16 +1727,25 @@ def go(
     _print()
     _print("What's next:")
     _print()
-    _print("  Copy-paste into any AI:")
+    _print("  Paste your fish into any AI — that AI becomes yours:")
     _print(f"    Open {engine.fish_file}")
-    _print(f"    Paste into ChatGPT, Claude, Gemini -- any AI with a text box.")
+    _print(f"    Paste into ChatGPT, Claude, Gemini — any AI with a text box.")
+    _print(f"    The AI reads your patterns and arrives warm. Try it.")
     _print()
-    _print("  Live connection:")
-    _print(f"    linafish http --feed \"{source_path}\"")
-    _print(f"    Then tell your AI to read http://localhost:8900/pfc at session start.")
+    _print("  Keep it growing:")
+    _print(f"    linafish watch \"{source_path}\"    Watch for new writing.")
+    _print(f"    linafish eat new-entry.txt        Feed one file.")
+    _print(f"    The more you feed, the deeper it knows you.")
     _print()
-    _print("  Claude Code (MCP):")
-    _print(f"    linafish serve --feed \"{source_path}\"")
+    _print("  Share it:")
+    _print(f"    Send {engine.fish_file} to anyone — doctor, therapist, coach,")
+    _print(f"    collaborator. Their AI reads your fish and knows you from word one.")
+    _print(f"    They can send observations back. You feed them: linafish eat notes.txt")
+    _print(f"    Your fish. Your machine. You choose who reads it.")
+    _print()
+    _print("  Live connection (automatic, no pasting):")
+    _print(f"    linafish http --feed \"{source_path}\"   Any AI that can fetch a URL")
+    _print(f"    linafish serve --feed \"{source_path}\"  Claude Code (MCP)")
 
     # -----------------------------------------------------------------------
     # Step 8: Optional HTTP server

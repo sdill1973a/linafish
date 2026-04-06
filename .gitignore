@@ -9,3 +9,10 @@ build/
 *.crystals.json
 *.state.json
 *.manifest.jsonl
+*.bak
+*.bak_*
+*.backup
+
+# Personal data — never ship
+/data/
+/local_fish/
