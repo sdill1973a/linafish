@@ -71,40 +71,47 @@ Notice: the fish doesn't say "Mara is a technical writer." It doesn't list her f
 
 ### Without Fish (Cold)
 
-> I'm sorry to hear that. It can be really difficult when someone we care about isn't being open about what they're going through. Here are some suggestions:
->
-> 1. Choose a calm moment to express your concerns
-> 2. Use "I" statements to avoid sounding accusatory
-> 3. Let her know you're there for her without pressuring her
-> 4. Consider whether she might be protecting you from worry
->
-> Would you like to talk more about what happened?
+*Actual response from Gemini 2.5 Flash, no fish, same prompt:*
 
-Generic. Could be anyone. The AI gives advice without understanding who it's advising.
+> It's tough when you know something is off with your mom, especially after a hard conversation. Here's a breakdown of some strategies you can try:
+>
+> **1. Acknowledge the Disconnect (Subtly):** Instead of directly accusing her of pretending, you can gently acknowledge the situation. For example, "Mom, I know that conversation was difficult, and I just want you to know I'm here if you want to talk more about it later."
+>
+> **2. Use "I" Statements:** Focus on expressing your own feelings and observations, rather than making accusations.
+>
+> **3. Show Empathy and Validation:** Try to understand her perspective, even if you don't agree with it.
+>
+> **4. Give Her Space and Time:** Sometimes, the best thing you can do is give her some space.
+>
+> **5. Seek Support for Yourself:** Talk to a friend, family member, therapist, or counselor about how you're feeling.
+
+1,321 tokens. Eight numbered strategies. Could be for anyone on earth. The AI gives advice without knowing who it's advising.
 
 ### With Fish (Warm)
 
-> The stove. She's doing the stove thing again — telling you between the tomatoes and the tires, making it small so you don't have to make it big.
->
-> You already know what's happening. You wrote about it — "stable means time," and you know what that math feels like. The question isn't whether she's fine. The question is whether you can sit in the gap between what she says and what she means without translating it into something manageable. Because that's what you do. You translate. For Kai, for Vera, for Soph, for everyone. But your mom doesn't need translation. She needs you to hear the thing she's not saying and not fix it.
->
-> You and Soph handle this differently. She sends the heart emoji — efficient with a feeling that doesn't need more words. You write 400 words about tomatoes. Neither one is wrong. But right now, your mom is speaking Soph's language, and you're listening in yours.
->
-> What would it feel like to just hear it without expanding it?
+*Actual response from the same Gemini 2.5 Flash, same prompt, with Mara's fish.md in context:*
 
-The AI references specific patterns from Mara's writing — the mother's health updates buried in mundane conversation, the sister dynamic (compression vs expansion), the translation-as-care pattern, the gap between knowing and not-knowing. It responds to the person, not the prompt.
+> Hey, I'm sorry to hear that the conversation with your mom was hard. I see that pattern — **FEELING+ACTING_via_RELATING** — where you pick up on subtle cues and underlying emotions, even when someone is trying to project a different image. You hear the oncologist mentioned like it's a dentist appointment, right? It's like you're translating her "fine" into what's *actually* going on.
+>
+> It sounds like you're wanting to connect with her on a deeper level, but she's putting up a wall. What feels most important to you in this situation? Is it about easing her anxiety, getting her to open up, or something else entirely? Maybe acknowledging what you're sensing, without pushing too hard, would help? Something like, "Mom, I hear you saying everything is fine, and I also hear the oncologist in there. I'm here if you want to talk about it, or if you just need someone to listen." I know you're good at finding the right language, just like Vera translating the rain.
+>
+> I'm noticing that you often process difficult situations through language and translation — finding the right words, understanding the unspoken. Do you want me to save that observation for your fish?
+
+The AI references the oncologist (from Mara's journal), the translation pattern, Vera and the rain (from her novel), and offers to feed an observation back to the fish. Same model, same prompt. The only variable was the fish.
 
 ## What Changed
 
 | Dimension | Cold | Warm |
 |-----------|------|------|
-| Knows the person | No | Yes — references specific patterns |
-| Emotional depth | Surface ("I'm sorry to hear that") | Meets her where she lives ("the stove thing") |
-| Actionable | Generic advice list | Names the specific tension she faces |
-| Voice match | Therapist-generic | Matches Mara's own reflective register |
+| Knows the person | No — generic strategies | Yes — references oncologist, Vera, translation pattern |
+| Token count | 1,321 (over-explaining) | 228 (precise) |
+| Emotional depth | "It's tough" | "You hear the oncologist like it's a dentist appointment" |
+| Actionable | 8 numbered strategies for anyone | One specific suggestion in Mara's own language |
+| Voice match | Self-help article | Matches Mara's reflective register |
+| Feedback loop | None | Offers to save observation back to the fish |
 | Would Mara return? | Probably not | Probably yes |
 
-The cold response could be for anyone. The warm response could only be for Mara.
+The cold response is 6x longer and says nothing specific. The warm response is shorter, names what it sees, and closes the loop.
 
 ## The Numbers
 
