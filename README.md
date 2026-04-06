@@ -275,6 +275,7 @@ If it helps you, give to the people who help others stay alive:
 
 ## Documentation
 
+- **[Worked Example](docs/worked-example.md)** — From raw writing to warm AI, start to finish
 - **[How It Works](docs/how-it-works.md)** — The cognitive model in detail
 - **[Architecture](docs/architecture.md)** — Pipeline, modules, design decisions
 - **[Research](docs/research.md)** — Study design, methodology, results, limitations
