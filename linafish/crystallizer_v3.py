@@ -792,7 +792,9 @@ class UniversalFish:
             else:
                 min_gamma = BASIN_COS
 
-        print(f"  coupling {len(crystals)} crystals (window={window}, gamma>={min_gamma:.3f})...", flush=True)
+        # Debug output only when called directly, not from API
+        import logging as _logging
+        _logging.getLogger(__name__).debug(f"coupling {len(crystals)} crystals (window={window}, gamma>={min_gamma:.3f})")
         coupled = 0
         chain_rescued = 0
         metabolic_rescued = 0
@@ -833,12 +835,12 @@ class UniversalFish:
                     a.wrapping_numbers[b.id] = wn
                     b.wrapping_numbers[a.id] = wn
                     coupled += 1
-        msg = f"  {coupled} coupling edges created."
+        msg = f"{coupled} coupling edges created."
         if chain_rescued:
             msg += f" ({chain_rescued} rescued by chain similarity)"
         if metabolic_rescued:
             msg += f" ({metabolic_rescued} rescued by metabolic coupling)"
-        print(msg, flush=True)
+        _logging.getLogger(__name__).debug(msg)
 
     # --- Incremental: queue + re-eat ---
 

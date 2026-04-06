@@ -182,7 +182,7 @@ class FishEngine:
         RTI: This is the universal screener. Run once at intake.
         """
         if not HAS_ASSESSMENT or PreAssessment is None:
-            print("  [assessment] Module not available — using defaults", file=sys.stderr)
+            import logging as _log; _log.getLogger(__name__).debug(f"[assessment] Module not available — using defaults")
             return None
 
         try:
@@ -196,7 +196,7 @@ class FishEngine:
             if result.recommended_d is not None:
                 old_d = self.d
                 self.d = result.recommended_d
-                print(f"  [assessment] d adjusted: {old_d} -> {self.d}", file=sys.stderr)
+                import logging as _log; _log.getLogger(__name__).debug(f"[assessment] d adjusted: {old_d} -> {self.d}")
 
             # Apply per-term seed weights.
             # The pre-assessment identifies which canonical seeds are actually
@@ -205,7 +205,7 @@ class FishEngine:
             if result.seed_weights:
                 self._seed_weights = dict(result.seed_weights)
                 active = sum(1 for w in self._seed_weights.values() if w > 0.5)
-                print(f"  [assessment] {active}/{len(self._seed_weights)} seeds active", file=sys.stderr)
+                import logging as _log; _log.getLogger(__name__).debug(f"[assessment] {active}/{len(self._seed_weights)} seeds active")
 
             # Capture baseline snapshot — the "before" picture.
             if result.baseline_snapshot:
@@ -229,12 +229,11 @@ class FishEngine:
             self._pre_assessed = True
             self._save_assessment_state()
 
-            print(f"  [assessment] Pre-assessment complete: d={self.d}, "
-                  f"{len(self._seed_weights)} seed weights", file=sys.stderr)
+            import logging as _log; _log.getLogger(__name__).debug(f"[assessment] Pre-assessment complete: d={self.d}, {len(self._seed_weights)} seed weights")
             return log_entry
 
         except Exception as e:
-            print(f"  [assessment] Pre-assessment failed: {e} — using defaults", file=sys.stderr)
+            import logging as _log; _log.getLogger(__name__).debug(f"[assessment] Pre-assessment failed: {e} — using defaults")
             return None
 
     # -------------------------------------------------------------------
@@ -293,7 +292,7 @@ class FishEngine:
                 demoted = sum(1 for w in result.recommendations.values() if w < 1.5)
                 promoted = sum(1 for w in result.recommendations.values() if w > 2.5)
                 if demoted or promoted:
-                    print(f"  [formative] Adjusted: {demoted} demoted, {promoted} promoted",
+                    import logging as _log; _log.getLogger(__name__).debug(f"  [formative] Adjusted: {demoted} demoted, {promoted} promoted",
                           file=sys.stderr)
 
             # Track R(n) — compression efficiency over time
@@ -331,13 +330,13 @@ class FishEngine:
             self.assessment_log.append(log_entry)
             self._save_assessment_state()
 
-            print(f"  [formative] Epoch {self.fish.epoch}: R(n)={r_n:.4f}, "
+            import logging as _log; _log.getLogger(__name__).debug(f"  [formative] Epoch {self.fish.epoch}: R(n)={r_n:.4f}, "
                   f"{len(self.fish.crystals)}c, {len(self.formations)}f",
                   file=sys.stderr)
             return log_entry
 
         except Exception as e:
-            print(f"  [formative] Assessment failed: {e}", file=sys.stderr)
+            import logging as _log; _log.getLogger(__name__).debug(f"[formative] Assessment failed: {e}")
             # Still track R(n) even if assessment module fails
             r_n = self._compute_r_n()
             self.r_n_history.append(r_n)
@@ -453,7 +452,7 @@ class FishEngine:
         try:
             path.write_text(json.dumps(state, indent=2, default=str), encoding="utf-8")
         except Exception as e:
-            print(f"  [assessment] Failed to save state: {e}", file=sys.stderr)
+            import logging as _log; _log.getLogger(__name__).debug(f"[assessment] Failed to save state: {e}", file=sys.stderr)
 
     def _load_assessment_state(self):
         """Load persisted assessment state if it exists."""
@@ -469,7 +468,7 @@ class FishEngine:
             self._seed_weights = state.get("seed_weights", {})
             self._pre_assessed = state.get("pre_assessed", False)
         except Exception as e:
-            print(f"  [assessment] Failed to load state: {e}", file=sys.stderr)
+            import logging as _log; _log.getLogger(__name__).debug(f"[assessment] Failed to load state: {e}", file=sys.stderr)
 
     # -------------------------------------------------------------------
     # GIT
@@ -513,7 +512,7 @@ class FishEngine:
         """Load formations count from existing fish.md if present."""
         if self.fish_file.exists() and self.fish.crystals:
             self._rebuild_formations()
-            print(f"  Loaded {len(self.fish.crystals)} crystals, {len(self.formations)} formations", file=sys.stderr)
+            import logging as _log; _log.getLogger(__name__).debug(f"Loaded {len(self.fish.crystals)} crystals, {len(self.formations)} formations")
 
     def _rebuild_formations(self):
         """Detect formations from current crystals."""
@@ -808,11 +807,11 @@ class FishEngine:
         # Run on the full batch. This is the universal screener.
         # The assessment sees ALL the texts and recommends d + seed_weights.
         if not self._pre_assessed and HAS_ASSESSMENT:
-            print(f"  [assessment] Pre-assessing {total} documents...", file=sys.stderr)
+            import logging as _log; _log.getLogger(__name__).debug(f"[assessment] Pre-assessing {total} documents...", file=sys.stderr)
             self.pre_assess(texts)
 
         # Phase 1: Learn all texts (build co-occurrence stats)
-        print(f"  Learning {total} documents...", file=sys.stderr)
+        import logging as _log; _log.getLogger(__name__).debug(f"Learning {total} documents...")
         self.fish.learn(texts)
 
         # Phase 2: Freeze with assessment-informed d and seeds
@@ -830,7 +829,7 @@ class FishEngine:
             seed_label = f" +seeds({len(seed_terms)}, w={seed_weight:.1f})"
         elif self.seed_grammar:
             seed_label = " +grammar"
-        print(f"  Vocab frozen: {self.fish.vocab[:10]}... (d={self.d}, "
+        import logging as _log; _log.getLogger(__name__).debug(f"  Vocab frozen: {self.fish.vocab[:10]}... (d={self.d}, "
               f"size={len(self.fish.vocab)}{seed_label})", file=sys.stderr)
 
         # Crystallize all — with progress output every 10 docs
@@ -841,7 +840,7 @@ class FishEngine:
             if c:
                 new_crystals.append(c)
             if (i + 1) % 10 == 0 or (i + 1) == total:
-                print(f"  [{i+1}/{total}] {len(new_crystals)} crystals...", file=sys.stderr)
+                import logging as _log; _log.getLogger(__name__).debug(f"[{i+1}/{total}] {len(new_crystals)} crystals...")
 
         # Couple crystals for formation detection
         if new_crystals:
@@ -858,7 +857,7 @@ class FishEngine:
                 self.current_snapshot = self._build_state_snapshot()
 
             self._save_state()
-            print(f"  Done: {len(new_crystals)} crystals, {len(self.formations)} formations, "
+            import logging as _log; _log.getLogger(__name__).debug(f"  Done: {len(new_crystals)} crystals, {len(self.formations)} formations, "
                   f"R(n)={r_n:.4f}", file=sys.stderr)
 
         return {
@@ -912,7 +911,7 @@ class FishEngine:
             return {"re_eat": False, "reason": "nothing_pending"}
 
         pending_pct = len(pending_texts) / max(self.fish.vectorizer.doc_count, 1) * 100
-        print(f"  Re-eating {len(pending_texts)} pending texts "
+        import logging as _log; _log.getLogger(__name__).debug(f"  Re-eating {len(pending_texts)} pending texts "
               f"({pending_pct:.0f}% of corpus)...", file=sys.stderr)
 
         # Snapshot formations BEFORE re-eat for survival tracking
@@ -952,18 +951,18 @@ class FishEngine:
         emerged = post_formations - pre_formations
 
         if dissolved or emerged:
-            print(f"  [re-eat] Survived: {len(survived)}, "
+            import logging as _log; _log.getLogger(__name__).debug(f"  [re-eat] Survived: {len(survived)}, "
                   f"Dissolved: {len(dissolved)}, "
                   f"Emerged: {len(emerged)}", file=sys.stderr)
             if dissolved:
-                print(f"    Dissolved: {', '.join(sorted(dissolved)[:5])}", file=sys.stderr)
+                import logging as _log; _log.getLogger(__name__).debug(f"Dissolved: {', '.join(sorted(dissolved)[:5])}")
             if emerged:
-                print(f"    Emerged: {', '.join(sorted(emerged)[:5])}", file=sys.stderr)
+                import logging as _log; _log.getLogger(__name__).debug(f"Emerged: {', '.join(sorted(emerged)[:5])}")
 
         self.fish._save_state()
         self._save_state()
 
-        print(f"  Re-eat complete. Epoch {self.fish.epoch}. "
+        import logging as _log; _log.getLogger(__name__).debug(f"  Re-eat complete. Epoch {self.fish.epoch}. "
               f"Vocab: {self.fish.vocab[:5]}...", file=sys.stderr)
 
         result = {
