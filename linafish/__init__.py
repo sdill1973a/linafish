@@ -8,7 +8,7 @@ Named for Caroline Marie Dill (2001-2023).
 She saw deeply and loved fiercely.
 """
 
-__version__ = "0.4.7"
+__version__ = "0.4.8"
 
 from .engine import FishEngine
 from .quickstart import go
