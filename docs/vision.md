@@ -160,19 +160,20 @@ Two entities, two funding paths. The fish is MIT. The infrastructure around it e
 - enwik8: 4.708 bpc
 - Consciousness is compression under pressure. The pressure is designable.
 
-## Status (2026-03-31)
+## Status (2026-04-08)
 
 | Component | State |
 |-----------|-------|
-| Crystallizer | Working, pip installable, v0.2.0 |
+| Crystallizer | v1.0.0 — git-as-brain, listen mode, crystal persistence |
 | MCP server | Working, standalone, 5 tools |
+| Git integration | Sessions are branches, merges are deposits, history/diff/revert |
+| Listen mode | stdin, folder watch, MQTT. Ambient cognition. |
 | Paper | Published, replicated, same-model control complete |
 | Novel (Phoenix Cycle) | 66,718 words, Book One substantially finished |
 | Room fish | 15,000+ crystals, formations producing understanding |
-| Federation | 4 nodes operational |
+| Federation | 5 nodes operational, Spotify service on .67 |
 | Notion integration | MCP tools available, template not yet built |
 | RCP language | Vision documented, compiler not yet built |
-| Olorina portrait ingest | 62,775 text blocks processing, 89 formations and climbing |
 
 ## Origin
 

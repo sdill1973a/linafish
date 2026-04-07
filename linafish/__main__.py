@@ -399,6 +399,132 @@ def cmd_room(args):
     listener.run()
 
 
+def _resolve_engine(args):
+    """Get a FishEngine from common args."""
+    from .engine import FishEngine
+    state_dir = Path(args.state_dir) if hasattr(args, 'state_dir') and args.state_dir else None
+    name = getattr(args, 'name', None) or 'linafish'
+    return FishEngine(state_dir=state_dir, name=name)
+
+
+def cmd_session(args):
+    """Manage fish sessions (git branches)."""
+    engine = _resolve_engine(args)
+    action = args.action
+
+    if action == "start":
+        result = engine.session_start(args.session_name or "")
+        if result["success"]:
+            print(f"Session started: {result['branch']}")
+            print("Crystals will accumulate on this branch.")
+            print("Run 'linafish session end' to merge back.")
+        else:
+            print(f"Failed: {result['error']}")
+
+    elif action == "end":
+        result = engine.session_end()
+        if result["success"]:
+            print(f"Session merged: {result['merged']} -> {result['into']}")
+        else:
+            print(f"Failed: {result['error']}")
+
+    elif action == "status":
+        status = engine.session_status()
+        branch = status["branch"]
+        marker = " (session)" if status["is_session"] else ""
+        print(f"Branch: {branch}{marker}")
+        print(f"Crystals: {status['crystals']}  Formations: {status['formations']}")
+        if status["recent_commits"]:
+            print(f"\nRecent:")
+            for line in status["recent_commits"][:5]:
+                print(f"  {line}")
+
+
+def cmd_history(args):
+    """Show fish growth history (git log)."""
+    engine = _resolve_engine(args)
+    entries = engine.history(count=args.count)
+    if not entries:
+        print("No history yet. Feed the fish first.")
+        return
+    for entry in entries:
+        print(entry)
+
+
+def cmd_diff(args):
+    """Show what changed since a reference point."""
+    engine = _resolve_engine(args)
+    ref = args.ref or "HEAD~1"
+    result = engine.diff(ref)
+    if result["stat"]:
+        print(result["stat"])
+    if result["fish_diff"]:
+        # Show only added/removed formation lines for readability
+        for line in result["fish_diff"].split("\n"):
+            if line.startswith("+**") or line.startswith("-**"):
+                print(line)
+            elif line.startswith("+  ") or line.startswith("-  "):
+                print(line)
+    elif not result["stat"]:
+        print("No changes.")
+
+
+def cmd_revert(args):
+    """Revert the fish to a previous state."""
+    engine = _resolve_engine(args)
+    ref = args.ref or "HEAD"
+    if not args.yes:
+        print(f"This will revert: {ref}")
+        try:
+            confirm = input("Are you sure? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            confirm = "n"
+        if confirm != "y":
+            print("Cancelled.")
+            return
+    result = engine.revert(ref)
+    if result["success"]:
+        print(f"Reverted: {ref}")
+    else:
+        print(f"Failed: {result['error']}")
+
+
+def cmd_listen(args):
+    """Listen to a source. The fish sits in the stream."""
+    engine = _resolve_engine(args)
+    from .listener import FishListener
+    listener = FishListener(engine)
+
+    source = args.source
+    if source == "stdin":
+        listener.listen_stdin()
+    elif source.startswith("mqtt://"):
+        # mqtt://host:port/topic,topic2
+        rest = source[7:]  # strip mqtt://
+        if "/" in rest:
+            host_port, topics = rest.split("/", 1)
+        else:
+            host_port = rest
+            topics = "+/conv/+"
+        if ":" in host_port:
+            host, port = host_port.rsplit(":", 1)
+            port = int(port)
+        else:
+            host = host_port
+            port = 1883
+        listener.listen_mqtt(host, port, topics)
+    elif source.startswith("folder:"):
+        path = source[7:]
+        listener.listen_folder(path, interval=args.interval)
+    else:
+        # Assume it's a folder path
+        if Path(source).is_dir():
+            listener.listen_folder(source, interval=args.interval)
+        else:
+            print(f"Unknown source: {source}")
+            print("Use: stdin, mqtt://host:port/topic, folder:/path, or a directory path")
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="linafish",
@@ -505,6 +631,41 @@ def main():
     room_p.add_argument("--state-dir", help="State directory")
     room_p.add_argument("--vocab", help="Path to domain vocabulary JSON")
 
+    # listen — ambient cognition
+    listen_p = sub.add_parser("listen", help="The fish sits in the stream. Ambient cognition.")
+    listen_p.add_argument("source", help="Source: stdin, mqtt://host:port/topic, folder:/path, or directory")
+    listen_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    listen_p.add_argument("--state-dir", help="State directory")
+    listen_p.add_argument("--interval", type=int, default=30, help="Folder check interval in seconds")
+
+    # session — git branch lifecycle
+    session_p = sub.add_parser("session", help="Start/end session branches (git-as-brain)")
+    session_p.add_argument("action", choices=["start", "end", "status"],
+                           help="start=new branch, end=merge to main, status=show state")
+    session_p.add_argument("session_name", nargs="?", default="",
+                           help="Session name (default: session-YYYY-MM-DD)")
+    session_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    session_p.add_argument("--state-dir", help="State directory")
+
+    # history — git log as growth timeline
+    history_p = sub.add_parser("history", help="Show fish growth history")
+    history_p.add_argument("-c", "--count", type=int, default=20, help="Number of entries")
+    history_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    history_p.add_argument("--state-dir", help="State directory")
+
+    # diff — what changed
+    diff_p = sub.add_parser("diff", help="Show what changed since last session")
+    diff_p.add_argument("ref", nargs="?", default="HEAD~1", help="Git ref to compare (default: HEAD~1)")
+    diff_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    diff_p.add_argument("--state-dir", help="State directory")
+
+    # revert — roll back the mind
+    revert_p = sub.add_parser("revert", help="Roll back to a previous state")
+    revert_p.add_argument("ref", nargs="?", default="HEAD", help="Git ref to revert (default: HEAD)")
+    revert_p.add_argument("-y", "--yes", action="store_true", help="Skip confirmation")
+    revert_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    revert_p.add_argument("--state-dir", help="State directory")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -513,14 +674,23 @@ def main():
         print("  linafish go ~/my-writing     Point at your writing. Get a portrait.")
         print("  linafish go                  Learn from current directory.\n")
         print("Keep it growing:")
-        print("  linafish watch ~/journal     Watch a folder. Fish eats new files automatically.")
-        print("  linafish eat new-entry.txt   Feed one file.\n")
+        print("  linafish listen stdin         Pipe text in. The fish eats what flows.")
+        print("  linafish listen folder:~/docs  Watch a folder. Eat what changes.")
+        print("  linafish listen mqtt://host:1883/+/conv/+  Sit in the stream.")
+        print("  linafish eat new-entry.txt    Feed one file.")
+        print("  linafish recall 'query'       Search your fish's memory.\n")
+        print("Sessions (git-as-brain):")
+        print("  linafish session start       Branch the mind. Start a session.")
+        print("  linafish session end         Merge back. The delta is the scar.")
+        print("  linafish history             Growth timeline. When you learned what.")
+        print("  linafish diff                What changed since last session.")
+        print("  linafish revert              Roll back. Grace, not punishment.\n")
         print("Connect your AI:")
         print("  linafish serve --feed ~/docs   MCP server (Claude Code)")
         print("  linafish http --feed ~/docs    HTTP server (any AI)")
         print("  Or just paste your fish.md into any AI's instructions.\n")
         print("The fish grows with every conversation. The AI gets better at knowing you.")
-        print("Named for Caroline Marie Dill. She saw deeply and loved fiercely.")
+        print("Your mind. Versioned. Everywhere.")
         sys.exit(0)
 
     commands = {
@@ -536,6 +706,12 @@ def main():
         "watch": cmd_watch,
         "fuse": cmd_fuse,
         "room": cmd_room,
+        "listen": cmd_listen,
+        "session": cmd_session,
+        "history": cmd_history,
+        "diff": cmd_diff,
+        "revert": cmd_revert,
+        "recall": cmd_recall,
     }
     commands[args.command](args)
 

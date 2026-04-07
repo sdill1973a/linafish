@@ -485,7 +485,7 @@ class FishEngine:
                 )
                 gitignore = self.state_dir / ".gitignore"
                 if not gitignore.exists():
-                    gitignore.write_text("*.tmp\n*.lock\n*.jsonl\n", encoding="utf-8")
+                    gitignore.write_text("*.tmp\n*.lock\n", encoding="utf-8")
                     self._git_commit("Initialize fish repository")
             except (FileNotFoundError, subprocess.TimeoutExpired):
                 pass
@@ -503,6 +503,81 @@ class FishEngine:
             )
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
+
+    def _git_run(self, *args, **kwargs):
+        """Run a git command in the state directory. Returns (returncode, stdout, stderr)."""
+        try:
+            r = subprocess.run(
+                ["git"] + list(args), cwd=str(self.state_dir),
+                capture_output=True, text=True, timeout=kwargs.get("timeout", 10),
+            )
+            return r.returncode, r.stdout.strip(), r.stderr.strip()
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return -1, "", "git not available"
+
+    def session_start(self, name: str = ""):
+        """Start a session branch. Returns branch name."""
+        if not name:
+            from datetime import date
+            name = f"session-{date.today().isoformat()}"
+        self._git_commit("pre-session checkpoint")
+        rc, out, err = self._git_run("checkout", "-b", name)
+        if rc != 0:
+            return {"success": False, "error": err}
+        return {"success": True, "branch": name}
+
+    def session_end(self):
+        """End current session — merge branch to main/master."""
+        rc, branch, _ = self._git_run("branch", "--show-current")
+        if rc != 0 or branch in ("main", "master", ""):
+            return {"success": False, "error": f"Not on a session branch (current: {branch})"}
+        self._git_commit(f"session end: {branch}")
+        # Find the default branch
+        for default in ("main", "master"):
+            rc2, _, _ = self._git_run("rev-parse", "--verify", default)
+            if rc2 == 0:
+                self._git_run("checkout", default)
+                rc3, out, err = self._git_run("merge", branch, "--no-edit")
+                if rc3 != 0:
+                    return {"success": False, "error": f"Merge conflict: {err}"}
+                return {"success": True, "merged": branch, "into": default}
+        return {"success": False, "error": "No main/master branch found"}
+
+    def session_status(self):
+        """Get current session state."""
+        rc, branch, _ = self._git_run("branch", "--show-current")
+        rc2, log, _ = self._git_run("log", "--oneline", "-10")
+        total = len(self.fish.crystals)
+        fcount = len(self.formations)
+        return {
+            "branch": branch if rc == 0 else "unknown",
+            "is_session": branch.startswith("session-") if rc == 0 else False,
+            "crystals": total,
+            "formations": fcount,
+            "recent_commits": log.split("\n") if log else [],
+        }
+
+    def history(self, count: int = 20):
+        """Get git log as session history."""
+        rc, out, _ = self._git_run("log", f"--oneline", f"-{count}")
+        if rc != 0:
+            return []
+        return out.split("\n") if out else []
+
+    def diff(self, ref: str = "HEAD~1"):
+        """Show what changed since a reference point."""
+        # Get fish.md diff (human-readable)
+        rc, out, _ = self._git_run("diff", ref, "--", f"{self.name}.fish.md")
+        # Get crystal count diff
+        rc2, stat, _ = self._git_run("diff", "--stat", ref)
+        return {"fish_diff": out, "stat": stat}
+
+    def revert(self, ref: str = "HEAD"):
+        """Revert to a previous state."""
+        rc, out, err = self._git_run("revert", ref, "--no-edit")
+        if rc != 0:
+            return {"success": False, "error": err}
+        return {"success": True, "reverted": ref}
 
     # -------------------------------------------------------------------
     # LOAD / SAVE
@@ -718,11 +793,46 @@ class FishEngine:
         self._save_assessment_state()
 
         # Version it
-        formation_names = [f.name for f in self.formations[:5]]
-        msg = f"{len(self.fish.crystals)}c {len(self.formations)}f"
-        if formation_names:
-            msg += f" [{', '.join(formation_names)}]"
+        source = getattr(self, '_last_source', '')
+        new_crystals = getattr(self, '_last_new_crystals', 0)
+        total = len(self.fish.crystals)
+        fcount = len(self.formations)
+        if source:
+            msg = f"ate: {source} | {total}c {fcount}f"
+            if new_crystals:
+                msg += f" | +{new_crystals}"
+        else:
+            msg = f"{total}c {fcount}f"
         self._git_commit(msg)
+
+    # -------------------------------------------------------------------
+    # RECALL — search crystal text
+    # -------------------------------------------------------------------
+
+    def recall(self, query: str, k: int = 5) -> list:
+        """Search crystal text for a query. Returns matches sorted by relevance."""
+        query_lower = query.lower()
+        query_words = set(query_lower.split())
+        results = []
+        for c in self.fish.crystals:
+            text = c.text if hasattr(c, 'text') else str(c)
+            text_lower = text.lower()
+            # Score by word overlap
+            text_words = set(text_lower.split())
+            overlap = len(query_words & text_words)
+            if overlap == 0:
+                continue
+            score = overlap / max(len(query_words), 1)
+            # Boost for substring match
+            if query_lower in text_lower:
+                score += 0.5
+            results.append({
+                "text": text,
+                "source": c.source if hasattr(c, 'source') else "unknown",
+                "score": min(score, 1.0),
+            })
+        results.sort(key=lambda x: -x["score"])
+        return results[:k]
 
     # -------------------------------------------------------------------
     # EAT — single document
@@ -757,11 +867,14 @@ class FishEngine:
             self.fish.frozen = True
             self.fish.epoch += 1
 
+        prev_count = len(self.fish.crystals)
         crystal = self.fish.crystallize_text(text, source=source)
         if not crystal:
             return {"crystals_added": 0, "total_crystals": len(self.fish.crystals)}
 
         self.docs_ingested += 1
+        self._last_source = source
+        self._last_new_crystals = len(self.fish.crystals) - prev_count
         self._rebuild_formations()
         self._save_state()
 

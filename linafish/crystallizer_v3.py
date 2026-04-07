@@ -585,7 +585,7 @@ class UniversalFish:
         self._load_state()
 
     def _load_state(self):
-        """Load persisted state including crystals."""
+        """Load persisted state — vectorizer, epoch, and crystals."""
         self.vectorizer.load(self.vectorizer_path)
         if os.path.exists(self.fish_state_path):
             import json
@@ -595,41 +595,31 @@ class UniversalFish:
             self.frozen = state.get('frozen', False)
             self.vocab = state.get('vocab', [])
 
-        # Load crystals from JSONL
-        if os.path.exists(self.crystal_log_path):
-            import json as _json
+        # Load crystals from JSONL log
+        if os.path.exists(self.crystal_log_path) and not self.crystals:
+            import json
             loaded = 0
-            with open(self.crystal_log_path, encoding='utf-8') as f:
+            with open(self.crystal_log_path, encoding='utf-8', errors='replace') as f:
                 for line in f:
                     try:
-                        d = _json.loads(line)
-                        # Crystal has required positional args: id, ts, text, source, mi_vector, resonance, keywords
-                        # JSON lists → tuples for chains (needed for set operations in coupling)
-                        raw_chains = d.get('chains', [])
-                        chains = [tuple(ch) if isinstance(ch, list) else ch for ch in raw_chains]
-                        raw_couplings = d.get('couplings', [])
-                        couplings = [tuple(cp) if isinstance(cp, list) else cp for cp in raw_couplings]
+                        d = json.loads(line)
                         c = Crystal(
-                            d.get('id', ''),
-                            d.get('ts', ''),
-                            d.get('text', ''),
-                            d.get('source', ''),
-                            d.get('mi_vector', []),
-                            d.get('resonance', []),
-                            d.get('keywords', []),
-                            couplings=couplings,
-                            wrapping_numbers=d.get('wrapping_numbers', {}),
+                            id=d.get('id', ''),
+                            ts=d.get('ts', ''),
+                            text=d.get('text', ''),
+                            source=d.get('source', ''),
+                            resonance=d.get('resonance', []),
+                            keywords=d.get('keywords', []),
+                            mi_vector=d.get('mi_vector', []),
+                            couplings=[(x[0], x[1]) for x in d.get('couplings', [])],
                             structural=d.get('structural', False),
-                            ache=d.get('ache', 0.0),
-                            formation=d.get('formation'),
-                            cognitive_vector=d.get('cognitive_vector', []),
-                            chains=chains,
-                            modifiers=d.get('modifiers', {}),
                         )
                         self.crystals.append(c)
                         loaded += 1
                     except Exception:
-                        continue
+                        pass
+            if loaded > 0:
+                self.frozen = True  # if we have crystals, vocab was already frozen
 
     def _save_state(self):
         """Persist state."""
