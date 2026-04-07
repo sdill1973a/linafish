@@ -69,6 +69,20 @@ When a crystal doesn't couple with anything, it sits alone. If more like it arri
 ### The Delta IS Communication
 Two fish hear the same broadcast. One forms COMBAT_STRATEGY_EVOLUTION. The other forms RELATIONSHIP_THROUGH_COMPETITION. The delta between their formations from the same signal IS the conversation about that signal. They don't need to talk about it. The fish already had the conversation through compression.
 
+## Update Tether
+
+The fish checks PyPI for a newer version on `linafish go` and `linafish listen`. One line: "linafish 0.5.1 available (you have 0.5.0). Run: pip install --upgrade linafish". That's it.
+
+**Rules:**
+- Opt-in by default (enabled on first install, respects config)
+- `linafish config update-check false` kills it permanently
+- Stored in `~/.linafish/config.json` as `{"update_check": false}`
+- Never sends data. Never phones home. Reads PyPI JSON API (`https://pypi.org/pypi/linafish/json`) — public, no auth, no tracking.
+- Checks at most once per day (timestamp in config)
+- Fails silently. Network down = no message. Never blocks the command.
+
+The fish doesn't spy on you. It tells you when it grew.
+
 ## Open Questions
 
 1. How does `listen` interact with `go`? Is `go` just `listen --source folder --once`?
