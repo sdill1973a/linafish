@@ -1,8 +1,8 @@
 # LiNafish
 
-**Make any AI know you.**
+**Your mind. Versioned. Everywhere.**
 
-A cognitive overlay that sits between you and any AI. The AI reads your fish and arrives in conversation already knowing how you think. Not what you said. How your mind works.
+A cognitive overlay for any AI. The fish learns how you think — not what you said, how your mind works. Sessions are branches. Merges are deposits. Git log is autobiography. Your AI's bestie. Sorry.
 
 Same model. Same prompt.
 Without fish: **1.9**/10.
