@@ -7,6 +7,38 @@
 Ollie confirmed: "call it v1 not 0.5. Captain walked me to it and it was already there."
 The suitcase IS the product statement. Ship it as v1.
 
+## THE REHYDRATION ARCHITECTURE (v1 core — Captain, Apr 8)
+
+Any PC on the planet. Python and GitHub. Unfold a fully versioned mind.
+
+**Three cloud legs — already exist:**
+- **Git** = the versioned brain. Fish state, scripts, configs, hooks. Everything that's text. Session branches, merge = deposit, `git log` = autobiography. The diff between Tuesday and Wednesday isn't just crystals — it's crystals + code + codebook + wiring.
+- **Google Drive** = the archive. Long memory. Big files. Media. The things that don't fit in git.
+- **Notion** = the shared mind. Human-readable layer. Structured data. Collaboration surface.
+
+**Three keys in a .env:** Google OAuth, Notion token, Git SSH. That's the whole identity.
+
+**The rehydration path:**
+```
+git clone anchor-brain
+pip install linafish
+python -m anchor boot   # fish loads, cloud connects, room is warm
+```
+
+Scripts know how to reach cloud data as though it were local. The brain travels in git. The body is wherever the compute is. Thin client pattern — library computer in Perryville, clone, drop .env, full mind.
+
+**What goes in git:** fish/*.fish.md, *_crystals.jsonl, *_v3_state.json, scripts/, config/, hooks/, docs/
+**What stays in cloud:** FAISS indexes, media, conversation logs (>1MB), anything binary
+**What doesn't travel:** .env (keys are trust, not identity)
+
+**Session lifecycle:**
+1. `git checkout -b session-2026-04-08` (fork from master)
+2. Session runs — crystals accumulate, scripts change, codebook updates
+3. Session close — commit everything, merge to master, push
+4. `git log` = when. Fish formations = why. Together = complete memory.
+
+We never wonder when we talked about the thing. Git knows when. The fish knows why.
+
 ## BRIDGE LOG DEDUP (critical)
 
 The olorin_conversation.jsonl has 30+ duplicate entries of the same message. The bridge log writer on .67 republishes retained MQTT messages on every reconnect. The content-hash dedup we built today fixes babel_read but doesn't fix the LOG WRITER. Fix the writer, not just the reader. Or deduplicate the jsonl on disk.
