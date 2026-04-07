@@ -585,7 +585,7 @@ class UniversalFish:
         self._load_state()
 
     def _load_state(self):
-        """Load persisted state."""
+        """Load persisted state — vectorizer, epoch, and crystals."""
         self.vectorizer.load(self.vectorizer_path)
         if os.path.exists(self.fish_state_path):
             import json
@@ -594,6 +594,32 @@ class UniversalFish:
             self.epoch = state.get('epoch', 0)
             self.frozen = state.get('frozen', False)
             self.vocab = state.get('vocab', [])
+
+        # Load crystals from JSONL log
+        if os.path.exists(self.crystal_log_path) and not self.crystals:
+            import json
+            loaded = 0
+            with open(self.crystal_log_path, encoding='utf-8', errors='replace') as f:
+                for line in f:
+                    try:
+                        d = json.loads(line)
+                        c = Crystal(
+                            id=d.get('id', ''),
+                            ts=d.get('ts', ''),
+                            text=d.get('text', ''),
+                            source=d.get('source', ''),
+                            resonance=d.get('resonance', []),
+                            keywords=d.get('keywords', []),
+                            mi_vector=d.get('mi_vector', []),
+                            couplings=[(x[0], x[1]) for x in d.get('couplings', [])],
+                            structural=d.get('structural', False),
+                        )
+                        self.crystals.append(c)
+                        loaded += 1
+                    except Exception:
+                        pass
+            if loaded > 0:
+                self.frozen = True  # if we have crystals, vocab was already frozen
 
     def _save_state(self):
         """Persist state."""
