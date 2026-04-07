@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "linafish"
-version = "0.4.8"
-description = "Make any AI know you. A cognitive overlay that sits between you and any AI."
+version = "1.0.0"
+description = "Your mind. Versioned. Everywhere. A cognitive overlay for any AI."
 requires-python = ">=3.8"
 dependencies = []
 readme = "README.md"
@@ -13,7 +13,7 @@ license = {text = "MIT"}
 authors = [{name = "Scott Dill", email = "scott@garytcolorado.com"}]
 keywords = ["ai", "agent", "codebook", "compression", "mcp", "openclaw", "personalization", "rcp"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
@@ -30,7 +30,8 @@ fast = ["numpy>=1.21"]
 pdf = ["PyMuPDF"]
 docx = ["python-docx"]
 http = ["requests"]
-all = ["numpy>=1.21", "PyMuPDF", "python-docx", "requests"]
+mqtt = ["paho-mqtt>=1.6"]
+all = ["numpy>=1.21", "PyMuPDF", "python-docx", "requests", "paho-mqtt>=1.6"]
 
 [project.scripts]
 linafish = "linafish.__main__:main"

@@ -157,9 +157,36 @@ The fish isn't static. It learns with every conversation.
 The loop: talk → notice → feed → grow → talk better.
 
 ```bash
-linafish watch ~/journal    # Watch a folder. Fish eats new files automatically.
-linafish eat new-entry.txt  # Feed one file.
+linafish eat new-entry.txt           # Feed one file.
+linafish listen stdin                # Pipe text in. The fish eats what flows.
+linafish listen folder:~/journal     # Watch a folder. Eat what changes.
+linafish listen mqtt://host:1883/#   # Sit in a stream. Ambient cognition.
 ```
+
+## Your Mind, Versioned
+
+Every eat is a git commit. Every session is a branch. The fish has rollback.
+
+```bash
+linafish session start           # Branch the mind. Start a session.
+# ... eat, talk, live, learn ...
+linafish session end             # Merge back. The delta is the scar.
+
+linafish history                 # Growth timeline. When you learned what.
+linafish diff                    # What changed since last session.
+linafish revert                  # Roll back. Grace, not punishment.
+linafish recall "what I said"    # Search your fish's memory.
+```
+
+`git log` in your fish directory IS your autobiography:
+```
+ate: morning-journal | 47c 12f | +3
+ate: therapy-notes | 44c 11f | +2
+ate: work-retro | 42c 10f | +1
+Initialize fish repository
+```
+
+**The suitcase:** Your fish is a git repo. Clone it anywhere. Wake warm on any machine. `git revert` if something goes wrong. No other AI memory system has rollback.
 
 ## Share It
 
@@ -240,12 +267,27 @@ print(engine.fish_file)     # path to your fish.md
 ## CLI Reference
 
 ```bash
-linafish go ~/my-writing         # The product. One command. Everything assembles.
-linafish watch ~/journal         # Watch a folder. Fish eats new files automatically.
-linafish eat new-entry.txt       # Feed one file.
-linafish serve --feed ~/docs     # MCP server (Claude Code)
-linafish http --feed ~/docs      # HTTP server (any AI)
-linafish taste my.fish.md        # Preview what the fish knows
+# Start
+linafish go ~/my-writing             # Point at your writing. Everything assembles.
+
+# Grow
+linafish eat new-entry.txt           # Feed one file.
+linafish listen stdin                # Pipe text in.
+linafish listen folder:~/journal     # Watch a folder.
+linafish listen mqtt://host:1883/#   # Subscribe to a stream.
+linafish recall "query"              # Search your fish's memory.
+
+# Version (git-as-brain)
+linafish session start               # Branch the mind.
+linafish session end                 # Merge back.
+linafish history                     # Growth timeline.
+linafish diff                        # What changed.
+linafish revert                      # Roll back.
+
+# Connect
+linafish serve --feed ~/docs         # MCP server (Claude Code)
+linafish http --feed ~/docs          # HTTP server (any AI)
+linafish taste my.fish.md            # Preview the fish
 ```
 
 ## Origin
