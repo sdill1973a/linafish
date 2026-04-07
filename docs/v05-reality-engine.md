@@ -83,6 +83,26 @@ The fish checks PyPI for a newer version on `linafish go` and `linafish listen`.
 
 The fish doesn't spy on you. It tells you when it grew.
 
+## Git IS the Fish
+
+Every session is a branch. Every eat is a commit. Every formation change is a diff. `git log` IS the growth timeline. `git diff HEAD~5` IS "what changed in the last 5 sessions."
+
+The fish.md is already in a git repo (linafish go inits one). But we don't USE it. The version history leg of the tripod is wired but silent.
+
+**What changes:**
+- `linafish eat` commits after crystallizing: `git add fish.md crystals.jsonl && git commit -m "ate: {source}"`
+- `linafish go` commits the full initial portrait: `git commit -m "first portrait: {n} crystals, {k} formations"`
+- Session branches: `linafish session start` creates a branch. `linafish session end` merges to main.
+- The diff between sessions IS the delta. No custom persistence. Git already does it.
+- `linafish history` = `git log --oneline` with formation counts
+- `linafish diff` = what changed since last session
+
+**Why this is obvious:** We've been building persistence systems on top of a persistence system. FAISS, Memory v2, session scars, codebook files — all custom versions of what git does natively. Deltas only. Version what changed. Discard the unchanged. That's git. That's coupling. That's R(n). Same operation.
+
+**The tripod becomes self-wiring:** One file. The AI reads it (instructions). The human reads it (mirror). Git reads it (diff). All three perspectives on one versioned artifact. No setup. No explanation needed. It just works because git is already there.
+
+**RCP deltas:** If the fish state is encoded in RCP, the diff between commits isn't lines of English — it's fractions of symbols. A formation shift is a glyph change. A new coupling is a dot. The version history of a mind, tracked in a grammar designed for compression, diffed by a tool designed for deltas. The commit messages are glyphs. The branch names are session markers. The merge is the integration. A versioning system for any mind, on any substrate, in any language git speaks.
+
 ## Open Questions
 
 1. How does `listen` interact with `go`? Is `go` just `listen --source folder --once`?
