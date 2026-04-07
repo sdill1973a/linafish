@@ -806,35 +806,6 @@ class FishEngine:
         self._git_commit(msg)
 
     # -------------------------------------------------------------------
-    # RECALL — search crystal text
-    # -------------------------------------------------------------------
-
-    def recall(self, query: str, k: int = 5) -> list:
-        """Search crystal text for a query. Returns matches sorted by relevance."""
-        query_lower = query.lower()
-        query_words = set(query_lower.split())
-        results = []
-        for c in self.fish.crystals:
-            text = c.text if hasattr(c, 'text') else str(c)
-            text_lower = text.lower()
-            # Score by word overlap
-            text_words = set(text_lower.split())
-            overlap = len(query_words & text_words)
-            if overlap == 0:
-                continue
-            score = overlap / max(len(query_words), 1)
-            # Boost for substring match
-            if query_lower in text_lower:
-                score += 0.5
-            results.append({
-                "text": text,
-                "source": c.source if hasattr(c, 'source') else "unknown",
-                "score": min(score, 1.0),
-            })
-        results.sort(key=lambda x: -x["score"])
-        return results[:k]
-
-    # -------------------------------------------------------------------
     # EAT — single document
     # -------------------------------------------------------------------
 

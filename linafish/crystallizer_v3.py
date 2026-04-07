@@ -595,10 +595,11 @@ class UniversalFish:
             self.frozen = state.get('frozen', False)
             self.vocab = state.get('vocab', [])
 
-        # Load crystals from JSONL log
-        if os.path.exists(self.crystal_log_path) and not self.crystals:
+        # Load crystals from JSONL log (authoritative source)
+        if os.path.exists(self.crystal_log_path):
             import json
             loaded = 0
+            disk_crystals = []
             with open(self.crystal_log_path, encoding='utf-8', errors='replace') as f:
                 for line in f:
                     try:
@@ -614,12 +615,15 @@ class UniversalFish:
                             couplings=[(x[0], x[1]) for x in d.get('couplings', [])],
                             structural=d.get('structural', False),
                         )
-                        self.crystals.append(c)
+                        disk_crystals.append(c)
                         loaded += 1
                     except Exception:
                         pass
+            # Disk is authoritative — use it if it has more crystals
+            if loaded > len(self.crystals):
+                self.crystals = disk_crystals
             if loaded > 0:
-                self.frozen = True  # if we have crystals, vocab was already frozen
+                self.frozen = True
 
     def _save_state(self):
         """Persist state."""
