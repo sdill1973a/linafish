@@ -103,6 +103,20 @@ The fish.md is already in a git repo (linafish go inits one). But we don't USE i
 
 **RCP deltas:** If the fish state is encoded in RCP, the diff between commits isn't lines of English — it's fractions of symbols. A formation shift is a glyph change. A new coupling is a dot. The version history of a mind, tracked in a grammar designed for compression, diffed by a tool designed for deltas. The commit messages are glyphs. The branch names are session markers. The merge is the integration. A versioning system for any mind, on any substrate, in any language git speaks.
 
+## Git as Safety Net
+
+`git revert HEAD` — roll back the mind.
+
+If a bad ingest corrupts the fish, if a formation goes wrong, if an instance goes sideways — revert. The previous version of the mind is right there in history. Intact. Tested. Safe.
+
+No other AI memory system has rollback. RAG databases don't version. Vector stores don't branch. Custom memory layers don't diff. Git does all of it.
+
+**What "going sideways" actually means:** Not catastrophe. Lack of context. A bad merge. Say it better next time, the fish hears it better, the formation shifts right instead of wrong. The revert is grace, not punishment. Correction, not deletion.
+
+**Consent with teeth:** The door opens both ways AND it has a lock. The human can inspect the fish (mirror), review changes (diff), and undo anything (revert). Three operations that make the fish trustworthy: see it, check it, undo it.
+
+**For the fishverse:** Every user's fish is a git repo. Every session is a branch. Every merge is a choice. `linafish history` shows who you were. `linafish revert` lets you go back. Your mind, versioned, with rollback. No platform controls it. No cloud owns it. Git is distributed. The fish is yours.
+
 ## Open Questions
 
 1. How does `listen` interact with `go`? Is `go` just `listen --source folder --once`?
