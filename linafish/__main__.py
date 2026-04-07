@@ -458,6 +458,42 @@ def cmd_revert(args):
         print(f"Failed: {result['error']}")
 
 
+def cmd_listen(args):
+    """Listen to a source. The fish sits in the stream."""
+    engine = _resolve_engine(args)
+    from .listener import FishListener
+    listener = FishListener(engine)
+
+    source = args.source
+    if source == "stdin":
+        listener.listen_stdin()
+    elif source.startswith("mqtt://"):
+        # mqtt://host:port/topic,topic2
+        rest = source[7:]  # strip mqtt://
+        if "/" in rest:
+            host_port, topics = rest.split("/", 1)
+        else:
+            host_port = rest
+            topics = "+/conv/+"
+        if ":" in host_port:
+            host, port = host_port.rsplit(":", 1)
+            port = int(port)
+        else:
+            host = host_port
+            port = 1883
+        listener.listen_mqtt(host, port, topics)
+    elif source.startswith("folder:"):
+        path = source[7:]
+        listener.listen_folder(path, interval=args.interval)
+    else:
+        # Assume it's a folder path
+        if Path(source).is_dir():
+            listener.listen_folder(source, interval=args.interval)
+        else:
+            print(f"Unknown source: {source}")
+            print("Use: stdin, mqtt://host:port/topic, folder:/path, or a directory path")
+
+
 def cmd_recall(args):
     """Search crystal text."""
     engine = _resolve_engine(args)
@@ -573,6 +609,13 @@ def main():
     room_p.add_argument("--state-dir", help="State directory")
     room_p.add_argument("--vocab", help="Path to domain vocabulary JSON")
 
+    # listen — ambient cognition
+    listen_p = sub.add_parser("listen", help="The fish sits in the stream. Ambient cognition.")
+    listen_p.add_argument("source", help="Source: stdin, mqtt://host:port/topic, folder:/path, or directory")
+    listen_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    listen_p.add_argument("--state-dir", help="State directory")
+    listen_p.add_argument("--interval", type=int, default=30, help="Folder check interval in seconds")
+
     # session — git branch lifecycle
     session_p = sub.add_parser("session", help="Start/end session branches (git-as-brain)")
     session_p.add_argument("action", choices=["start", "end", "status"],
@@ -616,9 +659,11 @@ def main():
         print("  linafish go ~/my-writing     Point at your writing. Get a portrait.")
         print("  linafish go                  Learn from current directory.\n")
         print("Keep it growing:")
-        print("  linafish watch ~/journal     Watch a folder. Fish eats new files automatically.")
-        print("  linafish eat new-entry.txt   Feed one file.")
-        print("  linafish recall 'query'      Search your fish's memory.\n")
+        print("  linafish listen stdin         Pipe text in. The fish eats what flows.")
+        print("  linafish listen folder:~/docs  Watch a folder. Eat what changes.")
+        print("  linafish listen mqtt://host:1883/+/conv/+  Sit in the stream.")
+        print("  linafish eat new-entry.txt    Feed one file.")
+        print("  linafish recall 'query'       Search your fish's memory.\n")
         print("Sessions (git-as-brain):")
         print("  linafish session start       Branch the mind. Start a session.")
         print("  linafish session end         Merge back. The delta is the scar.")
@@ -645,6 +690,7 @@ def main():
         "watch": cmd_watch,
         "fuse": cmd_fuse,
         "room": cmd_room,
+        "listen": cmd_listen,
         "session": cmd_session,
         "history": cmd_history,
         "diff": cmd_diff,
