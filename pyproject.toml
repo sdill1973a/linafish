@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "linafish"
-version = "1.0.1"
+version = "1.0.2"
 description = "Your mind. Versioned. Everywhere. A cognitive overlay for any AI."
 requires-python = ">=3.8"
 dependencies = []
