@@ -103,7 +103,8 @@ class FishEngine:
 
     def __init__(self, state_dir: Optional[Path] = None, name: str = "linafish",
                  vocab_size: int = 200, d: float = 4.0,
-                 seed_grammar: bool = True, min_gamma: float = None):
+                 seed_grammar: bool = True, min_gamma: float = None,
+                 subtract_centroid: bool = False):
         self.name = name
         self.state_dir = state_dir or Path.home() / ".linafish"
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -111,6 +112,7 @@ class FishEngine:
         self.vocab_size = vocab_size
         self.d = d
         self.min_gamma = min_gamma  # Override adaptive gamma (for single-author corpora)
+        self.subtract_centroid = subtract_centroid  # Remove global signal before coupling
         self.seed_grammar = seed_grammar
 
         # The v3 universal fish — MI x ache, no keywords
@@ -611,7 +613,8 @@ class FishEngine:
         if uncoupled:
             for c in crystals:
                 c.couplings = []
-            self.fish._compute_couplings(crystals, min_gamma=self.min_gamma)
+            self.fish._compute_couplings(crystals, min_gamma=self.min_gamma,
+                                        subtract_centroid=self.subtract_centroid)
 
         self.formations = detect_formations(crystals)
         if len(self.formations) > 60:
