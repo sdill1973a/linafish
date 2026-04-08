@@ -602,9 +602,14 @@ class FishEngine:
                 c.resonance = c.mi_vector
 
         # Use v1 formation detection on v3 crystals (same coupling math)
-        # Need to populate couplings if not already done
-        has_couplings = any(c.couplings for c in crystals)
-        if not has_couplings:
+        # Recouple if ANY crystals lack edges — the all-or-nothing gate
+        # was a bug: incremental eat() left new crystals uncoupled because
+        # the first 2 crystals having edges made has_couplings=True.
+        # Fixed 2026-04-08: recouple all when uncoupled crystals exist.
+        uncoupled = [c for c in crystals if not c.couplings]
+        if uncoupled:
+            for c in crystals:
+                c.couplings = []
             self.fish._compute_couplings(crystals)
 
         self.formations = detect_formations(crystals)
