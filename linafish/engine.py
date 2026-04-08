@@ -1130,11 +1130,14 @@ class FishEngine:
         return "\n".join(results)
 
     def recall(self, query: str, top: int = 10) -> str:
-        """Full-text search across all crystals. Find specific words, not patterns.
+        """Full-text search across all crystals using BM25 ranking.
 
-        This is the retrieval complement to taste/match (which find patterns).
-        Use recall when you need to find what was actually said, not how it
-        couples with existing formations.
+        BM25 scores each crystal by term frequency, inverse document frequency,
+        and document length normalization. Much better than substring matching
+        for ranking relevance — a crystal mentioning "gamma" once in 2000 words
+        scores lower than one focused on gamma in 100 words.
+
+        Zero external dependencies. The BM25 implementation is inline (~20 lines).
 
         'What's the SSH password?' is a recall question.
         'How does she handle loss?' is a taste question.
@@ -1142,18 +1145,50 @@ class FishEngine:
         if not self.fish.crystals:
             return "Fish is empty."
 
+        import math
+
         query_lower = query.lower()
         terms = query_lower.split()
-        hits = []
 
-        for c in self.fish.crystals:
-            text_lower = (c.text or "").lower()
-            # Score: how many query terms appear in the crystal text
-            term_hits = sum(1 for t in terms if t in text_lower)
+        # BM25 parameters
+        k1 = 1.5   # Term frequency saturation
+        b = 0.75   # Document length normalization
+
+        # Build document frequency counts and average length
+        doc_texts = [(c, (c.text or "").lower()) for c in self.fish.crystals]
+        n_docs = len(doc_texts)
+        avg_dl = sum(len(t.split()) for _, t in doc_texts) / max(n_docs, 1)
+
+        # IDF for each query term
+        idf = {}
+        for term in terms:
+            df = sum(1 for _, text in doc_texts if term in text)
+            # BM25 IDF with smoothing
+            idf[term] = math.log((n_docs - df + 0.5) / (df + 0.5) + 1.0)
+
+        # Score each crystal
+        hits = []
+        for c, text_lower in doc_texts:
+            words = text_lower.split()
+            dl = len(words)
+            score = 0.0
+            term_hits = 0
+
+            for term in terms:
+                if term not in text_lower:
+                    continue
+                term_hits += 1
+                # Term frequency in this document
+                tf = words.count(term)
+                # BM25 formula
+                numerator = tf * (k1 + 1)
+                denominator = tf + k1 * (1 - b + b * dl / max(avg_dl, 1))
+                score += idf.get(term, 0) * numerator / denominator
+
             if term_hits > 0:
                 # Bonus for exact phrase match
-                phrase_bonus = 2.0 if query_lower in text_lower else 0.0
-                score = term_hits / len(terms) + phrase_bonus
+                if query_lower in text_lower:
+                    score += 3.0
                 hits.append((score, term_hits, c))
 
         hits.sort(key=lambda x: x[0], reverse=True)
