@@ -199,16 +199,15 @@ linafish converse --mind anchor --port 8901          # Local
 linafish converse --mind anchor --bind lan            # Home network
 linafish converse --mind anchor --bind wan --token X  # Internet
 
-# Absorb — eat existing RAG into your fish
-linafish absorb old_vectors.jsonl    # JSONL crystals
-linafish absorb faiss:my.index       # FAISS index
+# Absorb — bring in your existing AI memory
+linafish absorb old_data.jsonl       # Previous data
 linafish absorb http://my-rag/api    # Live RAG endpoint
 
-# Guppy — self-feeding fish that hunts gaps
+# Guppy — a fish that feeds itself
 python -m linafish.guppy my-fish --swim --ache  # Hunt what's missing
 ```
 
-The school is distributed cognition — one stream, many nets. Each sub-fish grabs what resonates with its domain. The guppy hunts for what the fish is MISSING. The converse server lets two minds exchange crystals over HTTP. The mesh builds itself.
+The school lets you split your thinking into domains — work, personal, creative — each one listens to the same stream and grabs what's relevant. The guppy hunts for gaps in your portrait. The converse server lets two people share a fish over the network. The mesh builds itself.
 
 `git log` in your fish directory IS your autobiography:
 ```
