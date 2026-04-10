@@ -669,13 +669,14 @@ def cmd_whisper(args):
     print(f"  You wrote: \"{rep}\"")
     print()
 
-    # Compare formation sizes for trend observation
+    # Compare pattern sizes for trend observation
     if len(formations) >= 2:
         biggest = formations[0]
         ratio = biggest.crystal_count / max(f.crystal_count, 1)
         if ratio > 5:
-            print(f"  (Your strongest pattern is {biggest.name} with {biggest.crystal_count} crystals.")
-            print(f"   This quieter one has {f.crystal_count}. Sometimes the quiet ones matter more.)")
+            biggest_interp = interpret_formation(biggest)
+            print(f"  (Your strongest pattern: {biggest_interp[:80]}")
+            print(f"   This quieter one showed up less often. Sometimes the quiet ones matter more.)")
     print()
 
 
