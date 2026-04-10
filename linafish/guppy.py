@@ -26,6 +26,7 @@ s93, 2026-04-10. Captain's vision at 2AM. The guppies are the nervous system.
 """
 
 import json
+import os
 import sys
 import time
 import logging
@@ -44,11 +45,13 @@ log = logging.getLogger("guppy")
 # CONFIG
 # ---------------------------------------------------------------------------
 
-FAISS_URL = "http://localhost:8108/ask/smart"
-ROOM_TASTE_URL = "http://192.168.4.67:8900/taste"
-BERT_SEARCH_URL = "http://192.168.4.67:8903/search"
+# Endpoints — configurable via env vars. Defaults are for the author's LAN.
+# Set these to your own endpoints or leave unset to disable external hunting.
+FAISS_URL = os.environ.get("LINAFISH_FAISS_URL", "")
+ROOM_TASTE_URL = os.environ.get("LINAFISH_ROOM_URL", "")
+BERT_SEARCH_URL = os.environ.get("LINAFISH_BERT_URL", "")
 
-HUNT_INTERVAL = 300  # 5 min default
+HUNT_INTERVAL = int(os.environ.get("LINAFISH_HUNT_INTERVAL", "300"))
 MAX_CATCHES = 10
 MIN_TEXT_LEN = 50
 
@@ -196,6 +199,8 @@ class Guppy:
 
     def hunt_faiss(self, queries: List[str]) -> List[dict]:
         """Ask FAISS what it knows about our queries."""
+        if not FAISS_URL:
+            return []  # No FAISS endpoint configured
         import urllib.parse
         catches = []
         for q in queries:
@@ -220,7 +225,9 @@ class Guppy:
         return catches[:MAX_CATCHES]
 
     def hunt_bert(self, queries: List[str]) -> List[dict]:
-        """Ask BERTopic what it knows. 357K texts, 692 topics."""
+        """Ask BERTopic what it knows."""
+        if not BERT_SEARCH_URL:
+            return []  # No BERTopic endpoint configured
         catches = []
         for q in queries:
             data = _post_json(BERT_SEARCH_URL, {"text": q})
@@ -245,6 +252,8 @@ class Guppy:
 
     def hunt_room(self, queries: List[str]) -> List[dict]:
         """Taste the room fish for resonance."""
+        if not ROOM_TASTE_URL:
+            return []  # No room fish endpoint configured
         catches = []
         for q in queries:
             data = _post_json(ROOM_TASTE_URL, {"text": q})
@@ -300,13 +309,22 @@ class Guppy:
                     "query": c.get("query", ""),
                     "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
                 }
+                mqtt_host = os.environ.get("LINAFISH_MQTT_HOST", "")
+                if not mqtt_host:
+                    return  # No MQTT configured — skip publish
+                mqtt_port = int(os.environ.get("LINAFISH_MQTT_PORT", "1883"))
+                mqtt_auth = None
+                mqtt_user = os.environ.get("LINAFISH_MQTT_USER", "")
+                if mqtt_user:
+                    mqtt_auth = {"username": mqtt_user,
+                                 "password": os.environ.get("LINAFISH_MQTT_PASS", "")}
                 pub.single(
                     f"fish/guppy/{self.name}",
                     json.dumps(msg),
-                    hostname="192.168.4.67",
-                    port=1884,
-                    auth={"username": "anchor", "password": "anchor_mqtt_2026"},
-                    retain=False,  # NEVER retain guppy chatter
+                    hostname=mqtt_host,
+                    port=mqtt_port,
+                    auth=mqtt_auth,
+                    retain=False,
                 )
             log.info("Published %d catches to fish/guppy/%s", min(3, len(catches)), self.name)
         except Exception as e:

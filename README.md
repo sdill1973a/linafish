@@ -30,13 +30,16 @@ With fish: **8.7**/10.
 pip install linafish
 ```
 
-Zero required dependencies. Pure Python 3.8+. Runs on anything.
+Zero required dependencies. Pure Python 3.10+. Runs on anything.
 
 Optional extras for specific use cases:
 
 ```bash
-pip install linafish[docs]    # PDF and DOCX support
-pip install linafish[http]    # HTTP server mode
+pip install linafish[pdf]     # PDF support (PyMuPDF)
+pip install linafish[docx]    # DOCX support (python-docx)
+pip install linafish[http]    # HTTP client (requests)
+pip install linafish[mqtt]    # MQTT listener (paho-mqtt)
+pip install linafish[fast]    # NumPy for faster math
 pip install linafish[all]     # Everything
 ```
 

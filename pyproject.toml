@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "linafish"
 version = "1.0.2"
 description = "Your mind. Versioned. Everywhere. A cognitive overlay for any AI."
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = []
 readme = "README.md"
 license = {text = "MIT"}

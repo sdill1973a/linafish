@@ -64,7 +64,7 @@ def _print_progress(pct: int, current: int, total: int, _last_pct=[None]):
 # File types the fish can eat. Broad by default. Don't curate.
 INGESTIBLE = {
     ".txt", ".md", ".markdown", ".rst", ".org",
-    ".doc", ".docx",
+    ".docx",  # .doc (legacy binary) not supported — use .docx
     ".json", ".yaml", ".yml", ".toml",
     ".py", ".js", ".ts", ".rb", ".go", ".rs", ".java", ".c", ".cpp", ".h",
     ".html", ".htm", ".xml", ".csv",
@@ -1512,6 +1512,9 @@ def go(
         except Exception:
             skipped += 1
 
+    if skipped:
+        _print(f"  ({skipped} files skipped — unreadable or too short)")
+
     if not texts:
         _print("  No readable content found.")
         sys.exit(1)
@@ -1753,8 +1756,11 @@ def go(
     if serve:
         actual_port = port or _find_free_port()
         _print()
-        _print(f"  Starting server on http://localhost:{actual_port}")
-        _print(f"  Press Ctrl+C to stop.")
+        _print(f"  Your fish is ready to share with any AI.")
+        _print(f"  Server: http://localhost:{actual_port}")
+        _print(f"  Or paste {engine.fish_file} into any AI's instructions.")
+        _print()
+        _print(f"  Press Ctrl+C to stop the server.")
         _print()
 
         # Start server in foreground (blocking)

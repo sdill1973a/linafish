@@ -17,7 +17,7 @@ from pathlib import Path
 from collections import Counter
 from datetime import datetime
 
-sys.path.insert(0, 'D:/GTC/SovereignCore_Runtime/projects/linafish')
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from linafish.crystallizer_v3 import UniversalFish, Crystal
 from linafish.formations import detect_formations
@@ -459,7 +459,7 @@ def run_reeat_test():
     report_lines.append(f"{'='*80}")
 
     # Write report
-    report_path = "D:/GTC/SovereignCore_Runtime/data/reeat_cycle_test_report.txt"
+    report_path = str(Path(__file__).resolve().parent / "reeat_cycle_test_report.txt")
     with open(report_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(report_lines))
 
