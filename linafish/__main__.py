@@ -504,6 +504,22 @@ def cmd_revert(args):
         print(f"Failed: {result['error']}")
 
 
+def cmd_absorb(args):
+    """Eat existing RAG into your fish."""
+    from .absorb import absorb
+    engine = _resolve_engine(args)
+    print(f"  Absorbing: {args.source}")
+    print(f"  Into: {engine.name} ({len(engine.crystals)} existing crystals)")
+    print()
+    result = absorb(engine, args.source)
+    if "error" in result:
+        print(f"  Error: {result['error']}")
+    else:
+        print(f"  Done: {result.get('absorbed', 0)} absorbed")
+        print(f"  Fish: {result.get('total_crystals', '?')} crystals, "
+              f"{result.get('formations', '?')} formations")
+
+
 def cmd_converse(args):
     """Two fish, one conversation."""
     from .converse import serve_converse
@@ -768,6 +784,12 @@ def main():
     sub = parser.add_subparsers(dest="command")
 
     # go — the one-command experience
+    # absorb — eat existing RAG
+    absorb_p = sub.add_parser("absorb", help="Eat existing FAISS, JSONL, or HTTP RAG into your fish")
+    absorb_p.add_argument("source", help="Source: path.jsonl, faiss:path.faiss, http://url")
+    absorb_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    absorb_p.add_argument("--state-dir", help="State directory")
+
     # converse — two fish, one conversation
     conv_p = sub.add_parser("converse", help="Two fish, one conversation. Crystal exchange over HTTP.")
     conv_p.add_argument("-n", "--name", default="linafish", help="Fish name")
@@ -991,6 +1013,7 @@ def main():
         "revert": cmd_revert,
         "recall": cmd_recall,
         "ask": cmd_ask,
+        "absorb": cmd_absorb,
         "converse": cmd_converse,
         "whisper": cmd_whisper,
         "check": cmd_check,

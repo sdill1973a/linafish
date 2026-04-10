@@ -167,11 +167,14 @@ class ConverseHandler(BaseHTTPRequestHandler):
         """Return crystals, optionally filtered by time and source mind."""
         results = []
         for c in self.engine.crystals:
-            # Filter by time
+            # Filter by time (ISO string comparison — works for ISO 8601 format)
             if since:
                 try:
-                    crystal_time = c.ts
-                    if crystal_time < since:
+                    crystal_time = c.ts or ""
+                    # Normalize both to comparable ISO strings
+                    since_clean = since.replace("Z", "+00:00")
+                    ts_clean = crystal_time.replace("Z", "+00:00") if crystal_time else ""
+                    if ts_clean and ts_clean < since_clean:
                         continue
                 except (TypeError, ValueError):
                     pass
@@ -211,8 +214,7 @@ class ConverseHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def log_message(self, format, *args):
-        if args and "404" not in str(args[0]) and "OPTIONS" not in str(args[0]):
-            return
+        pass  # Quiet — use --verbose flag if debugging needed
 
 
 def serve_converse(
