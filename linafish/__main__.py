@@ -504,6 +504,20 @@ def cmd_revert(args):
         print(f"Failed: {result['error']}")
 
 
+def cmd_converse(args):
+    """Two fish, one conversation."""
+    from .converse import serve_converse
+    state_dir = Path(args.state_dir) if args.state_dir else None
+    serve_converse(
+        name=args.name,
+        state_dir=state_dir,
+        port=args.port,
+        bind=args.bind,
+        mind=args.mind,
+        token=args.token,
+    )
+
+
 def cmd_school(args):
     """The river and the nets. One stream, N fish."""
     from .school import School
@@ -754,6 +768,16 @@ def main():
     sub = parser.add_subparsers(dest="command")
 
     # go — the one-command experience
+    # converse — two fish, one conversation
+    conv_p = sub.add_parser("converse", help="Two fish, one conversation. Crystal exchange over HTTP.")
+    conv_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    conv_p.add_argument("--state-dir", help="State directory")
+    conv_p.add_argument("-p", "--port", type=int, default=8901, help="Port (default: 8901)")
+    conv_p.add_argument("--bind", default="local", choices=["local", "lan", "wan"],
+                        help="Access level: local (default), lan, or wan")
+    conv_p.add_argument("--token", help="Auth token for lan/wan access")
+    conv_p.add_argument("--mind", help="This mind's name (default: hostname)")
+
     # whisper — one insight
     whisper_p = sub.add_parser("whisper", help="One insight from your fish. The quiet ones matter more.")
     whisper_p.add_argument("-n", "--name", default="linafish", help="Fish name")
@@ -967,6 +991,7 @@ def main():
         "revert": cmd_revert,
         "recall": cmd_recall,
         "ask": cmd_ask,
+        "converse": cmd_converse,
         "whisper": cmd_whisper,
         "check": cmd_check,
         "school": cmd_school,
