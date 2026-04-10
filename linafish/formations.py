@@ -172,13 +172,36 @@ def interpret_formation(formation: Formation) -> str:
         dims = [dim for dim, score in ranked if score > 0.01]
 
     if not dims:
-        # Parse from name: FEELING+RELATING_via_ACTING
+        # Parse from cognitive name: FEELING+RELATING_via_ACTING
         tokens = formation.name.upper().replace("_VIA_", "+").split("+")
         for token in tokens:
             token = token.strip("_ ")
             code = LABEL_TO_DIM.get(token)
             if code and code not in dims:
                 dims.append(code)
+
+    if not dims:
+        # Fall back to the QLP centroid (resonance vector) — exists on ALL formations
+        # This is the 8-dim average of member crystal resonance vectors
+        centroid = getattr(formation, 'centroid', [])
+        if centroid and len(centroid) >= 8 and any(v > 0.01 for v in centroid[:8]):
+            ranked = sorted(
+                ((DIM_ORDER[i], centroid[i]) for i in range(min(8, len(centroid)))),
+                key=lambda x: -x[1],
+            )
+            dims = [dim for dim, score in ranked if score > 0.01][:3]
+
+    if not dims:
+        # Last resort: infer from keywords using the canonical seed mapping
+        from .crystallizer_v3 import CANONICAL_SEED
+        kw_set = set(k.lower() for k in (formation.keywords or []))
+        dim_scores = {}
+        for dim, seeds in CANONICAL_SEED.items():
+            overlap = len(kw_set & set(seeds))
+            if overlap:
+                dim_scores[dim] = overlap
+        if dim_scores:
+            dims = [d for d, _ in sorted(dim_scores.items(), key=lambda x: -x[1])][:3]
 
     if not dims:
         return ("This formation blends several instincts. Notice the stories "
