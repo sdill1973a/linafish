@@ -1454,8 +1454,10 @@ def go(
             name = "my-fish"
 
     _print()
-    _print("LiNafish")
-    _print(f"Learning from: {source_path}")
+    _print("  Hello. I'm your fish.")
+    _print()
+    _print(f"  I'm going to read everything in: {source_path}")
+    _print("  I don't judge. I just listen for patterns.")
     _print()
 
     # -----------------------------------------------------------------------
@@ -1464,13 +1466,14 @@ def go(
     docs = discover_documents(source_path)
 
     if not docs:
-        _print("No documents found. Point me at a folder with your writing:")
-        _print(f"  linafish go /path/to/your/docs")
+        _print("  I couldn't find anything to read here.")
+        _print("  Point me at a folder with your writing:")
+        _print(f"    linafish go /path/to/your/docs")
         _print()
-        _print("I read: .txt, .md, .py, .js, .json, .html, and many more.")
+        _print("  I read: .txt, .md, .py, .json, .html, .docx, and more.")
         sys.exit(1)
 
-    _print(f"  Found {len(docs)} documents.")
+    _print(f"  Found {len(docs)} documents. Reading...")
 
     # -----------------------------------------------------------------------
     # Step 2: Create the engine (state dir + git init happen automatically)
@@ -1519,7 +1522,7 @@ def go(
         _print("  No readable content found.")
         sys.exit(1)
 
-    _print(f"  {len(texts)} documents ready. Learning...")
+    _print(f"  {len(texts)} documents ready. Learning how you think...")
     _print()
 
     # -----------------------------------------------------------------------
@@ -1609,9 +1612,12 @@ def go(
         sys.stdout = _real_stdout
 
     # -----------------------------------------------------------------------
-    # Step 4: Print the portrait — a preview of what the AI will see
+    # Step 4: Print the portrait — the mirror moment
     # -----------------------------------------------------------------------
     _print()
+    if engine.formations:
+        _print("  I found patterns in how you think.")
+        _print()
     crystal_map = {c.id: c for c in engine.fish.crystals}
     portrait = build_full_portrait(engine.formations, len(engine.fish.crystals), len(texts), crystal_map)
     _print(portrait)
@@ -1621,11 +1627,21 @@ def go(
     why = explain_the_why(len(texts), len(engine.fish.crystals), engine.formations, crystal_map)
     _print(why)
     _print()
-    _print(
-        "That portrait was a preview. The real thing happens when you paste "
-        "the fish into your AI. The AI reads your patterns and writes its own "
-        "version — one that grows with every conversation."
-    )
+    _print("  That's how I see you so far. It gets better with more writing.")
+    _print()
+    _print("  Three things you can do now:")
+    _print()
+    _print("  1. READ your portrait:")
+    _print(f"     {engine.fish_file}")
+    _print()
+    _print("  2. PASTE it into any AI (Claude, ChatGPT, Gemini).")
+    _print("     They'll respond as someone who knows how you think.")
+    _print()
+    _print("  3. KEEP FEEDING me:")
+    _print("     linafish eat new-journal-entry.txt")
+    _print("     I don't forget. I get better.")
+    _print()
+    _print(f"  Start here: open {engine.fish_file}")
 
     # -----------------------------------------------------------------------
     # Step 4b: Generate soul file (.qlp)
