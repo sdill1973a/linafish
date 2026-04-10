@@ -179,7 +179,36 @@ linafish history                 # Growth timeline. When you learned what.
 linafish diff                    # What changed since last session.
 linafish revert                  # Roll back. Grace, not punishment.
 linafish recall "what I said"    # Search your fish's memory.
+linafish ask "how do I handle loss"  # Semantic search — meaning, not words.
+linafish check                   # How's your fish doing?
+linafish whisper                 # One insight. The quiet ones matter more.
 ```
+
+## v1.1: The Nervous System
+
+New in v1.1 — the fish gets a brain:
+
+```bash
+# School — distributed cognition across domains
+linafish school init             # Create a school of sub-fish
+linafish school add captain -d 2.0 --centroid  # Add a domain fish
+linafish school eat "Today I realized..."      # Feed all members at once
+
+# Converse — two fish, one conversation
+linafish converse --mind anchor --port 8901          # Local
+linafish converse --mind anchor --bind lan            # Home network
+linafish converse --mind anchor --bind wan --token X  # Internet
+
+# Absorb — eat existing RAG into your fish
+linafish absorb old_vectors.jsonl    # JSONL crystals
+linafish absorb faiss:my.index       # FAISS index
+linafish absorb http://my-rag/api    # Live RAG endpoint
+
+# Guppy — self-feeding fish that hunts gaps
+python -m linafish.guppy my-fish --swim --ache  # Hunt what's missing
+```
+
+The school is distributed cognition — one stream, many nets. Each sub-fish grabs what resonates with its domain. The guppy hunts for what the fish is MISSING. The converse server lets two minds exchange crystals over HTTP. The mesh builds itself.
 
 `git log` in your fish directory IS your autobiography:
 ```

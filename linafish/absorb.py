@@ -14,7 +14,7 @@ Supported sources:
 Usage:
     linafish absorb faiss:./my_index.faiss
     linafish absorb jsonl:./old_crystals.jsonl
-    linafish absorb http://192.168.4.67:8108/ask/smart
+    linafish absorb http://localhost:8108/ask/smart
 
 s93, 2026-04-11. The migration moat.
 """
