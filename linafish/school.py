@@ -194,16 +194,20 @@ class School:
         return results
 
     def refeed(self, member_name: str) -> dict:
-        """Replay the central crystal log through a member's current vocabulary.
+        """Replay the central crystal log through a member with a FRESH engine.
 
-        This is the "perspective shift" path. When a member fish evolves
-        (new formations, shifted vocab), refeed lets it re-evaluate
-        everything the central fish has ever eaten.
+        This is the "perspective shift" path. When a member's parameters
+        change (new d, centroid settings, evolved vocabulary), refeed
+        rebuilds the member from scratch using the central corpus.
+
+        The member's state is reset — fresh engine, fresh vocabulary,
+        fresh formations. The central crystal log is the source of truth.
+        Previous crystals are not preserved. This is a rebuild, not an append.
         """
         if member_name not in self.members:
             return {"error": f"Unknown member: {member_name}"}
 
-        engine = self.members[member_name]
+        config = self.manifest.get("members", {}).get(member_name, {})
 
         # Read central crystal log
         central_name = self.manifest.get("central", "anchor-writing")
@@ -211,6 +215,28 @@ class School:
 
         if not crystal_log.exists():
             return {"error": f"Central crystal log not found: {crystal_log}"}
+
+        # Reset the member — fresh engine with same config
+        member_dir = self.state_dir / member_name
+        # Clear existing state files
+        for f in member_dir.glob("*_crystals.jsonl"):
+            f.unlink()
+        for f in member_dir.glob("*_v3_state.json"):
+            f.unlink()
+        for f in member_dir.glob("*_pending.jsonl"):
+            f.unlink()
+        for f in member_dir.glob("mi_vectorizer.json"):
+            f.unlink()
+
+        engine = FishEngine(
+            state_dir=member_dir,
+            name=member_name,
+            d=config.get("d", 4.0),
+            min_gamma=config.get("min_gamma"),
+            subtract_centroid=config.get("subtract_centroid", False),
+            vocab_size=config.get("vocab_size", 200),
+        )
+        self.members[member_name] = engine
 
         count = 0
         fed = 0
