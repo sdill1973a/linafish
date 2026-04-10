@@ -592,6 +592,67 @@ def cmd_school(args):
         print(school.docket())
 
 
+def cmd_check(args):
+    """How's your fish doing? Quick health + what to do next."""
+    engine = _resolve_engine(args)
+
+    crystals = len(engine.crystals)
+    formations = len(engine.formations)
+    r_n = engine.r_n_history[-1] if engine.r_n_history else 0
+
+    print(f"  Your fish: {engine.name}")
+    print(f"  Crystals: {crystals}  Formations: {formations}  R(n): {r_n:.2f}")
+    print()
+
+    # Health assessment
+    if crystals == 0:
+        print("  Your fish is empty. Feed it:")
+        print(f"    linafish eat ~/my-journal.txt")
+        print(f"    linafish go ~/my-writing/")
+    elif crystals < 10:
+        print("  Your fish is young. It needs more writing to find patterns.")
+        print(f"  Feed it more:  linafish eat ~/more-writing.txt")
+    elif formations == 0:
+        print("  Your fish has food but no patterns yet.")
+        print("  This usually means the writing is too similar (one voice, one topic).")
+        print("  Try feeding it writing from different moods or different days.")
+    elif formations == 1:
+        print("  Your fish found one big pattern — everything sounds the same to it.")
+        print("  This is common with single-author corpora. Two options:")
+        print("    1. Feed more diverse writing (different topics, moods, years)")
+        print("    2. Use centroid subtraction: linafish go --centroid ~/writing")
+    elif formations <= 5:
+        print("  Your fish is growing. It sees a few patterns in how you think.")
+        print("  Keep feeding and the portrait will deepen.")
+    else:
+        print("  Your fish is healthy. It knows you.")
+        print(f"  {formations} patterns found in how you think.")
+
+    print()
+
+    # Show top formations with interpretations
+    if formations > 0:
+        from .formations import interpret_formation
+        top = sorted(engine.formations, key=lambda f: f.crystal_count, reverse=True)[:3]
+        print("  Your strongest patterns:")
+        print()
+        for f in top:
+            interp = interpret_formation(f)
+            print(f"    {f.name} ({f.crystal_count} crystals)")
+            print(f"    {interp}")
+            print()
+
+    # Suggestions
+    print("  What to do next:")
+    if crystals < 30:
+        print("    Feed more writing — the portrait needs 30+ crystals to differentiate")
+    else:
+        print(f"    Paste {engine.fish_file} into your AI")
+        print("    The AI will respond as someone who knows how you think")
+    print(f"    linafish recall 'a question'  — search your fish's memory")
+    print(f"    linafish history              — see how your fish has grown")
+
+
 def cmd_listen(args):
     """Listen to a source. The fish sits in the stream."""
     engine = _resolve_engine(args)
@@ -634,6 +695,12 @@ def main():
         description="LiNafish — sees deeply, loves fiercely.",
     )
     sub = parser.add_subparsers(dest="command")
+
+    # go — the one-command experience
+    # check — how's your fish?
+    check_p = sub.add_parser("check", help="How's your fish? Quick health check + what to do next.")
+    check_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    check_p.add_argument("--state-dir", help="State directory")
 
     # go — the one-command experience
     go_p = sub.add_parser("go", help="The product. Point at your writing. Everything assembles.")
@@ -830,6 +897,7 @@ def main():
         "diff": cmd_diff,
         "revert": cmd_revert,
         "recall": cmd_recall,
+        "check": cmd_check,
         "school": cmd_school,
     }
     commands[args.command](args)
