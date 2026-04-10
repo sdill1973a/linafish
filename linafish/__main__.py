@@ -152,6 +152,21 @@ def cmd_recall(args):
     print(result)
 
 
+def cmd_ask(args):
+    """Ask your fish a question. Semantic search — finds meaning, not just words."""
+    engine = _resolve_engine(args)
+    if not engine.fish.crystals:
+        print("Fish is empty. Feed it first.")
+        sys.exit(1)
+
+    result = engine.taste(args.question, top=args.top)
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        pass
+    print(result)
+
+
 def cmd_status(args):
     """Show fish stats."""
     fish_path = Path(args.fish)
@@ -732,6 +747,13 @@ def main():
     recall_p.add_argument("--state-dir", help="Where fish state lives (default: ~/.linafish/)")
     recall_p.add_argument("--top", type=int, default=10, help="Max results")
 
+    # ask — semantic search
+    ask_p = sub.add_parser("ask", help="Ask your fish a question — finds meaning, not just words")
+    ask_p.add_argument("question", help="What to ask")
+    ask_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    ask_p.add_argument("--state-dir", help="State directory")
+    ask_p.add_argument("--top", type=int, default=5, help="Max results")
+
     # status
     status_p = sub.add_parser("status", help="Show fish stats")
     status_p.add_argument("fish", help="Path to .fish.md")
@@ -897,6 +919,7 @@ def main():
         "diff": cmd_diff,
         "revert": cmd_revert,
         "recall": cmd_recall,
+        "ask": cmd_ask,
         "check": cmd_check,
         "school": cmd_school,
     }
