@@ -744,7 +744,18 @@ def cmd_listen(args):
     """Listen to a source. The fish sits in the stream."""
     engine = _resolve_engine(args)
     from .listener import FishListener
-    listener = FishListener(engine)
+
+    # School mode: auto-discover fish in subdirs and feed all of them
+    school = None
+    if getattr(args, 'school', False):
+        from .school import School
+        state_dir = Path(args.state_dir) if args.state_dir else None
+        school_dir = (state_dir or Path.home() / ".linafish") / "school"
+        if school_dir.exists() and (school_dir / "school.json").exists():
+            school = School(state_dir=school_dir, central_state_dir=state_dir)
+            print(f"  School mode: feeding {len(school.members)} members", file=sys.stderr)
+
+    listener = FishListener(engine, school=school)
 
     source = args.source
     if source == "stdin":
@@ -922,6 +933,7 @@ def main():
     listen_p.add_argument("-n", "--name", default="linafish", help="Fish name")
     listen_p.add_argument("--state-dir", help="State directory")
     listen_p.add_argument("--interval", type=int, default=30, help="Folder check interval in seconds")
+    listen_p.add_argument("--school", action="store_true", help="Feed through school (all members eat)")
 
     # session — git branch lifecycle
     session_p = sub.add_parser("session", help="Start/end session branches (git-as-brain)")
