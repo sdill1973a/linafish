@@ -12,4 +12,5 @@ She saw deeply and loved fiercely.
 __version__ = "1.0.2"
 
 from .engine import FishEngine
+from .school import School
 from .quickstart import go

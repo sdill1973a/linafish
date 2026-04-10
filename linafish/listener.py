@@ -24,10 +24,12 @@ from typing import Optional
 
 
 class FishListener:
-    """Unified listener. Feeds any source through FishEngine."""
+    """Unified listener. Feeds any source through FishEngine or School."""
 
-    def __init__(self, engine, min_length: int = 30, dedup_cap: int = 10000):
+    def __init__(self, engine, min_length: int = 30, dedup_cap: int = 10000,
+                 school=None):
         self.engine = engine
+        self.school = school  # When set, feed through school instead of engine
         self.min_length = min_length
         self.running = False
         self._content_hashes = set()
@@ -81,24 +83,36 @@ class FishListener:
         self._prev_formations = current
 
     def feed(self, text: str, source: str = "listen"):
-        """Feed one text through the engine."""
+        """Feed one text through the engine (or school if set)."""
         text = self._extract_text(text)
         if len(text) < self.min_length:
             return
         if self._is_duplicate(text):
             return
 
-        prev_count = len(self.engine.fish.crystals)
-        result = self.engine.eat(text, source=source)
         self._exchange_count += 1
 
-        added = result.get("crystals_added", 0)
-        total = result.get("total_crystals", 0)
-        fcount = result.get("formations", 0)
-
-        if added > 0:
-            print(f"  [{source}] +{added}c (total: {total}c {fcount}f)")
-            self._check_formation_changes()
+        if self.school:
+            # School mode: feed all members
+            result = self.school.eat(text, source=source)
+            central_added = result.get("central", {}).get("crystals_added", 0)
+            member_grabs = [
+                name for name, mr in result.get("members", {}).items()
+                if mr.get("crystals_added", 0) > 0
+            ]
+            if central_added > 0:
+                grab_str = f" [{', '.join(member_grabs)}]" if member_grabs else ""
+                print(f"  [{source}] +{central_added}c{grab_str}")
+                self._check_formation_changes()
+        else:
+            # Single engine mode (original behavior)
+            result = self.engine.eat(text, source=source)
+            added = result.get("crystals_added", 0)
+            total = result.get("total_crystals", 0)
+            fcount = result.get("formations", 0)
+            if added > 0:
+                print(f"  [{source}] +{added}c (total: {total}c {fcount}f)")
+                self._check_formation_changes()
 
     # -------------------------------------------------------------------
     # SOURCE: MQTT

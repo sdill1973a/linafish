@@ -489,6 +489,109 @@ def cmd_revert(args):
         print(f"Failed: {result['error']}")
 
 
+def cmd_school(args):
+    """The river and the nets. One stream, N fish."""
+    from .school import School
+
+    state_dir = Path(args.state_dir) if args.state_dir else None
+    central_dir = Path(args.central_dir) if args.central_dir else None
+    manifest = Path(args.manifest) if args.manifest else None
+
+    school = School(
+        state_dir=state_dir,
+        manifest_path=manifest,
+        central_state_dir=central_dir,
+    )
+
+    action = args.action
+
+    if action == "init":
+        school.save_manifest()
+        print(f"School initialized at {school.state_dir}")
+        print(f"  Manifest: {school.manifest_path}")
+        print(f"  Central: {school.central.name} ({len(school.central.crystals)} crystals)")
+        print(f"  Members: {len(school.members)}")
+        if school.members:
+            for name in sorted(school.members):
+                config = school.manifest.get("members", {}).get(name, {})
+                print(f"    {name}: d={config.get('d', 4.0)}, "
+                      f"centroid={'yes' if config.get('subtract_centroid') else 'no'}")
+
+    elif action == "add":
+        if not args.target:
+            print("Usage: linafish school add <member-name> [-d 2.0] [--centroid]")
+            sys.exit(1)
+        school.add_member(
+            name=args.target,
+            d=args.d,
+            subtract_centroid=args.centroid,
+            min_gamma=args.min_gamma,
+        )
+        print(f"Added member: {args.target} (d={args.d}, "
+              f"centroid={'yes' if args.centroid else 'no'})")
+
+    elif action == "eat":
+        if not args.target:
+            print("Usage: linafish school eat <text-or-file> [--source label]")
+            sys.exit(1)
+
+        target = args.target
+        target_path = Path(target)
+
+        if target_path.exists():
+            print(f"Feeding {target_path} through school...")
+            result = school.eat_path(target_path, source=args.source)
+            print(f"  Central: +{result['central']['crystals_added']} crystals "
+                  f"({result['central'].get('total_crystals', '?')} total)")
+            for name, mr in result["members"].items():
+                added = mr.get("crystals_added", 0)
+                total = mr.get("total_crystals", "?")
+                print(f"  {name}: +{added} crystals ({total} total)")
+        else:
+            # Treat as raw text
+            result = school.eat(target, source=args.source)
+            print(f"  Central: +{result['central'].get('crystals_added', 0)}")
+            for name, mr in result["members"].items():
+                added = mr.get("crystals_added", 0)
+                if added:
+                    print(f"  {name}: +{added} (grabbed)")
+                else:
+                    print(f"  {name}: slid past")
+
+    elif action == "refeed":
+        if not args.target:
+            print("Usage: linafish school refeed <member-name>")
+            sys.exit(1)
+        print(f"Refeeding {args.target} from central corpus...")
+        result = school.refeed(args.target)
+        if "error" in result:
+            print(f"Error: {result['error']}")
+        else:
+            print(f"  Read {result['central_crystals_read']} central crystals")
+            print(f"  Fed {result['fed']} to {args.target}")
+            print(f"  Result: {result['total_crystals']} crystals, "
+                  f"{result['formations']} formations")
+
+    elif action == "status":
+        status = school.status()
+        print(f"School: {status['member_count']} members")
+        print(f"Central ({status['central']['name']}): "
+              f"{status['central']['crystals']}c / "
+              f"{status['central']['formations']}f / "
+              f"epoch {status['central']['epoch']}")
+        for name, ms in sorted(status["members"].items()):
+            formations_str = ""
+            if ms["top_formations"]:
+                formations_str = f" [{', '.join(ms['top_formations'][:2])}]"
+            print(f"  {name}: {ms['crystals']}c / {ms['formations']}f / "
+                  f"d={ms['d']}"
+                  f"{' +centroid' if ms['subtract_centroid'] else ''}"
+                  f"{formations_str}")
+
+    elif action == "docket":
+        print(school.docket())
+
+
 def cmd_listen(args):
     """Listen to a source. The fish sits in the stream."""
     engine = _resolve_engine(args)
@@ -666,6 +769,21 @@ def main():
     revert_p.add_argument("-n", "--name", default="linafish", help="Fish name")
     revert_p.add_argument("--state-dir", help="State directory")
 
+    # school — the river and the nets
+    school_p = sub.add_parser("school", help="The river and the nets. One stream, N fish.")
+    school_p.add_argument("action", choices=["init", "eat", "refeed", "status", "docket", "add"],
+                          help="init=create school, eat=feed all, refeed=replay central through member, "
+                               "status=show stats, docket=aggregate todos, add=add a member")
+    school_p.add_argument("target", nargs="?", default=None,
+                          help="For eat: text or file path. For refeed/add: member name.")
+    school_p.add_argument("--state-dir", help="School state directory (default: ~/.linafish/school/)")
+    school_p.add_argument("--central-dir", help="Central fish state dir (default: ~/.linafish/)")
+    school_p.add_argument("--manifest", help="Path to school.json manifest")
+    school_p.add_argument("--source", default="session", help="Source label for eat")
+    school_p.add_argument("-d", type=float, default=4.0, help="d value for add (default: 4.0)")
+    school_p.add_argument("--centroid", action="store_true", help="Enable centroid subtraction for add")
+    school_p.add_argument("--min-gamma", type=float, default=None, help="Min gamma override for add")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -712,6 +830,7 @@ def main():
         "diff": cmd_diff,
         "revert": cmd_revert,
         "recall": cmd_recall,
+        "school": cmd_school,
     }
     commands[args.command](args)
 
