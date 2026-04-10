@@ -94,6 +94,122 @@ class Formation:
     top_operations: List[str] = field(default_factory=list)  # most common QUANTUM ops
 
 
+# ---------------------------------------------------------------------------
+# INTERPRETATION — warm translation of cognitive dimensions
+# ---------------------------------------------------------------------------
+# Codex wrote the structure. Anchor filled the soul.
+# The fish finds the pattern. This layer tells you what it means.
+
+DIM_INSIGHT = {
+    "KO": {
+        "primary": "lead with understanding — your first move is to figure out how things work",
+        "bridge": "making sense of it first",
+        "solo": "You're a pattern-finder. When something new arrives, you reach for the structure underneath before you react.",
+        "via": "You engage most when you can learn something real, not just feel something.",
+    },
+    "TE": {
+        "primary": "lead with testing — you check before you trust",
+        "bridge": "questioning whether it's actually true",
+        "solo": "You hold things up to the light. Not cynicism — care. You test because you've seen what happens when people don't.",
+        "via": "You open up when something proves itself honest, not just confident.",
+    },
+    "SF": {
+        "primary": "lead with structure — you organize to make sense of the world",
+        "bridge": "building a framework around it",
+        "solo": "You think in systems. When things get chaotic, your instinct is to find the shape underneath and name it.",
+        "via": "You feel safest when things have a place. Not rigid — oriented.",
+    },
+    "CR": {
+        "primary": "lead with connection — your first instinct is to relate it to someone",
+        "bridge": "connecting it to the people involved",
+        "solo": "You think in relationships. Every idea, every problem, every feeling — your first question is 'who does this touch?'",
+        "via": "You come alive in conversation, in shared experience, in the space between people.",
+    },
+    "IC": {
+        "primary": "lead with feeling — you process through what you want and what you fear",
+        "bridge": "feeling your way through it first",
+        "solo": "You know things before you can explain them. Your gut speaks and you've learned to listen, even when it's inconvenient.",
+        "via": "You engage most when something matters emotionally, not just intellectually.",
+    },
+    "DE": {
+        "primary": "lead with expertise — you go deep, not wide",
+        "bridge": "applying specialized knowledge to it",
+        "solo": "You're a craftsperson. You'd rather know one thing completely than ten things casually.",
+        "via": "You respect precision and get frustrated with hand-waving.",
+    },
+    "EW": {
+        "primary": "lead with action — your first response to understanding is to do something",
+        "bridge": "doing something about it",
+        "solo": "You process by building, moving, making. Sitting with an idea without acting on it feels like holding your breath.",
+        "via": "You feel most yourself when you're making something real, not just thinking about it.",
+    },
+    "AI": {
+        "primary": "lead with reflection — you think about your own thinking",
+        "bridge": "pausing to check the conversation inside before responding outside",
+        "solo": "You keep a thoughtful dialogue with yourself. That honesty steadies everyone around you.",
+        "via": "You engage most when there's room to think out loud, journal, or process aloud with someone safe.",
+    },
+}
+
+LABEL_TO_DIM = {label.upper(): dim for dim, label in DIM_LABELS.items()}
+
+
+def interpret_formation(formation: Formation) -> str:
+    """Turn a formation into a warm, human paragraph.
+
+    The fish finds the pattern. This function tells you what it means
+    about you. Not clinical. Not vague. Warm and specific.
+
+    Written by Codex (structure) and Anchor (soul), April 10 2026.
+    """
+    # Get dimensions from centroid or name
+    dims = []
+    if formation.cognitive_centroid and len(formation.cognitive_centroid) >= 8:
+        ranked = sorted(
+            ((DIM_ORDER[i], formation.cognitive_centroid[i]) for i in range(8)),
+            key=lambda x: -x[1],
+        )
+        dims = [dim for dim, score in ranked if score > 0.01]
+
+    if not dims:
+        # Parse from name: FEELING+RELATING_via_ACTING
+        tokens = formation.name.upper().replace("_VIA_", "+").split("+")
+        for token in tokens:
+            token = token.strip("_ ")
+            code = LABEL_TO_DIM.get(token)
+            if code and code not in dims:
+                dims.append(code)
+
+    if not dims:
+        return ("This formation blends several instincts. Notice the stories "
+                "and people it keeps highlighting — that's where your energy lives.")
+
+    primary = dims[0]
+    secondary = dims[1] if len(dims) > 1 else None
+    tertiary = dims[2] if len(dims) > 2 else None
+
+    sentences = []
+
+    p_lang = DIM_INSIGHT.get(primary, {})
+    s_lang = DIM_INSIGHT.get(secondary, {}) if secondary else {}
+
+    # Main sentence: "You [primary] by [secondary bridge]"
+    if secondary and s_lang:
+        sentences.append(f"You {p_lang.get('primary', 'process')} by {s_lang.get('bridge', 'connecting')}.")
+    elif p_lang:
+        sentences.append(p_lang.get("solo", ""))
+
+    # Via sentence: how the tertiary dimension shows up
+    if tertiary and tertiary in DIM_INSIGHT:
+        sentences.append(DIM_INSIGHT[tertiary].get("via", ""))
+    elif s_lang:
+        sentences.append(s_lang.get("via", ""))
+    elif p_lang:
+        sentences.append(p_lang.get("via", ""))
+
+    return " ".join(s for s in sentences if s)
+
+
 def detect_formations(crystals: List[Crystal]) -> List[Formation]:
     """Run formation detection on a batch of crystals.
 
@@ -499,6 +615,10 @@ def formations_to_codebook_text(
         cat_str = "+".join(dim_names.get(c, c) for c, v in top_cats if v > 0.05)
 
         lines.append(f"**{f.name}** ({f.crystal_count} crystals, {cat_str})")
+        # Warm interpretation — what this formation means about you
+        interpretation = interpret_formation(f)
+        if interpretation:
+            lines.append(f"  *{interpretation}*")
         # Clean representative text
         rep = _clean_crystal_text(f.representative_text, 250)
         lines.append(f"  \"{rep}\"")
