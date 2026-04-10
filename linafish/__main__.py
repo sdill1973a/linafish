@@ -607,6 +607,48 @@ def cmd_school(args):
         print(school.docket())
 
 
+def cmd_whisper(args):
+    """One insight from your fish. What it noticed that you might not have."""
+    engine = _resolve_engine(args)
+
+    if not engine.formations:
+        print("  Your fish is still learning. Feed it more and check back.")
+        return
+
+    from .formations import interpret_formation
+    import random
+
+    formations = sorted(engine.formations, key=lambda f: f.crystal_count, reverse=True)
+
+    # Pick something interesting — not the biggest (obvious) but the second or third
+    if len(formations) >= 3:
+        f = formations[2]  # Third strongest — surprising, not obvious
+    elif len(formations) >= 2:
+        f = formations[1]
+    else:
+        f = formations[0]
+
+    interp = interpret_formation(f)
+    rep = f.representative_text[:150].strip()
+
+    print()
+    print(f"  Your fish noticed something.")
+    print()
+    print(f"  {interp}")
+    print()
+    print(f"  You wrote: \"{rep}\"")
+    print()
+
+    # Compare formation sizes for trend observation
+    if len(formations) >= 2:
+        biggest = formations[0]
+        ratio = biggest.crystal_count / max(f.crystal_count, 1)
+        if ratio > 5:
+            print(f"  (Your strongest pattern is {biggest.name} with {biggest.crystal_count} crystals.")
+            print(f"   This quieter one has {f.crystal_count}. Sometimes the quiet ones matter more.)")
+    print()
+
+
 def cmd_check(args):
     """How's your fish doing? Quick health + what to do next."""
     engine = _resolve_engine(args)
@@ -712,6 +754,11 @@ def main():
     sub = parser.add_subparsers(dest="command")
 
     # go — the one-command experience
+    # whisper — one insight
+    whisper_p = sub.add_parser("whisper", help="One insight from your fish. The quiet ones matter more.")
+    whisper_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    whisper_p.add_argument("--state-dir", help="State directory")
+
     # check — how's your fish?
     check_p = sub.add_parser("check", help="How's your fish? Quick health check + what to do next.")
     check_p.add_argument("-n", "--name", default="linafish", help="Fish name")
@@ -920,6 +967,7 @@ def main():
         "revert": cmd_revert,
         "recall": cmd_recall,
         "ask": cmd_ask,
+        "whisper": cmd_whisper,
         "check": cmd_check,
         "school": cmd_school,
     }
