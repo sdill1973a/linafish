@@ -1,0 +1,38 @@
+[
+  {
+    "persona": "teacher",
+    "name": "Maria",
+    "crystals": 14,
+    "formations": 2,
+    "portrait_length": 2161,
+    "reaction": "1. Some of it hits close to home, especially the bits about feeling heavy watching students drift away and the struggle with engagement. It\u2019s accurate in that way, but it\u2019s also quite vague. \n\n2. I might show it to my husband; he knows how I feel about my students. Not sure about anyone else. \n\n3. I don\u2019t think I\u2019d keep feeding it. I\u2019m not sure how much I trust it to capture the nuances of my experience. \n\n4. I\u2019m confused about how it came up with those specific reflections. They feel a bit disjointed and general. It\u2019s like it picked out feelings but didn\u2019t get into the real messiness of teaching.\n\n5. I\u2019d rate the mirror moment a 6. I see pieces of myself, but it feels too polished and organized compared to the chaos that is my actual teaching life.",
+    "state_dir": "C:\\Users\\dills\\AppData\\Local\\Temp\\linafish_lab_teacher_atj4um38"
+  },
+  {
+    "persona": "student",
+    "name": "Jake",
+    "crystals": 16,
+    "formations": 1,
+    "portrait_length": 555,
+    "reaction": "1. Honestly, it's a bit creepy. I mean, what even is \"1 formations, 15 crystals\"? Sounds like some mystical nonsense. But it's also kinda cool how it picked up on that feeling of disconnect.\n\n2. I think it\u2019s more keyword matching than anything. Like, sure, it pulled some stuff from my notes, but it doesn't really *know* me. Just making connections between the words I've written.\n\n3. I might, just to see what it would say. I\u2019d expect it to be a bit more conversational and maybe offer some suggestions or guidance. Like, help me figure out that TODO in a cooler way.\n\n4. I don\u2019t think I\u2019d tell Priya about it. She\u2019d probably just roll her eyes or think I\u2019m overthinking it again. \n\n5. I\u2019d rate the \"mirror moment\" a 6. It hit on some truths but felt kind of vague and generic. Not sure how much I can trust it, you know?",
+    "state_dir": "C:\\Users\\dills\\AppData\\Local\\Temp\\linafish_lab_student_5d0vuiq5"
+  },
+  {
+    "persona": "nurse",
+    "name": "Dorothy",
+    "crystals": 14,
+    "formations": 1,
+    "portrait_length": 608,
+    "reaction": "1. I don\u2019t know what this machine thinks it knows, but it\u2019s picking up on my letters. I guess it gets some of the feelings I have. \n\n2. A little of both, I suppose. It feels nice that it recognizes my memories with Bill, but it\u2019s a bit strange having a machine look at my thoughts. \n\n3. I think I would keep writing to Bill. It\u2019s my way of connecting with him, even if this machine is snooping a bit. \n\n4. I don\u2019t think I\u2019d show this to anyone. My letters are personal, and I don\u2019t want anyone else reading them. \n\n5. Honestly? I\u2019d give it a 6. It gets some of what I\u2019m saying, but it\u2019s still just a machine. It can never really understand my heart like Bill did.",
+    "state_dir": "C:\\Users\\dills\\AppData\\Local\\Temp\\linafish_lab_nurse_zb9t9yw3"
+  },
+  {
+    "persona": "founder",
+    "name": "Alex",
+    "crystals": 15,
+    "formations": 1,
+    "portrait_length": 1082,
+    "reaction": "1. Honestly, I don\u2019t know yet. It feels more like a gimmick than something I\u2019d actually use long-term.\n\n2. I guess it touches on both, but there\u2019s a lot of nuance missing. It\u2019s hard to really capture the chaos inside the founder brain.\n\n3. God, no. I\u2019m not sure I want that kind of self-reflection popping up in my day-to-day.\n\n4. Could be, but it depends on how useful the insights are. Right now, it feels too vague. \n\n5. Mirror moment? Probably a 5. It\u2019s a start, but it\u2019s not really hitting home for me yet.",
+    "state_dir": "C:\\Users\\dills\\AppData\\Local\\Temp\\linafish_lab_founder_xzddu4ky"
+  }
+]

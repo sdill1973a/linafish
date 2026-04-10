@@ -223,6 +223,83 @@ PERSONAS = {
 
 
 # ---------------------------------------------------------------------------
+# EVALUATOR — OpenAI API as the cold reader
+# ---------------------------------------------------------------------------
+
+EVAL_MODEL = "gpt-4o-mini"  # cheap, fast, different eyes
+
+
+def generate_more_writing(persona: dict, count: int = 10) -> list:
+    """Ask GPT to generate more journal entries in this persona's voice."""
+    try:
+        from openai import OpenAI
+        client = OpenAI()
+
+        response = client.chat.completions.create(
+            model=EVAL_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        f"You are {persona['name']}, age {persona['age']}. "
+                        f"{persona['bio']} "
+                        "Write journal entries in your authentic voice. "
+                        "Each entry should be 3-5 sentences. "
+                        "Write about different days, different moods, different topics. "
+                        "Be real. Be specific. No generic platitudes."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Write {count} short journal entries. Separate each with ---. "
+                        f"Here's a sample of your voice to match:\n\n"
+                        f"{persona['writing'][:500]}"
+                    ),
+                },
+            ],
+            temperature=1.0,
+            max_tokens=2000,
+        )
+        text = response.choices[0].message.content.strip()
+        entries = [e.strip() for e in text.split("---") if len(e.strip()) > 30]
+        return entries
+
+    except Exception as e:
+        print(f"  (Generation failed: {e})")
+        return []
+
+def evaluate_as_persona(persona: dict, eval_text: str) -> str:
+    """Ask GPT to roleplay as the persona and react to the portrait."""
+    try:
+        from openai import OpenAI
+        client = OpenAI()
+
+        response = client.chat.completions.create(
+            model=EVAL_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        f"You are {persona['name']}, age {persona['age']}. "
+                        f"{persona['bio']} "
+                        "You are NOT an AI assistant. You are this person. "
+                        "React authentically. Be honest, not impressed. "
+                        "Short answers. Real voice. No corporate language."
+                    ),
+                },
+                {"role": "user", "content": eval_text},
+            ],
+            temperature=0.9,  # some personality variance
+            max_tokens=500,
+        )
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        return f"(API error: {e})"
+
+
+# ---------------------------------------------------------------------------
 # ENGINE — run one persona through linafish
 # ---------------------------------------------------------------------------
 
@@ -242,11 +319,18 @@ def run_persona(name: str, persona: dict) -> dict:
     # Feed the writing — split into paragraphs for multiple crystals
     engine = FishEngine(state_dir=state_dir, name=name, d=4.0)
     paragraphs = [p.strip() for p in persona["writing"].split("\n\n") if len(p.strip()) > 30]
-    print(f"\n  Feeding {len(paragraphs)} paragraphs ({len(persona['writing'])} chars)...")
+
+    # If not enough text for formations, generate more with GPT
+    if len(paragraphs) < 8:
+        print(f"\n  Generating additional writing for {persona['name']}...")
+        extra = generate_more_writing(persona, count=10)
+        paragraphs.extend(extra)
+
+    print(f"\n  Feeding {len(paragraphs)} paragraphs...")
     for p in paragraphs:
-        result = engine.eat(p, source="journal")
-    print(f"  Crystals: {result['crystals_added']}, "
-          f"Formations: {result.get('formations', 0)}")
+        engine.eat(p, source="journal")
+    print(f"  Crystals: {len(engine.crystals)}, "
+          f"Formations: {len(engine.formations)}")
 
     # Get the portrait
     portrait = engine.pfc()
@@ -257,29 +341,8 @@ def run_persona(name: str, persona: dict) -> dict:
     # Ask Codex to evaluate as the persona
     eval_text = persona["eval_prompt"].format(portrait=portrait)
 
-    print(f"\n  Asking Codex to react as {persona['name']}...")
-    try:
-        # Write eval prompt to temp file for Codex
-        eval_file = state_dir / "eval_prompt.txt"
-        eval_file.write_text(eval_text, encoding="utf-8")
-        result = subprocess.run(
-            ["codex", "exec", eval_text[:2000]],  # Codex exec takes prompt as arg
-            capture_output=True, text=True, timeout=180,
-            cwd=str(Path(__file__).parent.parent),
-            shell=True,
-        )
-        reaction = result.stdout.strip()
-        if not reaction:
-            # Try stderr
-            reaction = result.stderr.strip()[:500] if result.stderr else "(no output)"
-        # Extract just the Codex response, skip the header
-        lines = reaction.split("\n")
-        codex_lines = [l for l in lines if not l.startswith(("OpenAI", "---", "workdir", "model", "provider", "approval", "sandbox", "reasoning", "session", "user", "mcp:", "exec", "token"))]
-        reaction = "\n".join(codex_lines).strip() or reaction
-    except subprocess.TimeoutExpired:
-        reaction = "(Codex timed out)"
-    except Exception as e:
-        reaction = f"(Error: {e})"
+    print(f"\n  Asking GPT to react as {persona['name']}...")
+    reaction = evaluate_as_persona(persona, eval_text)
 
     print(f"\n  {persona['name']}'s reaction:")
     for line in reaction.split("\n"):
