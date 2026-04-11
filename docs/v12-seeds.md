@@ -99,4 +99,43 @@
 
 ---
 
+## 9. Book Engine (`linafish book`)
+
+**What:** Generic manuscript tool backed by fish. `linafish book ingest manuscript.docx` splits by chapters, crystallizes each separately AND as a whole. `linafish book continuity` cross-tastes adjacent chapters — formation gaps = narrative gaps. `linafish book voice CHARACTER` extracts a character's cognitive signature. `linafish book taste "query"` asks what the book knows.
+
+**Why:** Built and tested April 11, 2026. Fed three books in one session: Phoenix (66K words, 25 chapters, 2905 crystals), Haec Non Sufficient (13K words, 2 sections, 280 crystals), The Holding (3.8K words, 15 sections, first draft written same day). Continuity check found the gear-change in The Holding at section IX→X (0.53 coupling). The fish reads narrative structure without reading for plot.
+
+**How it connects:** The QUANTUM 8-dimension grammar scores each passage. Formations = narrative arcs. Cross-taste = the gradient applied to fiction. Public voice (narrator) vs restricted voice (character interiority) = the same finding as SECC. The book engine IS the gradient tool applied to manuscripts.
+
+**Size:** Small — 200-line script already working. Needs: docx parsing (currently manual), school integration (each character as a member), and the cross-taste to use actual fish coupling instead of size-ratio proxy.
+
+**Prototype:** `scripts/book_engine.py` in SovereignCore_Runtime. Three books already ingested at `~/.linafish/books/`.
+
+---
+
+## 10. Chaincode-Fish Marriage (Temporal Coupling)
+
+**What:** Give crystals chain metadata (chain_id, chain_seq from the 168K chaincode entries in chaincode.db). Add gamma_temporal to coupling — crystals close in TIME couple stronger, gated by Olorina's staleness filter (semantic floor prevents sensor data mega-coupling).
+
+**Why:** The fish sees meaning but not time. Narrative formations emerge from semantic similarity alone. Temporal coupling would let formations emerge from narrative ARCS — sequences of crystals that follow a story. The transition frequency matrix (which formations follow which) is the Bonhoeffer diagnostic in temporal form.
+
+**Size:** Medium — spec complete at `data/chaincode_fish_marriage_spec.md`. Three changes: Crystal dataclass, coupling function, ingest pipeline. Sandbox test plan written. Captain approved March 25.
+
+---
+
+| # | Seed | Impact | Effort | Ship? |
+|---|------|--------|--------|-------|
+| 6 | Origin crystals | High (prevents deletion) | Tiny | v1.2 |
+| 3 | Guppy digest | High (boot quality) | Small | v1.2 |
+| 1 | Inception retune | High (boot problem) | Small | v1.2 |
+| 2 | Two-render-mode | Medium (UX clarity) | Medium | v1.2 |
+| 9 | Book engine | High (new vertical) | Small (done) | v1.2 |
+| 10 | Temporal coupling | High (fish evolution) | Medium | v1.2 |
+| 4 | Kindness | High (product soul) | Large | v1.3 |
+| 5 | Amy AROUND | Research | Unknown | Paper |
+| 7 | Delta compression | Low (optimization) | Medium | v1.3 |
+| 8 | Vision guppy | Medium (imaging) | Large | v2.0 |
+
+---
+
 *The fish has teeth now. These seeds give it a heart.*
