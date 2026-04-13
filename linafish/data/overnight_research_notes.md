@@ -141,3 +141,58 @@ One general statistic in wide circulation: Linear A corpus is ~60% economic/admi
 4. Build series→functional-type lookup table for InsiderPhD dataset
 5. Track down original source for the 60%/25% admin/religious split claim
 
+---
+
+## 2026-04-13 — Cycle 3
+
+**Prerequisite file check:**
+- `data/linear_b_corpus_sources.md` — still does not exist.
+- `data/functional_decipherment_research.md` — still does not exist.
+
+---
+
+### 1. Source of the 60%/25% Admin/Religious Split — RESOLVED (PARTIALLY)
+
+The oft-cited figure (60% economic/administrative, 25% religious, 10% administrative documents, 5% unclassified) traces to **Erik Kiley (2025), "Deciphering Linear A: A Structured Minoan Script for Trade and Religious Administration,"** published on Academia.edu as independent research.
+
+**Critical caveat:** This is not peer-reviewed. Kiley is an independent author; the paper has no journal affiliation. Schoep (2002) and Younger's database are the correct scholarly sources for corpus composition, but neither provides clean percentage figures in the search results accessed. The 60%/25% stat should **not be cited as authoritative** until confirmed against Schoep (2002) directly.
+
+**Action:** Pull Schoep 2002 from http://people.ku.edu/~jyounger/LinearA/Schoep_2002.pdf to verify or replace the figure.
+
+---
+
+### 2. DAMOS License Confirmed
+
+DAMOS content is **CC BY-NC-SA 4.0**. Software is **GPL-3.0**. Bulk export remains unavailable via website. Subprojects page has no EpiDoc or API timeline listed. The CC license means a data snapshot, if provided by Federico Aurora, could be used under the non-commercial research exemption.
+
+**Contact remains:** `federico.aurora@ub.uio.no` — no new path found this cycle.
+
+---
+
+### 3. lineara.xyz — Filter Taxonomy Confirmed
+
+Site has ~1,800+ inscriptions. Filter categories visible in UI: **Word Types, Contexts, Tags, Scribes, Supports**. No functional-type (admin/ritual) tag in the filter set, and no bulk download. The "Contexts" filter is the most promising proxy for register — worth investigating manually for vocabulary: palace, shrine, offering, inventory.
+
+---
+
+### 4. HAL Paper — Blocked, Needs Author Search
+
+"Computational Pattern Recognition in Linear A" (HAL archive, hal-03207615) uses n-gram analysis, LDA topic modeling, k-means clustering, and Word2Vec on the Linear A corpus. Access blocked by Anubis security gate on direct PDF fetch. This paper is closely adjacent to what linafish does (statistical pattern recognition without phonetic decipherment). It may be the closest thing to a competitor in the literature.
+
+**Action:** Search for authors via HAL metadata at `https://hal.science/hal-03207615` (HTML page, not PDF direct) to find author contact or preprint version.
+
+---
+
+### 5. No New Peer-Reviewed Papers (2026)
+
+No peer-reviewed publications on Linear A found dated 2026. The most recent computational work remains the Nepal & Perono Cacciafoco MDPI paper (2024) and the WSEAS software platform paper (2025). The HAL pattern recognition paper needs its date confirmed — may predate 2024.
+
+---
+
+### Next cycle priorities
+1. Fetch Schoep 2002 PDF (http://people.ku.edu/~jyounger/LinearA/Schoep_2002.pdf) to verify corpus composition stats
+2. Fetch HAL metadata page (not PDF) for hal-03207615 to identify authors and year
+3. Draft email to Federico Aurora re: DAMOS CC BY-NC-SA data snapshot
+4. Investigate lineara.xyz "Contexts" filter manually for register-relevant vocabulary
+5. Create `data/linear_b_corpus_sources.md` with InsiderPhD and DAMOS entries
+
