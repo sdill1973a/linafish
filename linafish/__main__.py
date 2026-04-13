@@ -1160,7 +1160,9 @@ def cmd_update(args):
     print(f"Running: {' '.join(pip_cmd)}")
     print()
     try:
-        result = subprocess.run(pip_cmd, check=False)
+        # Inherit stdout/stderr so pip progress is visible in realtime
+        result = subprocess.run(pip_cmd, check=False,
+                               stdout=sys.stdout, stderr=sys.stderr)
     except KeyboardInterrupt:
         print("\nUpdate interrupted.")
         return
