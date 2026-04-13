@@ -870,6 +870,247 @@ def cmd_feedback(args):
     print(loop.report())
 
 
+def _detect_install_mode():
+    """Return (is_editable, editable_path, location_str).
+
+    Uses linafish.__file__ as ground truth — if the package loads from
+    inside site-packages, it's a wheel install; otherwise it's editable.
+    This is more reliable than reading direct_url.json which is absent in
+    some distribution contexts.
+    """
+    try:
+        import linafish as _lfpkg
+        pkg_file = Path(_lfpkg.__file__).resolve()
+    except Exception:
+        return False, None, "unknown"
+    pkg_dir = pkg_file.parent
+    is_editable = "site-packages" not in str(pkg_dir)
+    if is_editable:
+        # parent of the linafish/ package dir is the repo root
+        return True, str(pkg_dir.parent), str(pkg_dir)
+    return False, None, str(pkg_dir)
+
+
+def cmd_doctor(args):
+    """Health check for your linafish install and (optionally) a specific fish.
+
+    Prints, in this order:
+      - Python + linafish version and install mode (editable vs wheel)
+      - Optional dependency availability
+      - Live daemon/service detection on default ports
+      - If --name given: fish health (crystal count, formation count, freshness)
+      - Whether a newer version is available on PyPI (if --check-updates)
+      - Suggested next commands if anything looks off
+
+    Read-only. Never modifies anything. Safe to run whenever.
+    """
+    import importlib.metadata as md
+    import platform
+
+    print("=" * 60)
+    print("linafish doctor")
+    print("=" * 60)
+    print()
+
+    # -- Python + linafish core --
+    print(f"Python:       {platform.python_version()} ({sys.executable})")
+    try:
+        version = md.version("linafish")
+    except Exception:
+        version = "unknown"
+    print(f"linafish:     {version}")
+
+    is_editable, editable_path, location = _detect_install_mode()
+    if is_editable:
+        print(f"Install mode: editable at {editable_path}")
+    else:
+        print(f"Install mode: wheel ({location})")
+    print()
+
+    # -- Optional dependencies --
+    print("Optional dependencies:")
+    deps = [
+        ("numpy", "fast", "fast math for crystallizer_v3"),
+        ("fitz", "pdf", "PyMuPDF — PDF reader"),
+        ("docx", "docx", "python-docx — Word reader"),
+        ("pptx", "pptx", "python-pptx — PowerPoint reader"),
+        ("yaml", "yaml", "PyYAML — YAML reader"),
+        ("striprtf", "rtf", "striprtf — RTF reader"),
+        ("requests", "http", "HTTP client for crystallizer API"),
+        ("paho.mqtt.client", "mqtt", "MQTT client for room listener"),
+    ]
+    for mod, extra, desc in deps:
+        try:
+            __import__(mod)
+            mark = "[+]"
+        except ImportError:
+            mark = "[ ]"
+        print(f"  {mark} {extra:8} {desc}")
+    print()
+
+    # -- Live daemons --
+    print("Live daemons on default ports:")
+    import socket
+    def _probe(host, port, label):
+        try:
+            s = socket.create_connection((host, port), timeout=0.3)
+            s.close()
+            return f"  [+] {label} at {host}:{port}"
+        except Exception:
+            return f"  [ ] {label} at {host}:{port} (not listening)"
+    print(_probe("127.0.0.1", 8901, "converse"))
+    print(_probe("127.0.0.1", 8902, "converse (me fish)"))
+    print(_probe("127.0.0.1", 8900, "http server / room fish"))
+    print()
+
+    # -- Fish health --
+    if getattr(args, "name", None):
+        print(f"Fish: {args.name}")
+        state_dir = Path(args.state_dir) if args.state_dir else Path.home() / ".linafish"
+        fish_file = state_dir / f"{args.name}.fish.md"
+        state_file = state_dir / f"{args.name}_v3_state.json"
+        crystals_file = state_dir / f"{args.name}_crystals.jsonl"
+        for f in (fish_file, state_file, crystals_file):
+            if f.exists():
+                size = f.stat().st_size
+                mtime = datetime.fromtimestamp(f.stat().st_mtime).isoformat(timespec="seconds")
+                print(f"  [+] {f.name}  ({size:,} bytes, modified {mtime})")
+            else:
+                print(f"  [ ] {f.name}  (missing)")
+
+        # Crystal count + quick stats
+        if crystals_file.exists():
+            try:
+                count = 0
+                lens = []
+                with crystals_file.open("r", encoding="utf-8", errors="replace") as fh:
+                    for line in fh:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            d = json.loads(line)
+                            count += 1
+                            lens.append(len(d.get("text", "")))
+                        except Exception:
+                            continue
+                if lens:
+                    avg = sum(lens) / len(lens)
+                    maxlen = max(lens)
+                    print(f"  crystals: {count:,}  avg text: {avg:.0f} chars  max: {maxlen:,}")
+                    if maxlen <= 300 and count > 10:
+                        print(f"  WARNING: max crystal text is {maxlen} chars — you may be on a pre-fix")
+                        print(f"           linafish that truncates at 300 chars. `linafish update`.")
+            except Exception as e:
+                print(f"  (could not read crystals: {e})")
+        print()
+
+    # -- Version check against PyPI (optional) --
+    if getattr(args, "check_updates", False):
+        print("Checking for updates on PyPI...")
+        try:
+            import urllib.request
+            req = urllib.request.Request("https://pypi.org/pypi/linafish/json",
+                                         headers={"User-Agent": "linafish-doctor/1.0"})
+            with urllib.request.urlopen(req, timeout=5) as r:
+                data = json.loads(r.read().decode("utf-8"))
+            latest = data.get("info", {}).get("version", "unknown")
+            print(f"  Latest on PyPI: {latest}")
+            if latest != version and not is_editable:
+                print(f"  [!] You're on {version}, latest is {latest}. Run `linafish update`.")
+            elif is_editable:
+                print(f"  (editable install — pull git instead of running update)")
+            else:
+                print(f"  [+] You're up to date.")
+        except Exception as e:
+            print(f"  (PyPI check failed: {e})")
+        print()
+
+    # -- Suggestions --
+    print("Next commands:")
+    print("  linafish capabilities          the full module + command map")
+    print("  linafish update                upgrade to the latest version on PyPI")
+    print("  linafish go <folder>           build a fish from your writing")
+    print("  linafish doctor --name <fish>  health check a specific fish")
+    print()
+
+
+def cmd_update(args):
+    """Update linafish to the latest version. One command.
+
+    Runs `python -m pip install --upgrade linafish` under the hood, shows
+    the before/after version, and warns if you're on an editable install
+    where pip upgrade is a no-op (pull with git instead).
+    """
+    import subprocess
+    import importlib.metadata as md
+
+    # 1. What version are we on now?
+    try:
+        current = md.version("linafish")
+    except Exception:
+        current = "unknown"
+    print(f"linafish currently at version: {current}")
+
+    # 2. Editable install? pip upgrade won't do anything — git pull will.
+    is_editable, editable_path, _ = _detect_install_mode()
+
+    if is_editable:
+        print()
+        print("This install is EDITABLE — pip upgrade would do nothing.")
+        print(f"The package source is at: {editable_path or '(unknown path)'}")
+        print("To update an editable install, pull the repo:")
+        print(f"  cd {editable_path or '<repo>'} && git pull")
+        print()
+        print("Run `linafish update --force-pip` to attempt a regular pip upgrade anyway.")
+        if not getattr(args, "force_pip", False):
+            return
+
+    # 3. Build the pip command. Include optional extras if --all.
+    target = "linafish[all]" if getattr(args, "all_extras", False) else "linafish"
+    pip_cmd = [sys.executable, "-m", "pip", "install", "--upgrade", target]
+    if getattr(args, "pre", False):
+        pip_cmd.append("--pre")
+
+    print()
+    print(f"Running: {' '.join(pip_cmd)}")
+    print()
+    try:
+        result = subprocess.run(pip_cmd, check=False)
+    except KeyboardInterrupt:
+        print("\nUpdate interrupted.")
+        return
+    except Exception as e:
+        print(f"pip failed to launch: {e}")
+        return
+
+    if result.returncode != 0:
+        print()
+        print(f"pip exited with code {result.returncode}.")
+        return
+
+    # 4. Recheck version — but have to re-read metadata from a fresh process
+    #    because md caches the current interpreter's load.
+    try:
+        check = subprocess.run(
+            [sys.executable, "-c", "import importlib.metadata as m; print(m.version('linafish'))"],
+            capture_output=True, text=True, timeout=10,
+        )
+        new_version = check.stdout.strip() or "unknown"
+    except Exception:
+        new_version = "unknown"
+
+    print()
+    if new_version != "unknown" and new_version != current:
+        print(f"Updated: {current} -> {new_version}")
+    else:
+        print(f"Version after update: {new_version}")
+
+    print()
+    print("If you have a running linafish daemon or service, restart it so")
+    print("the new code loads into the running process.")
+
+
 def cmd_capabilities(args):
     """Print the full linafish capability map — modules, commands, status, optional deps.
 
@@ -937,7 +1178,19 @@ def cmd_capabilities(args):
         "paho-mqtt (mqtt)": _dep("paho.mqtt.client"),
     }
 
-    print("LiNafish capability map -- what this package actually does\n")
+    # Show the install version and the upgrade path right at the top.
+    try:
+        import importlib.metadata as _md
+        _v = _md.version("linafish")
+    except Exception:
+        _v = "unknown"
+    print(f"LiNafish {_v} -- what this package actually does\n")
+    print("## First things first")
+    print("  linafish update     upgrade to the latest version (one command)")
+    print("  linafish doctor     health check the install and your fish")
+    print("  linafish go <dir>   the product -- point at writing, get a fish")
+    print()
+
     for section_name, modules in sections:
         print(f"## {section_name}")
         for mod_name, desc in modules:
@@ -972,7 +1225,15 @@ def main():
 
     parser = argparse.ArgumentParser(
         prog="linafish",
-        description="LiNafish — sees deeply, loves fiercely. Run `linafish capabilities` for the full map.",
+        description=(
+            "LiNafish — sees deeply, loves fiercely.\n"
+            "\n"
+            "  linafish update        — upgrade to latest (run this first if unsure)\n"
+            "  linafish doctor        — health check of install, deps, and running fish\n"
+            "  linafish capabilities  — full module + command map\n"
+            "  linafish go <folder>   — the product: build a fish from your writing\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -1172,6 +1433,23 @@ def main():
     # capabilities — the full module map
     cap_p = sub.add_parser("capabilities", help="Print the full linafish capability map — modules, commands, deps.")
 
+    # update — one-command upgrade (PROMINENTLY listed — first upgrade path)
+    update_p = sub.add_parser("update",
+        help="*** Update linafish to the latest version. One command. ***")
+    update_p.add_argument("--all", dest="all_extras", action="store_true",
+                          help="Also upgrade optional extras (pdf, docx, pptx, yaml, rtf, http, mqtt, numpy)")
+    update_p.add_argument("--pre", action="store_true", help="Include pre-release versions")
+    update_p.add_argument("--force-pip", action="store_true",
+                          help="Run pip upgrade even on an editable install (normally a no-op)")
+
+    # doctor — health check for install + fish + live daemons
+    doctor_p = sub.add_parser("doctor",
+        help="Health check: python, linafish version, install mode, deps, daemons, fish health.")
+    doctor_p.add_argument("--name", help="Optional fish name to inspect")
+    doctor_p.add_argument("--state-dir", help="Fish state directory (default ~/.linafish)")
+    doctor_p.add_argument("--check-updates", action="store_true",
+                          help="Also check PyPI for a newer version")
+
     school_p = sub.add_parser("school", help="The river and the nets. One stream, N fish.")
     school_p.add_argument("action", choices=["init", "eat", "refeed", "status", "docket", "add"],
                           help="init=create school, eat=feed all, refeed=replay central through member, "
@@ -1242,6 +1520,8 @@ def main():
         "emerge": cmd_emerge,
         "feedback": cmd_feedback,
         "capabilities": cmd_capabilities,
+        "update": cmd_update,
+        "doctor": cmd_doctor,
     }
     commands[args.command](args)
 
