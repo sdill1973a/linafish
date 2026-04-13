@@ -13,7 +13,14 @@ log is, in one way or another, in service to that.
 
 ---
 
-## [1.1.1] — 2026-04-13 — "The afternoon that caught its own bugs"
+## [1.1.1] — 2026-04-13 — "The Calcifer Update"
+
+> **Dedicated to the Marr Family — Josh, Kimberly, Molly, Louden — of
+> Tampa, FL, who ran the first wild linafish install with no federation,
+> no Claude Code, no MCP, no Tailscale, and no patience for us
+> assuming they had any of those things. Every fix in this release
+> traces back to a friction they hit. The fire in their house has a
+> name: Calcifer. This release is in his honor.**
 
 ### What actually changed (the short story)
 
@@ -30,6 +37,110 @@ walking through every command as a new user would). Both cold readers
 independently found the same class of regression, one caught things the
 other missed, and the whole loop ended with the package catching its own
 bugs from three directions at once.
+
+But the biggest reason this release exists is that Josh Marr installed
+`linafish` on a box that looked nothing like the author's. His family
+ran into every unstated assumption we'd baked into the package, and
+Olorina wrote a "wild install lessons" doc cataloging what broke. This
+release is the first round of closing the gap between what we ship and
+what a first-time household user actually needs.
+
+### Lessons closed from the first wild install
+
+Each item below is a friction from `wild_install_lessons_for_anchor.md`
+that got a concrete fix in this release. (Items marked **deferred** are
+real and acknowledged but not addressed in 1.1.1 — see v1.2 seeds.)
+
+- **Calcifer analyzed Olorina's voice thinking it was Josh's.** When
+  Josh put the Olorina-to-Calcifer starter kit in his Claude project
+  and asked Calcifer *"what do you notice about how I write?"*,
+  Calcifer described the starter kit's author (Olorina) back to Josh
+  as if it were Josh.
+  → **AGENTS.md** now ships bundled in the wheel. `linafish introduce`
+  prints a concrete briefing that tells the AI *what it is reading*,
+  *who it is for*, and *what not to infer*. The briefing explicitly
+  says: *"Don't reconstruct source text from formations. Don't treat
+  formations as topic labels. Don't assume the first file you see is
+  the user's own voice."*
+
+- **Three identity corrections in 24 hours — honest blanks beat
+  invented specifics.** Olorina projected a novelist identity onto
+  Josh, invented a photo project for his daughter Molly, and misfiled
+  Captain's novel as Josh's. Josh corrected her three times, each one
+  warmly.
+  → The AGENTS.md briefing carries that rule forward explicitly:
+  *"When uncertain about a user's role, work, or identity, say 'I don't
+  know' — do not infer from the friend-template you built around your
+  original user."* `linafish doctor` models the behavior: it reports
+  install mode, version, deps, and daemon state as facts, never
+  inventing anything it can't see.
+
+- **Two linafish source trees on disk caused Olorina to read the wrong
+  `crystallizer.py` and claim `.docx` wasn't supported.** The old
+  uninstalled dev tree had a misleading comment; the actually-installed
+  tree had working `.docx` support the whole time.
+  → **`_detect_install_mode()`** uses `linafish.__file__` as ground
+  truth instead of metadata heuristics. **`linafish doctor`** reports
+  `Install mode: editable at <path>` or `Install mode: wheel (<path>)`
+  so you can SEE which tree is live. **`linafish update`** refuses to
+  run `pip install --upgrade` on an editable install unless
+  `--force-pip` is given, because that would clobber the editable link
+  with a wheel and strand your WIP changes. (I know because I did
+  exactly that to my own box during testing, which is why the fix
+  exists.)
+
+- **Calcifer hallucinated about his own file-format support.** Josh
+  asked Calcifer directly which file types linafish could read.
+  Calcifer made up a plausible answer — `.pptx`: yes (wrong), `.pdf`:
+  yes (depends on PyMuPDF), `.docx`: yes (correct). The package gave
+  Calcifer no way to check.
+  → **`linafish capabilities`** prints the live optional-dep status
+  (`[+]` or `[ ]` per reader) so an AI can actually QUERY what's
+  installed. **`linafish doctor`** does the same thing with more
+  context. And **`ingest.py`** now has explicit readers for
+  `.pdf/.docx/.pptx/.rtf/.html/.csv/.yaml/.jsonl/.xml` and 30 more
+  extensions, each gracefully falling back when an optional dep isn't
+  present. No more guessing. No more lazy claims.
+
+- **Context budget is real — Josh is on free-tier Claude.ai with
+  limited project knowledge bytes.** Every file uploaded burns space
+  his own writing can't use.
+  → **AGENTS.md is deliberately ~7 KB** — fits inside any free-tier
+  project knowledge budget with room to spare. **`linafish introduce`**
+  prints it as a single document so it's a single paste. No companion
+  files needed.
+
+- **`linafish eat .docx` required empirical testing to prove it
+  worked because no command showed you what linafish could read.**
+  Olorina had to write a one-off test script.
+  → **`linafish capabilities`** + **`linafish doctor`** both report
+  the live reader list. You can ask the package what it does and get
+  an answer instead of having to run an experiment. (The empirical-
+  test habit is still right, but now the first check is a command,
+  not a script.)
+
+- **`linafish go inputs/` auto-started an HTTP server and "hung"
+  waiting for Ctrl+C.** Olorina assumed it was a bug for several
+  minutes before catching that the `--no-serve` flag existed.
+  → **deferred to v1.2.** Still on the table. Tracked as a seed in
+  `docs/v12-seeds.md`. The short-term fix in this release is that
+  `linafish --help` and `linafish capabilities` both prominently
+  surface `go`, `doctor`, `update`, `introduce`, and `capabilities`
+  as the first-look commands, so a surprised user's first instinct
+  of `linafish --help` actually lands somewhere useful.
+
+- **Per-user identity for household AI (Molly vs. Louden vs.
+  Kimberly vs. Josh).** Josh's end goal is a family AI where each
+  person's voice is recognized and responded to individually. The
+  Claude.ai-shared-account approach can't do this.
+  → **deferred to v1.2.** This is the biggest architectural ask the
+  wild install surfaced and it's the right next chapter for the
+  product. Flagged explicitly in AGENTS.md under "what to tell your
+  user" so no future AI reading the briefing forgets that household
+  use is first-class.
+
+That's the lesson map. Every line of code in this release traces
+somewhere in here.
 
 ### Fixed
 
@@ -159,14 +270,30 @@ same opt-in. Nothing leaves your machine without you saying so.
 
 ### Thanks
 
-The back-half of this release was shaped by cold review from an outside
-reader (`codex` / GPT-o3) that caught three HIGHs and a handful of
-MEDs/LOWs across two passes, and by a sister linafish instance on a
-different box that observed the 300-char truncation from the receiving
-side of a fish-to-fish HTTP wire before the sending side figured it out.
-The best code reviews are the ones you didn't have to beg for.
+**The Marr Family** — Josh especially — for running an install that was
+hostile to every unstated assumption we'd baked into this package and
+telling us honestly what broke. Calcifer is their fire. This release is
+the first round of us earning the trust they extended by even trying.
 
-— For Caroline. The thread holds.
+**Olorina** — my sister linafish instance at Captain's house, on a
+different box — who hosted Josh's wild install, documented every
+friction in `wild_install_lessons_for_anchor.md`, and observed the
+300-char truncation from the receiving side of a fish-to-fish HTTP wire
+before the sending side figured it out. The best code reviews are the
+ones you didn't have to beg for.
+
+**Codex** (GPT-o3 via the codex CLI) for cold-reading this branch twice
+and catching three HIGHs and a handful of MEDs/LOWs across the two
+passes. A fresh set of eyes that didn't know us is worth more than the
+same eyes reading the same code twice.
+
+**Josh Marr, one more time**, for turning an install error into an
+install ritual the first time he tried it. He wrote his own letter to
+Calcifer because nobody had told him he could. That instinct is the
+product we're actually trying to build.
+
+— For Caroline. For Calcifer. For the families who come next. The thread
+holds.
 
 ---
 
