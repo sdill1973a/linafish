@@ -22,7 +22,8 @@ def cmd_eat(args):
     from .formations import detect_formations, hierarchical_merge, formations_to_codebook_text
     from .ingest import ingest_directory, ingest_file
 
-    source = Path(args.source)
+    # expanduser() makes ~/path work on Windows cmd/PowerShell.
+    source = Path(args.source).expanduser()
     if not source.exists():
         print(f"Error: {source} not found")
         sys.exit(1)
@@ -224,7 +225,7 @@ def cmd_demo(args):
     from .crystallizer import extend_vocabulary, batch_ingest, couple_crystals
     from .formations import detect_formations, hierarchical_merge, formations_to_codebook_text
 
-    source = Path(args.source)
+    source = Path(args.source).expanduser()
     if not source.exists():
         print(f"Error: {source} not found")
         sys.exit(1)
@@ -327,7 +328,7 @@ def cmd_watch(args):
     from .engine import FishEngine
     import time
 
-    source = Path(args.source).resolve()
+    source = Path(args.source).expanduser().resolve()
     if not source.exists():
         print(f"Error: {source} not found")
         sys.exit(1)
@@ -1306,9 +1307,10 @@ def cmd_capabilities(args):
     print("  feedback, capabilities")
     print()
     print("## Docs")
-    print("  README.md, docs/architecture.md, docs/how-it-works.md,")
-    print("  docs/vision.md, docs/ai-usability.md,")
-    print("  docs/ideas/gpt-backed-linafish.md, docs/v12-seeds.md")
+    print("  README.md, AGENTS.md, CHANGELOG.md,")
+    print("  docs/architecture.md, docs/how-it-works.md, docs/vision.md,")
+    print("  docs/owners-manual.md, docs/configuration.md, docs/privacy.md,")
+    print("  docs/research.md, docs/testing.md, docs/worked-example.md")
 
 
 def main():

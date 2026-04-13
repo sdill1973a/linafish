@@ -1435,7 +1435,10 @@ def go(
     # Step 0: Resolve source path
     # -----------------------------------------------------------------------
     if source:
-        source_path = Path(source).resolve()
+        # expanduser() makes `linafish go ~/my-writing` work on Windows
+        # cmd/PowerShell, where the shell does not expand ~ before Python
+        # sees it. No-op when the path has no leading ~.
+        source_path = Path(source).expanduser().resolve()
     else:
         source_path = Path.cwd().resolve()
 

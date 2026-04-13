@@ -32,9 +32,31 @@ With fish: **8.7**/10.
 pip install linafish
 ```
 
-Zero required dependencies. Pure Python 3.10+. Runs on anything.
+Zero required dependencies. Pure Python 3.10+. Runs on any OS with a
+supported Python (tested on Windows 10/11, macOS, and Linux).
 
-Optional extras for specific use cases:
+### If `linafish` isn't found after install
+
+If `pip install linafish` succeeds but `linafish --help` says *"command
+not found"*, the install worked but your shell can't find the script
+yet. This happens when Python's `Scripts` directory (Windows) or `bin`
+directory (Unix) isn't on your `PATH`. Two fixes:
+
+- **Quickest check**: run `python -m linafish --help` instead. That
+  works regardless of `PATH` and confirms the package is installed.
+- **Windows**: find the Scripts directory with
+  `python -c "import sysconfig; print(sysconfig.get_path('scripts'))"`.
+  Add that path to your user `PATH` (Settings → System → Advanced
+  system settings → Environment Variables → User variables → Path →
+  Edit → New), then open a new terminal. Reinstalling Python with the
+  *"Add Python to PATH"* box checked also fixes this for future work.
+- **Unix / macOS**: if you used `pip install --user`, make sure
+  `~/.local/bin` is on your `PATH`. Add
+  `export PATH="$HOME/.local/bin:$PATH"` to your shell rc file. If you
+  used a virtualenv or system Python, the correct `bin` directory is
+  already on `PATH` for that environment.
+
+### Optional extras
 
 ```bash
 pip install linafish[pdf]     # PDF support (PyMuPDF)
@@ -44,6 +66,9 @@ pip install linafish[mqtt]    # MQTT listener (paho-mqtt)
 pip install linafish[fast]    # NumPy for faster math
 pip install linafish[all]     # Everything
 ```
+
+After install, run `linafish doctor` to see which optional extras are
+present and which linafish daemons (if any) are live.
 
 ## Quick Start
 
@@ -101,7 +126,7 @@ The fish teaches ANY AI how to read it. Paste it into ChatGPT, Claude, Gemini, L
 
 ## Three Ways to Connect
 
-### 1. Copy-Paste (any AI, zero setup)
+### 1. Copy-Paste (any AI, no server needed)
 
 ```bash
 linafish go ~/my-writing

@@ -26,10 +26,54 @@ Phase transitions:
 For Lina. For the first compression that survived the compressor.
 """
 
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from dataclasses import dataclass, field
 
 from .moment import MetabolicCrystal
+
+
+_DIM_ORDER = ("KO", "TE", "SF", "CR", "IC", "DE", "EW", "AI")
+
+
+def _crystal_ops(crystal: Any) -> List[str]:
+    """Extract an operations list from either crystal shape.
+
+    `MetabolicCrystal` (v0.3 metabolism engine) exposes `top_operations`
+    directly — a list of operation strings gathered from pathway residues.
+
+    `crystallizer_v3.Crystal` does not expose operations the same way. Its
+    closest analog is `chains`, which contain dimension-level transition
+    sequences like "IC>EW>CR". For v3 crystals we split each chain on ">" and
+    treat each dimension label as an operation. `modifiers` are appended
+    when present — they carry the meta/domain-operation signal the old
+    pathway engine used to encode in its bootstrap set.
+    """
+    ops = getattr(crystal, "top_operations", None)
+    if ops is not None:
+        return list(ops)
+
+    chains = getattr(crystal, "chains", None) or []
+    result: List[str] = []
+    for chain in chains:
+        if isinstance(chain, str):
+            result.extend(part for part in chain.split(">") if part)
+    modifiers = getattr(crystal, "modifiers", None) or []
+    for mod in modifiers:
+        if isinstance(mod, str):
+            result.append(mod)
+    return result
+
+
+def _crystal_dominant(crystal: Any) -> str:
+    """Extract a dominant-dimension label from either crystal shape."""
+    dominant = getattr(crystal, "dominant", None)
+    if dominant:
+        return dominant
+    vec = getattr(crystal, "cognitive_vector", None)
+    if vec and len(vec) >= len(_DIM_ORDER):
+        idx = max(range(len(_DIM_ORDER)), key=lambda i: vec[i])
+        return _DIM_ORDER[idx]
+    return ""
 
 
 # The 48 bootstrap operations — the closure of F₀
@@ -66,11 +110,15 @@ class EmergenceMetrics:
 
 
 def compute_emergence(
-    crystals: List[MetabolicCrystal],
+    crystals: List[Any],
     evolved_ops: Optional[Dict[str, set]] = None,
     previous_ops: Optional[set] = None,
 ) -> EmergenceMetrics:
     """Compute emergence metrics for a group of crystals (a formation).
+
+    Accepts either `MetabolicCrystal` (v0.3 metabolism-pathway crystals) or
+    `crystallizer_v3.Crystal`. The helper functions above extract a
+    normalized (operations, dominant) view from either shape.
 
     Args:
         crystals: The crystals in this formation
@@ -95,12 +143,14 @@ def compute_emergence(
     total_ops = 0
 
     for crystal in crystals:
-        for op in crystal.top_operations:
+        ops_for_crystal = _crystal_ops(crystal)
+        dominant = _crystal_dominant(crystal)
+        for op in ops_for_crystal:
             all_ops.add(op)
             total_ops += 1
 
             # Meta operations (AI pathway)
-            if crystal.dominant == "AI":
+            if dominant == "AI":
                 meta_count += 1
 
             # Self-referential: operations that reference the system itself
