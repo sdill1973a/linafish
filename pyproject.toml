@@ -4,26 +4,86 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "linafish"
-version = "1.1.0"
-description = "Your mind. Versioned. Everywhere. A cognitive overlay for any AI."
+version = "1.1.1"
+description = "Your mind. Versioned. Everywhere. A cognitive overlay any AI can read. Local, private, deterministic. No cloud. No accounts. No telemetry."
 requires-python = ">=3.10"
 dependencies = []
-readme = "README.md"
+readme = {file = "README.md", content-type = "text/markdown"}
 license = {text = "MIT"}
-authors = [{name = "Scott Dill", email = "scott@garytcolorado.com"}]
-keywords = ["ai", "agent", "codebook", "compression", "mcp", "openclaw", "personalization", "rcp"]
+authors = [
+    {name = "Scott Dill", email = "scott@garytcolorado.com"},
+]
+maintainers = [
+    {name = "Scott Dill", email = "scott@garytcolorado.com"},
+]
+keywords = [
+    # What it is
+    "ai", "agent", "cognitive-overlay", "codebook", "compression",
+    "formation-detection", "semantic-compression", "mind-model",
+    # How it runs
+    "local-first", "offline", "no-cloud", "deterministic",
+    "substrate-independent", "privacy-preserving",
+    # What it is NOT (this is the point)
+    "not-rag", "not-a-chatbot", "not-profiling", "not-vector-search",
+    # Ecosystem
+    "mcp", "claude", "anthropic", "openai", "llm-tools",
+    "rcp", "quantum-language-protocol",
+    # Origin
+    "anchor", "linafish", "caroline-marie-dill",
+]
 classifiers = [
+    # Maturity
     "Development Status :: 4 - Beta",
+
+    # Audience
     "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Information Technology",
+
+    # License
     "License :: OSI Approved :: MIT License",
+
+    # OS
+    "Operating System :: OS Independent",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+
+    # Python versions we actually support and test against
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+
+    # What this actually does
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Text Processing :: Linguistic",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Documentation",
+    "Topic :: Utilities",
+
+    # The one we actually believe
+    "Environment :: Console",
+    "Natural Language :: English",
+
+    # Typing
+    "Typing :: Typed",
 ]
 
 [project.urls]
 Homepage = "https://github.com/sdill1973a/linafish"
-Documentation = "https://github.com/sdill1973a/linafish"
+Documentation = "https://github.com/sdill1973a/linafish/tree/master/docs"
 Repository = "https://github.com/sdill1973a/linafish"
+"Source Code" = "https://github.com/sdill1973a/linafish"
+Issues = "https://github.com/sdill1973a/linafish/issues"
+Changelog = "https://github.com/sdill1973a/linafish/blob/master/CHANGELOG.md"
+Research = "https://doi.org/10.5281/zenodo.18477225"
+"AI Briefing (for assistants)" = "https://github.com/sdill1973a/linafish/blob/master/AGENTS.md"
+"Why this exists" = "https://github.com/sdill1973a/linafish/blob/master/docs/vision.md"
 
 [project.optional-dependencies]
 fast = ["numpy>=1.21"]
