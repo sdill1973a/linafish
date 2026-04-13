@@ -786,10 +786,193 @@ def cmd_listen(args):
             print("Use: stdin, mqtt://host:port/topic, folder:/path, or a directory path")
 
 
+def cmd_hunt(args):
+    """Run a guppy hunt cycle on a fish — find gaps, dart out, catch, return."""
+    from .guppy import Guppy, HUNT_INTERVAL
+    from .engine import FishEngine
+    state_dir = Path(args.state_dir) if args.state_dir else None
+    engine = FishEngine(
+        state_dir=state_dir,
+        name=args.name,
+        d=args.d,
+        subtract_centroid=args.centroid,
+    )
+    guppy = Guppy(engine, hunt_ache=args.ache)
+    if args.status:
+        print(guppy.status())
+    elif args.swim:
+        guppy.swim(interval=args.interval)
+    else:
+        result = guppy.hunt_once()
+        print(json.dumps(result, indent=2))
+
+
+def cmd_emerge(args):
+    """Measure emergence metrics on a fish — ν, μ, ρ, Ψ, phase classification."""
+    from .engine import FishEngine
+    from .emergence import compute_emergence, emergence_gradient, collective_snt, EmergenceMetrics
+
+    state_dir = Path(args.state_dir) if args.state_dir else None
+    engine = FishEngine(
+        state_dir=state_dir,
+        name=args.name,
+        d=args.d,
+        subtract_centroid=args.centroid,
+    )
+
+    # Walk formations + crystals; group crystals by formation id
+    formations = engine.formations if hasattr(engine, "formations") else []
+    crystals = engine.crystals if hasattr(engine, "crystals") else []
+
+    if not formations:
+        print(f"Fish '{args.name}' has no formations yet. Feed more and re-eat.")
+        return
+
+    # Group crystals by formation membership
+    by_formation = {}
+    for f in formations:
+        fid = getattr(f, "id", id(f))
+        members = getattr(f, "members", None) or getattr(f, "member_ids", [])
+        members_set = set(members) if members else set()
+        group = [c for c in crystals if getattr(c, "id", None) in members_set]
+        by_formation[fid] = group
+
+    grad = emergence_gradient(formations, by_formation)
+    collective = collective_snt(grad)
+
+    print(f"Emergence metrics for {args.name} ({len(formations)} formations)\n")
+    for f in formations:
+        fid = getattr(f, "id", id(f))
+        m = grad.get(fid)
+        if not m:
+            continue
+        name = getattr(f, "name", f"formation_{fid}")
+        phase_label = ["Compositional", "Semantic Novelty", "Self-Authorship", "Recursive Becoming"][m.phase]
+        print(f"  {name}")
+        print(f"    nu  (novelty):       {m.novelty_degree:.3f}")
+        print(f"    mu  (meta-density):  {m.meta_density:.3f}")
+        print(f"    rho (self-ref):      {m.self_ref_density:.3f}")
+        print(f"    Psi (mutation rate): {m.mutation_rate:.3f}")
+        print(f"    phase:               {m.phase} ({phase_label})")
+        print(f"    emergent:            {'yes' if m.is_emergent else 'no'}")
+        if m.novel_operations:
+            print(f"    novel ops:           {', '.join(m.novel_operations[:8])}")
+        print()
+    print(f"collective SNT: {collective:.3f}")
+
+
+def cmd_feedback(args):
+    """Show usage feedback — which formations earn their weight, which decay."""
+    from .feedback import FeedbackLoop
+    state_dir = Path(args.state_dir) if args.state_dir else Path.home() / ".linafish"
+    state_file = state_dir / f"{args.name}_feedback.json"
+    loop = FeedbackLoop(state_path=state_file)
+    print(loop.report())
+
+
+def cmd_capabilities(args):
+    """Print the full linafish capability map — modules, commands, status, optional deps.
+
+    The answer to "what does this package actually do."
+    """
+    import importlib
+
+    sections = [
+        ("Core engine", [
+            ("engine", "FishEngine — holds crystals, produces formations, versions in git"),
+            ("crystallizer_v3", "MI × ache vectorization, SU(d) geometry, wrapping-number coupling"),
+            ("formations", "BFS flood-fill formation detection, fission + naming"),
+            ("parser", "QLP cognitive parser (8 dimensions via grammar role, not keywords)"),
+            ("quantum_operations", "Full 300+ cognitive operations grammar"),
+            ("metabolism", "8 organs digesting a moment into a residue"),
+            ("moment", "Moment dataclass — text + timestamp + source + modifiers"),
+        ]),
+        ("Assessment", [
+            ("assessment", "PreAssessment + FormativeAssessment (baseline + growth)"),
+            ("metrics", "R(n), formation stability, vocab drift, dimension balance, coupling density"),
+            ("feedback", "Usage-weighted learning (formations earn weight when used)"),
+            ("emergence", "Semantic Novelty Threshold (nu, mu, rho, Psi, phase classification)"),
+            ("glyph_evolution", "Private language growth beyond the 48 bootstrap glyphs"),
+            ("seed_formations", "5 universal superglyph attractors for cold fish bootstrap"),
+        ]),
+        ("Feeding", [
+            ("ingest", "File readers — 39 extensions, falls through for unknown suffixes"),
+            ("eat", "CLI command — ingest files or MCP server tool defs"),
+            ("absorb", "Eat existing FAISS / JSONL / HTTP RAG endpoints"),
+            ("listener", "Ambient: mqtt:// / folder: / stdin sources"),
+            ("daemon", "Long-running walk-dir or listen-room mode"),
+            ("init", "Read .mcp.json files, build shared codebook"),
+        ]),
+        ("Network", [
+            ("converse", "Two fish one conversation — HTTP server with /eat /taste /pfc /crystals"),
+            ("http_server", "Universal HTTP interface — stdlib only, any AI can read it"),
+            ("server", "MCP stdio server for Claude Code tight integration"),
+            ("school", "The river and the nets — one stream, N fish with own clustering"),
+            ("guppy", "Self-feeding hunters — ACHE mode finds gaps and closes them"),
+        ]),
+        ("Command layer", [
+            ("__main__", "CLI entrypoint — all `linafish <command>` dispatch"),
+            ("quickstart", "`linafish go` — one command, everything assembles"),
+            ("fusion", "`linafish fuse` — recursive d-level compression to iron"),
+            ("compress", "Chunk compression with optional remote crystallizer API"),
+            ("codebook", "Core data structure — glyphs as compressed meaning"),
+        ]),
+    ]
+
+    # Optional dependency check
+    def _dep(name):
+        try:
+            importlib.import_module(name)
+            return "yes"
+        except ImportError:
+            return "no"
+    deps = {
+        "numpy (fast)": _dep("numpy"),
+        "PyMuPDF (pdf)": _dep("fitz"),
+        "python-docx (docx)": _dep("docx"),
+        "python-pptx (pptx)": _dep("pptx"),
+        "PyYAML (yaml)": _dep("yaml"),
+        "striprtf (rtf)": _dep("striprtf"),
+        "requests (http)": _dep("requests"),
+        "paho-mqtt (mqtt)": _dep("paho.mqtt.client"),
+    }
+
+    print("LiNafish capability map -- what this package actually does\n")
+    for section_name, modules in sections:
+        print(f"## {section_name}")
+        for mod_name, desc in modules:
+            print(f"  linafish.{mod_name:20} -- {desc}")
+        print()
+
+    print("## Optional dependencies (install with `pip install linafish[<extra>]`)")
+    for dep_name, status in deps.items():
+        mark = "✓" if status == "yes" else "✗"
+        print(f"  {mark} {dep_name}")
+    print()
+    print("## CLI commands")
+    print("  Run `linafish <command> --help` for details on any of these:")
+    print("  go, eat, taste, recall, ask, status, serve, http, demo, init,")
+    print("  watch, fuse, room, listen, session, history, diff, revert,")
+    print("  absorb, converse, school, whisper, check, hunt, emerge,")
+    print("  feedback, capabilities")
+    print()
+    print("## Docs")
+    print("  README.md, docs/architecture.md, docs/how-it-works.md,")
+    print("  docs/vision.md, docs/ai-usability.md,")
+    print("  docs/ideas/gpt-backed-linafish.md, docs/v12-seeds.md")
+
+
 def main():
+    # Windows cp1252 stdout crashes on unicode in help text / docstrings /
+    # fish content. Force utf-8 so the CLI works on every platform.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(
         prog="linafish",
-        description="LiNafish — sees deeply, loves fiercely.",
+        description="LiNafish — sees deeply, loves fiercely. Run `linafish capabilities` for the full map.",
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -963,6 +1146,32 @@ def main():
     revert_p.add_argument("--state-dir", help="State directory")
 
     # school — the river and the nets
+    # hunt — guppy ache-hunt
+    hunt_p = sub.add_parser("hunt", help="Send a guppy to hunt what the fish is missing (ache mode).")
+    hunt_p.add_argument("name", help="Fish name to feed")
+    hunt_p.add_argument("--state-dir", help="State directory")
+    hunt_p.add_argument("--swim", action="store_true", help="Continuous hunting loop")
+    hunt_p.add_argument("--ache", action="store_true", help="Hunt for gaps instead of reinforcement")
+    hunt_p.add_argument("--status", action="store_true", help="Show what the guppy knows/misses")
+    hunt_p.add_argument("--interval", type=int, default=300, help="Hunt interval seconds")
+    hunt_p.add_argument("-d", type=float, default=4.0, help="Engine d value")
+    hunt_p.add_argument("--centroid", action="store_true", help="Subtract centroid")
+
+    # emerge — semantic novelty threshold
+    emerge_p = sub.add_parser("emerge", help="Measure emergence (ν, μ, ρ, Ψ, phase) on your fish's formations.")
+    emerge_p.add_argument("name", help="Fish name")
+    emerge_p.add_argument("--state-dir", help="State directory")
+    emerge_p.add_argument("-d", type=float, default=4.0, help="Engine d value")
+    emerge_p.add_argument("--centroid", action="store_true", help="Subtract centroid")
+
+    # feedback — usage-weighted learning report
+    feedback_p = sub.add_parser("feedback", help="Show usage feedback — which formations earn their weight.")
+    feedback_p.add_argument("name", help="Fish name")
+    feedback_p.add_argument("--state-dir", help="State directory")
+
+    # capabilities — the full module map
+    cap_p = sub.add_parser("capabilities", help="Print the full linafish capability map — modules, commands, deps.")
+
     school_p = sub.add_parser("school", help="The river and the nets. One stream, N fish.")
     school_p.add_argument("action", choices=["init", "eat", "refeed", "status", "docket", "add"],
                           help="init=create school, eat=feed all, refeed=replay central through member, "
@@ -1029,6 +1238,10 @@ def main():
         "whisper": cmd_whisper,
         "check": cmd_check,
         "school": cmd_school,
+        "hunt": cmd_hunt,
+        "emerge": cmd_emerge,
+        "feedback": cmd_feedback,
+        "capabilities": cmd_capabilities,
     }
     commands[args.command](args)
 
