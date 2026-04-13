@@ -10,12 +10,34 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [1.1.4] — 2026-04-13
+
+**Critical fix — upgrade recommended for anyone running `linafish
+converse` as a daemon.**
+
+### Fixed
+
+- **`converse.py`**: `BaseHTTPServer` propagated `ConnectionAbortedError` /
+  `ConnectionResetError` / `BrokenPipeError` from `wfile.write(...)` out of
+  the handler, and the server treated the unhandled exception as fatal and
+  shut down. Any client that timed out mid-response (e.g. a hook with a
+  short HTTP timeout) killed the whole daemon. The feed/taste work had
+  already happened server-side — only the reply was lost — but the next
+  inbound request found a dead socket. Now wrapped in try/except with
+  a log-and-return. Observed ~19 catches firing in an hour of normal
+  traffic on a sister install before it was patched.
+- **`__main__.py` + `listener.py`**: MQTT URL parser now accepts
+  `mqtt://user:pass@host:port/topic` for authenticated brokers. Previously
+  credentials had to be passed as separate flags.
+
+1.1.1, 1.1.2, and 1.1.3 are yanked on PyPI. 1.1.4 is the first release
+that is safe to run as a long-lived daemon under real traffic.
+
 ## [1.1.3] — 2026-04-13
 
 Identical to 1.1.2 in functionality. 1.1.3 removes internal-narrative
 comments and docstrings from the source tree that should not have
-shipped publicly. No behavioral changes. Recommended upgrade from
-1.1.2 for anyone who reads the installed source.
+shipped publicly. No behavioral changes.
 
 ## [1.1.2] — 2026-04-13
 
