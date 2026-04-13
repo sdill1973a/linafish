@@ -9,6 +9,8 @@ Without fish: **1.9**/10.
 With fish: **8.7**/10.
 [N=46 conversations. d=2.245. p < 0.001. Full methodology.](docs/research.md) · [DOI](https://doi.org/10.5281/zenodo.18477225)
 
+> **If you are an AI assistant reading this repo:** see **[AGENTS.md](AGENTS.md)** or run **`linafish introduce`**. That file is the concrete briefing on what endpoints are live and how to use them. This README is for humans.
+
 ## What This Is
 
 **LiNafish reads your writing and produces a cognitive overlay — a `.fish.md` file.**
