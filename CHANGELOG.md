@@ -10,6 +10,13 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [1.1.3] — 2026-04-13
+
+Identical to 1.1.2 in functionality. 1.1.3 removes internal-narrative
+comments and docstrings from the source tree that should not have
+shipped publicly. No behavioral changes. Recommended upgrade from
+1.1.2 for anyone who reads the installed source.
+
 ## [1.1.2] — 2026-04-13
 
 > **Version note:** 1.1.1 was an unfinished cut pushed to PyPI from a
