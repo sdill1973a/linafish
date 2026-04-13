@@ -559,6 +559,23 @@ BINARY_SKIP = {
 FALLTHROUGH_MAX_BYTES = 5 * 1024 * 1024  # 5 MB
 
 
+def read_file_as_text(path: Path) -> str:
+    """Read a file through the proper reader and return its joined text.
+
+    This is the "one-shot" shape used by `linafish go` and other callers
+    that want a single string per file instead of chunked Chunk objects.
+    It still goes through the READERS dispatch, so HTML gets its tags
+    stripped, CSV becomes readable rows, YAML pretty-prints, etc.
+
+    Returns empty string if the file can't be read or is binary-skipped.
+    Never raises.
+    """
+    chunks = ingest_file(path)
+    if not chunks:
+        return ""
+    return "\n\n".join(c.text for c in chunks if c.text)
+
+
 def ingest_file(path: Path) -> list[Chunk]:
     """Ingest a single file. Unknown suffixes fall back to read_text with
     a size guard so we don't try to UTF-8 decode a 500 MB binary blob."""
