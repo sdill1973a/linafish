@@ -2,12 +2,31 @@
 Ingest — the mouth of the fish.
 
 Reads files, extracts text, chunks by natural boundaries.
-The fish eats everything: .md, .txt, .pdf, .docx, .json, .py.
 Each file is an "exchange" — R(n) grows with each one ingested.
 
-The chunking is semantic, not mechanical. A 512-token window
-doesn't know where meaning lives. Headers, paragraphs, and
-topic shifts do.
+Supported formats (stdlib only unless marked):
+  .md, .markdown    — markdown, chunked by headers
+  .txt, .log        — plain text, chunked by paragraphs
+  .rst, .tex, .org  — writing formats, chunked as text
+  .html, .htm       — HTML, tags stripped
+  .csv, .tsv        — tabular data, formatted as text rows
+  .json             — JSON, pretty-printed
+  .jsonl, .ndjson   — line-delimited JSON, one chunk per record
+  .yaml, .yml       — YAML, via pyyaml if installed, else read as text
+  .toml, .ini, .cfg — config files, read as text
+  .xml              — XML, tags stripped
+  .py, .js, .ts, .go, .rs — source code, chunked by def/class/fn
+  .pdf              — PDF, via PyMuPDF or pdfplumber (optional deps)
+  .docx             — Word, via python-docx (optional dep)
+  .pptx             — PowerPoint, via python-pptx (optional dep)
+  .rtf              — Rich Text, via striprtf (optional) or regex strip
+
+Unknown suffixes fall through to read_text, so a directory of mixed
+content will still be eaten. Set strict=True on ingest_directory to
+keep only extensions in READERS.
+
+The chunking is semantic, not mechanical. A 512-token window doesn't
+know where meaning lives. Headers, paragraphs, and topic shifts do.
 """
 
 from __future__ import annotations
@@ -207,6 +226,184 @@ def read_json(path: Path) -> list[Chunk]:
         return [Chunk(text=text, source=str(path), chunk_type="data")]
 
 
+def read_jsonl(path: Path) -> list[Chunk]:
+    """Read line-delimited JSON — one chunk per record."""
+    import json
+    chunks = []
+    with path.open("r", encoding="utf-8", errors="replace") as f:
+        for i, line in enumerate(f):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+                text = json.dumps(data, indent=2)
+            except json.JSONDecodeError:
+                text = line
+            if len(text) > 20:
+                chunks.append(Chunk(
+                    text=text,
+                    source=str(path),
+                    section=f"record_{i}",
+                    chunk_type="data",
+                    position=i,
+                ))
+    return chunks
+
+
+def read_html(path: Path) -> list[Chunk]:
+    """Read an HTML file, strip tags, chunk by paragraphs.
+
+    Uses html.parser from stdlib — no extra deps. Preserves link text and
+    headings by wrapping them in plain prose.
+    """
+    from html.parser import HTMLParser
+
+    class _Stripper(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.parts: list[str] = []
+            self.in_script = False
+            self.in_style = False
+
+        def handle_starttag(self, tag, attrs):
+            if tag in ("script", "style"):
+                if tag == "script":
+                    self.in_script = True
+                else:
+                    self.in_style = True
+            elif tag in ("p", "br", "div", "li", "tr"):
+                self.parts.append("\n")
+            elif tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
+                self.parts.append("\n\n# ")
+
+        def handle_endtag(self, tag):
+            if tag == "script":
+                self.in_script = False
+            elif tag == "style":
+                self.in_style = False
+            elif tag in ("h1", "h2", "h3", "h4", "h5", "h6", "p"):
+                self.parts.append("\n")
+
+        def handle_data(self, data):
+            if not (self.in_script or self.in_style):
+                self.parts.append(data)
+
+        def text(self) -> str:
+            return "".join(self.parts)
+
+    text = path.read_text(encoding="utf-8", errors="replace")
+    parser = _Stripper()
+    try:
+        parser.feed(text)
+        cleaned = re.sub(r"[ \t]+", " ", parser.text())
+        cleaned = re.sub(r"\n\s*\n\s*\n+", "\n\n", cleaned).strip()
+    except Exception:
+        cleaned = re.sub(r"<[^>]+>", " ", text)
+    return chunk_by_paragraphs(cleaned, str(path))
+
+
+def read_csv(path: Path) -> list[Chunk]:
+    """Read CSV/TSV, format rows as readable text. Header-aware."""
+    import csv
+    chunks = []
+    sep = "\t" if path.suffix.lower() == ".tsv" else ","
+    try:
+        with path.open("r", encoding="utf-8", errors="replace", newline="") as f:
+            reader = csv.reader(f, delimiter=sep)
+            rows = list(reader)
+    except Exception:
+        return [Chunk(text=path.read_text(encoding="utf-8", errors="replace"),
+                      source=str(path), chunk_type="data")]
+    if not rows:
+        return []
+    header = rows[0] if rows else []
+    # Emit a summary chunk + one chunk per row when rows are long enough
+    summary = f"CSV: {path.name}\nColumns: {', '.join(header)}\nRows: {len(rows) - 1}"
+    chunks.append(Chunk(text=summary, source=str(path), section="header",
+                        chunk_type="data", position=0))
+    for i, row in enumerate(rows[1:], start=1):
+        if not any(c.strip() for c in row):
+            continue
+        if header and len(header) == len(row):
+            pairs = [f"{h}: {v}" for h, v in zip(header, row) if v]
+            text = "\n".join(pairs)
+        else:
+            text = sep.join(row)
+        if len(text) > 20:
+            chunks.append(Chunk(text=text, source=str(path),
+                                section=f"row_{i}", chunk_type="data", position=i))
+    return chunks
+
+
+def read_yaml(path: Path) -> list[Chunk]:
+    """Read YAML via pyyaml if installed, else treat as text."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    try:
+        import yaml
+        data = yaml.safe_load(text)
+        import json
+        formatted = json.dumps(data, indent=2, default=str)
+        return [Chunk(text=formatted, source=str(path), chunk_type="data", position=0)]
+    except ImportError:
+        return [Chunk(text=text, source=str(path), chunk_type="data", position=0)]
+    except Exception:
+        return [Chunk(text=text, source=str(path), chunk_type="data", position=0)]
+
+
+def read_pptx(path: Path) -> list[Chunk]:
+    """Read a PowerPoint. Optional dep: python-pptx."""
+    try:
+        from pptx import Presentation
+    except ImportError:
+        print(f"  [skip] python-pptx not installed for {path.name}")
+        return []
+    try:
+        prs = Presentation(str(path))
+    except Exception as e:
+        print(f"  [skip] failed to open {path.name}: {e}")
+        return []
+    chunks = []
+    for i, slide in enumerate(prs.slides, start=1):
+        parts = []
+        for shape in slide.shapes:
+            if hasattr(shape, "text") and shape.text:
+                parts.append(shape.text.strip())
+        body = "\n".join(p for p in parts if p)
+        if body and len(body) > 20:
+            chunks.append(Chunk(
+                text=body,
+                source=str(path),
+                section=f"slide_{i}",
+                chunk_type="narrative",
+                position=i,
+            ))
+    return chunks
+
+
+def read_rtf(path: Path) -> list[Chunk]:
+    """Read RTF. Optional dep: striprtf, else regex strip."""
+    raw = path.read_text(encoding="utf-8", errors="replace")
+    try:
+        from striprtf.striprtf import rtf_to_text
+        text = rtf_to_text(raw)
+    except ImportError:
+        # Minimal regex strip — removes control words + braces. Lossy but workable.
+        text = re.sub(r"\\[a-z]+-?\d*\s?", "", raw)
+        text = re.sub(r"[{}]", "", text)
+    except Exception:
+        text = raw
+    return chunk_by_paragraphs(text, str(path))
+
+
+def read_xml(path: Path) -> list[Chunk]:
+    """Read XML, strip tags."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    cleaned = re.sub(r"<[^>]+>", " ", text)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return chunk_by_paragraphs(cleaned, str(path))
+
+
 def read_python(path: Path) -> list[Chunk]:
     """Read a Python file, chunk by class/function definitions."""
     text = path.read_text(encoding="utf-8", errors="replace")
@@ -266,45 +463,116 @@ def chunk_by_paragraphs(text: str, source: str) -> list[Chunk]:
 
 # Reader dispatch
 READERS = {
+    # Writing formats — chunked by structure
     ".md": read_markdown,
+    ".markdown": read_markdown,
     ".txt": read_text,
+    ".log": read_text,
+    ".rst": read_text,
+    ".tex": read_text,
+    ".org": read_text,
+    # Web / markup
+    ".html": read_html,
+    ".htm": read_html,
+    ".xml": read_xml,
+    # Data / config
+    ".json": read_json,
+    ".jsonl": read_jsonl,
+    ".ndjson": read_jsonl,
+    ".csv": read_csv,
+    ".tsv": read_csv,
+    ".yaml": read_yaml,
+    ".yml": read_yaml,
+    ".toml": read_text,
+    ".ini": read_text,
+    ".cfg": read_text,
+    ".conf": read_text,
+    ".env": read_text,
+    # Documents
     ".pdf": read_pdf,
     ".docx": read_docx,
-    ".json": read_json,
+    ".pptx": read_pptx,
+    ".rtf": read_rtf,
+    # Source code — chunked by def/class
     ".py": read_python,
+    ".js": read_python,
+    ".ts": read_python,
+    ".go": read_python,
+    ".rs": read_python,
+    ".java": read_python,
+    ".kt": read_python,
+    ".rb": read_python,
+    ".php": read_python,
+    ".sh": read_text,
+    ".bash": read_text,
+    ".zsh": read_text,
+    ".ps1": read_text,
+}
+
+# Extensions we explicitly never try to read (binary formats without a
+# text extraction path in this module). A directory walk filters these
+# out rather than attempting read_text on them.
+BINARY_SKIP = {
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".ico",
+    ".mp3", ".wav", ".m4a", ".flac", ".ogg", ".aac",
+    ".mp4", ".mov", ".avi", ".mkv", ".webm",
+    ".zip", ".tar", ".gz", ".bz2", ".xz", ".7z", ".rar", ".iso",
+    ".exe", ".dll", ".so", ".dylib", ".class", ".o", ".a",
+    ".pyc", ".pyo",
+    ".db", ".sqlite", ".sqlite3",
+    ".ttf", ".otf", ".woff", ".woff2",
 }
 
 
 def ingest_file(path: Path) -> list[Chunk]:
-    """Ingest a single file."""
+    """Ingest a single file. Unknown suffixes fall back to read_text."""
     suffix = path.suffix.lower()
+    if suffix in BINARY_SKIP:
+        return []
     reader = READERS.get(suffix)
     if reader is None:
-        # Try as plain text
+        # Fall through: treat anything we don't explicitly skip as text.
         try:
             return read_text(path)
         except Exception:
             return []
-    return reader(path)
+    try:
+        return reader(path)
+    except Exception as e:
+        # Never let a single bad file break a directory walk.
+        print(f"  [reader error] {path.name}: {type(e).__name__}: {e}")
+        return []
 
 
 def ingest_directory(
     directory: Path,
     extensions: Optional[set[str]] = None,
     recursive: bool = True,
+    strict: bool = False,
 ) -> list[Chunk]:
     """Ingest all files in a directory.
 
     Each file is an exchange. R(n) grows.
-    """
-    if extensions is None:
-        extensions = set(READERS.keys())
 
+    strict=False (default): any file not in BINARY_SKIP is eaten,
+        with unknown extensions falling through to read_text.
+    strict=True: only files with suffixes in `extensions` (or READERS
+        if extensions is None) are eaten. Legacy behavior.
+    """
     all_chunks = []
     pattern = "**/*" if recursive else "*"
 
     files = sorted(directory.glob(pattern))
-    files = [f for f in files if f.is_file() and f.suffix.lower() in extensions]
+    files = [f for f in files if f.is_file()]
+
+    if strict:
+        allowed = extensions if extensions is not None else set(READERS.keys())
+        files = [f for f in files if f.suffix.lower() in allowed]
+    else:
+        if extensions is not None:
+            files = [f for f in files if f.suffix.lower() in extensions]
+        else:
+            files = [f for f in files if f.suffix.lower() not in BINARY_SKIP]
 
     print(f"Ingesting {len(files)} files from {directory}")
 

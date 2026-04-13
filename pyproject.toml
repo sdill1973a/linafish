@@ -29,9 +29,21 @@ Repository = "https://github.com/sdill1973a/linafish"
 fast = ["numpy>=1.21"]
 pdf = ["PyMuPDF"]
 docx = ["python-docx"]
+pptx = ["python-pptx"]
+rtf = ["striprtf"]
+yaml = ["PyYAML"]
 http = ["requests"]
 mqtt = ["paho-mqtt>=1.6"]
-all = ["numpy>=1.21", "PyMuPDF", "python-docx", "requests", "paho-mqtt>=1.6"]
+all = [
+    "numpy>=1.21",
+    "PyMuPDF",
+    "python-docx",
+    "python-pptx",
+    "striprtf",
+    "PyYAML",
+    "requests",
+    "paho-mqtt>=1.6",
+]
 
 [project.scripts]
 linafish = "linafish.__main__:main"
