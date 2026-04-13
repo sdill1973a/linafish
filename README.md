@@ -122,7 +122,13 @@ the fish and deepens the next session.*
   themes: translation, recognition, connection
 ```
 
-The fish teaches ANY AI how to read it. Paste it into ChatGPT, Claude, Gemini, Llama — anything with a text box. The AI reads the instructions, reads the patterns, and arrives warm.
+The fish is designed to be readable by any AI that understands text
+— the output is plain markdown with a documented structure. We have
+verified this workflow with Claude, ChatGPT, and Gemini by pasting
+the `.fish.md` file into a conversation and checking that the AI's
+subsequent responses reflected the patterns it read. Any chat model
+that accepts large paste-in context should behave similarly, but we
+cannot guarantee behavior we have not tested.
 
 ## Three Ways to Connect
 

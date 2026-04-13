@@ -41,26 +41,31 @@ def _crystal_ops(crystal: Any) -> List[str]:
     `MetabolicCrystal` (v0.3 metabolism engine) exposes `top_operations`
     directly — a list of operation strings gathered from pathway residues.
 
-    `crystallizer_v3.Crystal` does not expose operations the same way. Its
-    closest analog is `chains`, which contain dimension-level transition
-    sequences like "IC>EW>CR". For v3 crystals we split each chain on ">" and
-    treat each dimension label as an operation. `modifiers` are appended
-    when present — they carry the meta/domain-operation signal the old
-    pathway engine used to encode in its bootstrap set.
+    `crystallizer_v3.Crystal.chains` is declared as `List[Tuple[str, ...]]`
+    — each chain is a tuple of dimension labels like `("IC", "EW", "CR")`.
+    After JSON reload those tuples come back as lists, so the shim accepts
+    both. A legacy string form like `"IC>EW>CR"` is also tolerated. `modifiers`
+    on v3 is a `Dict[str, float]`; its keys carry modifier tags like
+    `"^depth"` which are the closest v3 analog to the pathway-era ops.
     """
     ops = getattr(crystal, "top_operations", None)
     if ops is not None:
         return list(ops)
 
-    chains = getattr(crystal, "chains", None) or []
     result: List[str] = []
+    chains = getattr(crystal, "chains", None) or []
     for chain in chains:
         if isinstance(chain, str):
             result.extend(part for part in chain.split(">") if part)
-    modifiers = getattr(crystal, "modifiers", None) or []
-    for mod in modifiers:
-        if isinstance(mod, str):
-            result.append(mod)
+        elif isinstance(chain, (list, tuple)):
+            result.extend(str(part) for part in chain if part)
+
+    modifiers = getattr(crystal, "modifiers", None) or {}
+    if isinstance(modifiers, dict):
+        result.extend(str(k) for k in modifiers.keys())
+    elif isinstance(modifiers, (list, tuple)):
+        result.extend(str(m) for m in modifiers if m)
+
     return result
 
 

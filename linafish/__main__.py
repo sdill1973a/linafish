@@ -16,6 +16,20 @@ import argparse
 from pathlib import Path
 
 
+def _user_path(value):
+    """argparse type for path-shaped arguments.
+
+    Expands a leading ~ (via Path.expanduser()) at parse time so the CLI
+    works on Windows cmd/PowerShell, where the shell does not expand ~
+    before Python sees it. Returns a `pathlib.Path`. Using this as
+    `type=_user_path` on every path-shaped add_argument is the single
+    point that fixes the "~/my-writing becomes a literal ~ directory"
+    footgun for every current and future command — a user never hits
+    an un-expanded ~ in any cmd_* body.
+    """
+    return Path(value).expanduser()
+
+
 def cmd_eat(args):
     """Ingest files and build a fish using the crystallizer."""
     from .crystallizer import crystallize, extend_vocabulary, couple_crystals, tag_diamonds
@@ -821,9 +835,9 @@ def cmd_hunt(args):
 def cmd_emerge(args):
     """Measure emergence metrics on a fish — ν, μ, ρ, Ψ, phase classification."""
     from .engine import FishEngine
-    from .emergence import compute_emergence, emergence_gradient, collective_snt, EmergenceMetrics
+    from .emergence import compute_emergence, emergence_gradient, collective_snt, EmergenceMetrics, _crystal_ops
 
-    state_dir = Path(args.state_dir) if args.state_dir else None
+    state_dir = Path(args.state_dir).expanduser() if args.state_dir else None
     engine = FishEngine(
         state_dir=state_dir,
         name=args.name,
@@ -837,6 +851,29 @@ def cmd_emerge(args):
 
     if not formations:
         print(f"Fish '{args.name}' has no formations yet. Feed more and re-eat.")
+        return
+
+    # Empty-state diagnostic: emerge measures cognitive operation novelty, and
+    # needs crystals whose chains/modifiers have been populated by the cognitive
+    # parse layer. Fish built from writeback-only feed paths (session text
+    # routed through ingest helpers that skip the parser) land here with empty
+    # chains and modifiers across the board, which would make emerge print
+    # plausible-looking zeros for every formation. That is misleading — honest
+    # empty beats invented zero. Detect and explain.
+    has_signal = any(_crystal_ops(c) for c in crystals)
+    if not has_signal:
+        print(f"Fish '{args.name}' has {len(formations)} formations and {len(crystals)} crystals,")
+        print("but none of the crystals carry cognitive-operation data")
+        print("(chains / modifiers / cognitive_vector are all empty).")
+        print()
+        print("`linafish emerge` measures novelty in cognitive operations, so it")
+        print("needs crystals that went through the full cognitive parser. Fish")
+        print("built by piping session text through writeback hooks or direct")
+        print("deposit paths can end up without this layer populated.")
+        print()
+        print("To get a signal, rebuild the fish from source with:")
+        print(f"  linafish go <path-to-writing> --name {args.name}")
+        print("which runs the full ingest + parse pipeline.")
         return
 
     # Group crystals by formation membership
@@ -1341,12 +1378,12 @@ def main():
     absorb_p = sub.add_parser("absorb", help="Eat existing FAISS, JSONL, or HTTP RAG into your fish")
     absorb_p.add_argument("source", help="Source: path.jsonl, faiss:path.faiss, http://url")
     absorb_p.add_argument("-n", "--name", default="linafish", help="Fish name")
-    absorb_p.add_argument("--state-dir", help="State directory")
+    absorb_p.add_argument("--state-dir", type=_user_path, help="State directory")
 
     # converse — two fish, one conversation
     conv_p = sub.add_parser("converse", help="Two fish, one conversation. Crystal exchange over HTTP.")
     conv_p.add_argument("-n", "--name", default="linafish", help="Fish name")
-    conv_p.add_argument("--state-dir", help="State directory")
+    conv_p.add_argument("--state-dir", type=_user_path, help="State directory")
     conv_p.add_argument("-p", "--port", type=int, default=8901, help="Port (default: 8901)")
     conv_p.add_argument("--bind", default="local", choices=["local", "lan", "wan"],
                         help="Access level: local (default), lan, or wan")
@@ -1356,72 +1393,72 @@ def main():
     # whisper — one insight
     whisper_p = sub.add_parser("whisper", help="One insight from your fish. The quiet ones matter more.")
     whisper_p.add_argument("-n", "--name", default="linafish", help="Fish name")
-    whisper_p.add_argument("--state-dir", help="State directory")
+    whisper_p.add_argument("--state-dir", type=_user_path, help="State directory")
 
     # check — how's your fish?
     check_p = sub.add_parser("check", help="How's your fish? Quick health check + what to do next.")
     check_p.add_argument("-n", "--name", default="linafish", help="Fish name")
-    check_p.add_argument("--state-dir", help="State directory")
+    check_p.add_argument("--state-dir", type=_user_path, help="State directory")
 
     # go — the one-command experience
     go_p = sub.add_parser("go", help="The product. Point at your writing. Everything assembles.")
-    go_p.add_argument("source", nargs="?", default=None,
+    go_p.add_argument("source", nargs="?", default=None, type=_user_path,
                        help="File or directory to learn from (default: current directory)")
     go_p.add_argument("-n", "--name", help="Fish name (default: directory name)")
-    go_p.add_argument("--state-dir", help="Where to store state (default: ~/.linafish/)")
+    go_p.add_argument("--state-dir", type=_user_path, help="Where to store state (default: ~/.linafish/)")
     go_p.add_argument("--no-serve", action="store_true",
                        help="Don't start HTTP server after eating")
     go_p.add_argument("-p", "--port", type=int, help="HTTP server port (default: random available)")
 
     # eat
     eat_p = sub.add_parser("eat", help="Ingest files, build a fish")
-    eat_p.add_argument("source", help="File or directory to ingest")
+    eat_p.add_argument("source", type=_user_path, help="File or directory to ingest")
     eat_p.add_argument("-n", "--name", help="Fish name")
     eat_p.add_argument("-d", "--description", help="Fish description")
-    eat_p.add_argument("-o", "--output", help="Output path")
+    eat_p.add_argument("-o", "--output", type=_user_path, help="Output path")
     eat_p.add_argument("--hint", help="Context hint for better vectorization")
-    eat_p.add_argument("--vocab", help="Path to domain vocabulary JSON")
+    eat_p.add_argument("--vocab", type=_user_path, help="Path to domain vocabulary JSON")
 
     # taste
     taste_p = sub.add_parser("taste", help="Preview fish contents")
-    taste_p.add_argument("fish", help="Path to .fish.md")
+    taste_p.add_argument("fish", type=_user_path, help="Path to .fish.md")
 
     # recall
     recall_p = sub.add_parser("recall", help="Full-text search across crystals — find specific words, not patterns")
     recall_p.add_argument("query", help="What to search for")
     recall_p.add_argument("-n", "--name", help="Fish name (default: searches default fish)")
-    recall_p.add_argument("--state-dir", help="Where fish state lives (default: ~/.linafish/)")
+    recall_p.add_argument("--state-dir", type=_user_path, help="Where fish state lives (default: ~/.linafish/)")
     recall_p.add_argument("--top", type=int, default=10, help="Max results")
 
     # ask — semantic search
     ask_p = sub.add_parser("ask", help="Ask your fish a question — finds meaning, not just words")
     ask_p.add_argument("question", help="What to ask")
     ask_p.add_argument("-n", "--name", default="linafish", help="Fish name")
-    ask_p.add_argument("--state-dir", help="State directory")
+    ask_p.add_argument("--state-dir", type=_user_path, help="State directory")
     ask_p.add_argument("--top", type=int, default=5, help="Max results")
 
     # status
     status_p = sub.add_parser("status", help="Show fish stats")
-    status_p.add_argument("fish", help="Path to .fish.md")
+    status_p.add_argument("fish", type=_user_path, help="Path to .fish.md")
 
     # serve
     serve_p = sub.add_parser("serve", help="Serve fish as MCP server (stdio)")
-    serve_p.add_argument("--feed", help="Directory or file to ingest on startup")
-    serve_p.add_argument("--state-dir", help="Where to store fish state (default: ~/.linafish/)")
+    serve_p.add_argument("--feed", type=_user_path, help="Directory or file to ingest on startup")
+    serve_p.add_argument("--state-dir", type=_user_path, help="Where to store fish state (default: ~/.linafish/)")
     serve_p.add_argument("-n", "--name", default="linafish", help="Fish name")
-    serve_p.add_argument("--vocab", help="Path to domain vocabulary JSON")
+    serve_p.add_argument("--vocab", type=_user_path, help="Path to domain vocabulary JSON")
 
     # http
     http_p = sub.add_parser("http", help="Serve fish over HTTP (any AI)")
-    http_p.add_argument("--feed", help="Directory or file to ingest on startup")
-    http_p.add_argument("--state-dir", help="Where to store fish state (default: ~/.linafish/)")
+    http_p.add_argument("--feed", type=_user_path, help="Directory or file to ingest on startup")
+    http_p.add_argument("--state-dir", type=_user_path, help="Where to store fish state (default: ~/.linafish/)")
     http_p.add_argument("-n", "--name", default="linafish", help="Fish name")
     http_p.add_argument("-p", "--port", type=int, default=8900, help="Port (default: 8900)")
-    http_p.add_argument("--vocab", help="Path to domain vocabulary JSON")
+    http_p.add_argument("--vocab", type=_user_path, help="Path to domain vocabulary JSON")
 
     # demo
     demo_p = sub.add_parser("demo", help="One-command demo: eat + taste + test")
-    demo_p.add_argument("source", help="File or directory to ingest")
+    demo_p.add_argument("source", type=_user_path, help="File or directory to ingest")
     demo_p.add_argument("-q", "--question", help="Question to test with Gemini")
     demo_p.add_argument("-n", "--name", help="Fish name")
     demo_p.add_argument("--hint", help="Context hint")
@@ -1433,23 +1470,23 @@ def main():
     init_p.add_argument("-r", "--remote", action="append", default=[],
                         help="Remote .mcp.json (ssh://user@host/path or local path). Repeatable.")
     init_p.add_argument("-n", "--name", default="linafish", help="Fish name")
-    init_p.add_argument("-o", "--output", help="Output path for fish")
+    init_p.add_argument("-o", "--output", type=_user_path, help="Output path for fish")
     init_p.add_argument("--live", action="store_true",
                         help="Spawn local servers to discover tools (slower, more thorough)")
     init_p.add_argument("--no-backup", action="store_true", help="Skip .mcp.json backup")
 
     # watch — continuous directory monitoring
     watch_p = sub.add_parser("watch", help="Watch a folder. Fish eats new files automatically.")
-    watch_p.add_argument("source", help="Directory to watch")
+    watch_p.add_argument("source", type=_user_path, help="Directory to watch")
     watch_p.add_argument("-n", "--name", help="Fish name")
-    watch_p.add_argument("--state-dir", help="State directory")
+    watch_p.add_argument("--state-dir", type=_user_path, help="State directory")
     watch_p.add_argument("--interval", type=int, default=60, help="Check interval in seconds (default: 60)")
 
     # fuse — recursive compression to irreducibles
     fuse_p = sub.add_parser("fuse", help="Recursive fusion — compress corpus to iron")
-    fuse_p.add_argument("source", help="File or directory to fuse")
+    fuse_p.add_argument("source", type=_user_path, help="File or directory to fuse")
     fuse_p.add_argument("-n", "--name", help="Fusion run name")
-    fuse_p.add_argument("--state-dir", help="Where to store per-level state")
+    fuse_p.add_argument("--state-dir", type=_user_path, help="Where to store per-level state")
     fuse_p.add_argument("--d-start", type=float, default=6.0,
                         help="Starting d-value (default: 6.0)")
     fuse_p.add_argument("--d-step", type=float, default=1.5,
@@ -1466,14 +1503,14 @@ def main():
     room_p.add_argument("--broker", default="localhost", help="MQTT broker")
     room_p.add_argument("--port", type=int, default=1883, help="MQTT port")
     room_p.add_argument("-n", "--name", default="room", help="Fish name")
-    room_p.add_argument("--state-dir", help="State directory")
-    room_p.add_argument("--vocab", help="Path to domain vocabulary JSON")
+    room_p.add_argument("--state-dir", type=_user_path, help="State directory")
+    room_p.add_argument("--vocab", type=_user_path, help="Path to domain vocabulary JSON")
 
     # listen — ambient cognition
     listen_p = sub.add_parser("listen", help="The fish sits in the stream. Ambient cognition.")
     listen_p.add_argument("source", help="Source: stdin, mqtt://host:port/topic, folder:/path, or directory")
     listen_p.add_argument("-n", "--name", default="linafish", help="Fish name")
-    listen_p.add_argument("--state-dir", help="State directory")
+    listen_p.add_argument("--state-dir", type=_user_path, help="State directory")
     listen_p.add_argument("--interval", type=int, default=30, help="Folder check interval in seconds")
     listen_p.add_argument("--school", action="store_true", help="Feed through school (all members eat)")
 
@@ -1484,32 +1521,32 @@ def main():
     session_p.add_argument("session_name", nargs="?", default="",
                            help="Session name (default: session-YYYY-MM-DD)")
     session_p.add_argument("-n", "--name", default="linafish", help="Fish name")
-    session_p.add_argument("--state-dir", help="State directory")
+    session_p.add_argument("--state-dir", type=_user_path, help="State directory")
 
     # history — git log as growth timeline
     history_p = sub.add_parser("history", help="Show fish growth history")
     history_p.add_argument("-c", "--count", type=int, default=20, help="Number of entries")
     history_p.add_argument("-n", "--name", default="linafish", help="Fish name")
-    history_p.add_argument("--state-dir", help="State directory")
+    history_p.add_argument("--state-dir", type=_user_path, help="State directory")
 
     # diff — what changed
     diff_p = sub.add_parser("diff", help="Show what changed since last session")
     diff_p.add_argument("ref", nargs="?", default="HEAD~1", help="Git ref to compare (default: HEAD~1)")
     diff_p.add_argument("-n", "--name", default="linafish", help="Fish name")
-    diff_p.add_argument("--state-dir", help="State directory")
+    diff_p.add_argument("--state-dir", type=_user_path, help="State directory")
 
     # revert — roll back the mind
     revert_p = sub.add_parser("revert", help="Roll back to a previous state")
     revert_p.add_argument("ref", nargs="?", default="HEAD", help="Git ref to revert (default: HEAD)")
     revert_p.add_argument("-y", "--yes", action="store_true", help="Skip confirmation")
     revert_p.add_argument("-n", "--name", default="linafish", help="Fish name")
-    revert_p.add_argument("--state-dir", help="State directory")
+    revert_p.add_argument("--state-dir", type=_user_path, help="State directory")
 
     # school — the river and the nets
     # hunt — guppy ache-hunt
     hunt_p = sub.add_parser("hunt", help="Send a guppy to hunt what the fish is missing (ache mode).")
     hunt_p.add_argument("name", help="Fish name to feed")
-    hunt_p.add_argument("--state-dir", help="State directory")
+    hunt_p.add_argument("--state-dir", type=_user_path, help="State directory")
     hunt_p.add_argument("--swim", action="store_true", help="Continuous hunting loop")
     hunt_p.add_argument("--ache", action="store_true", help="Hunt for gaps instead of reinforcement")
     hunt_p.add_argument("--status", action="store_true", help="Show what the guppy knows/misses")
@@ -1520,14 +1557,14 @@ def main():
     # emerge — semantic novelty threshold
     emerge_p = sub.add_parser("emerge", help="Measure emergence (ν, μ, ρ, Ψ, phase) on your fish's formations.")
     emerge_p.add_argument("name", help="Fish name")
-    emerge_p.add_argument("--state-dir", help="State directory")
+    emerge_p.add_argument("--state-dir", type=_user_path, help="State directory")
     emerge_p.add_argument("-d", type=float, default=4.0, help="Engine d value")
     emerge_p.add_argument("--centroid", action="store_true", help="Subtract centroid")
 
     # feedback — usage-weighted learning report
     feedback_p = sub.add_parser("feedback", help="Show usage feedback — which formations earn their weight.")
     feedback_p.add_argument("name", help="Fish name")
-    feedback_p.add_argument("--state-dir", help="State directory")
+    feedback_p.add_argument("--state-dir", type=_user_path, help="State directory")
 
     # capabilities — the full module map
     cap_p = sub.add_parser("capabilities", help="Print the full linafish capability map — modules, commands, deps.")
@@ -1549,7 +1586,7 @@ def main():
     doctor_p = sub.add_parser("doctor",
         help="Health check: python, linafish version, install mode, deps, daemons, fish health.")
     doctor_p.add_argument("--name", help="Optional fish name to inspect")
-    doctor_p.add_argument("--state-dir", help="Fish state directory (default ~/.linafish)")
+    doctor_p.add_argument("--state-dir", type=_user_path, help="Fish state directory (default ~/.linafish)")
     doctor_p.add_argument("--check-updates", action="store_true",
                           help="Also check PyPI for a newer version")
 
@@ -1559,9 +1596,9 @@ def main():
                                "status=show stats, docket=aggregate todos, add=add a member")
     school_p.add_argument("target", nargs="?", default=None,
                           help="For eat: text or file path. For refeed/add: member name.")
-    school_p.add_argument("--state-dir", help="School state directory (default: ~/.linafish/school/)")
-    school_p.add_argument("--central-dir", help="Central fish state dir (default: ~/.linafish/)")
-    school_p.add_argument("--manifest", help="Path to school.json manifest")
+    school_p.add_argument("--state-dir", type=_user_path, help="School state directory (default: ~/.linafish/school/)")
+    school_p.add_argument("--central-dir", type=_user_path, help="Central fish state dir (default: ~/.linafish/)")
+    school_p.add_argument("--manifest", type=_user_path, help="Path to school.json manifest")
     school_p.add_argument("--source", default="session", help="Source label for eat")
     school_p.add_argument("-d", type=float, default=4.0, help="d value for add (default: 4.0)")
     school_p.add_argument("--centroid", action="store_true", help="Enable centroid subtraction for add")
