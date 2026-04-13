@@ -16,3 +16,6 @@ build/
 # Personal data — never ship
 /data/
 /local_fish/
+
+# Test output — generated, not source
+tests/lab_results.json
