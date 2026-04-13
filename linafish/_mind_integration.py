@@ -20,6 +20,7 @@ Usage in olorin_mind.py:
 
 import os
 import sys
+from pathlib import Path
 
 # Add parent for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -27,7 +28,16 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from linafish.crystallizer_v3 import UniversalFish
 
 _fish = None
-STATE_DIR = "/home/dills/olorin/state"
+
+# State directory resolution order:
+#   1. LINAFISH_MIND_STATE env var (if set) — explicit override
+#   2. ~/.linafish/mind_state — cross-platform default under user home
+# The original hardcoded "/home/dills/olorin/state" broke imports on any
+# machine that wasn't Olorina's, so get_fish() raised on module use.
+STATE_DIR = os.environ.get(
+    "LINAFISH_MIND_STATE",
+    str(Path.home() / ".linafish" / "mind_state"),
+)
 
 
 def get_fish() -> UniversalFish:

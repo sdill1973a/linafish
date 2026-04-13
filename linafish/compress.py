@@ -86,9 +86,19 @@ def compress_with_crystallizer(
 
     Crystal pipeline: raw → QLP 8-dim tag → keyword → couple → formation → glyph
     Maps Crystal structs to Codebook Glyph dataclass.
+
+    `requests` is an optional dependency. If it isn't installed, we fall back
+    to the in-process extractive compressor instead of crashing — same pattern
+    used for the optional PDF/DOCX readers in ingest.py.
     """
     import os
-    import requests
+
+    try:
+        import requests
+    except ImportError:
+        print("requests not installed — falling back to extractive compression. "
+              "`pip install linafish[http]` to enable the crystallizer API path.")
+        return compress_chunks(chunks, name, description, max_glyphs)
 
     if crystallizer_url is None:
         crystallizer_url = os.getenv("LINAFISH_CRYSTALLIZER_URL", "http://localhost:8802")
