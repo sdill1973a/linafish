@@ -897,44 +897,79 @@ def cmd_introduce(args):
     Designed for consumption by AI assistants that land on a user's box and
     need to understand what linafish is, what endpoints are live, and how
     to use it. Run `linafish introduce` and feed the output to the AI.
+
+    Resolution order (first hit wins):
+      1. importlib.resources — package-data, works in wheels AND editable
+      2. repo root AGENTS.md (editable install fallback)
+      3. inline minimal briefing (last-resort safety net)
     """
-    from importlib.resources import files
-    import linafish as _pkg
-
-    # Find AGENTS.md — first try repo root (editable install), then package data
-    pkg_dir = Path(_pkg.__file__).resolve().parent
-    candidates = [
-        pkg_dir.parent / "AGENTS.md",          # editable install: repo root
-        pkg_dir / "data" / "AGENTS.md",         # packaged wheel: inside package
-        pkg_dir / "AGENTS.md",                  # alt: inside package
-    ]
-    for c in candidates:
-        if c.exists():
-            print(c.read_text(encoding="utf-8"))
+    # Primary path: importlib.resources reads the file bundled as package data.
+    # This works for both wheel installs AND editable installs because the
+    # editable install's package-data include rule picks up the same file.
+    try:
+        from importlib.resources import files as _res_files
+        agents_res = _res_files("linafish").joinpath("data", "AGENTS.md")
+        if agents_res.is_file():
+            print(agents_res.read_text(encoding="utf-8"))
             return
+    except Exception:
+        pass
 
-    # Fallback: a minimal inline briefing so the command always works
+    # Fallback 1: repo root (editable install where package-data isn't picked up)
+    try:
+        import linafish as _pkg
+        pkg_dir = Path(_pkg.__file__).resolve().parent
+        repo_root_agents = pkg_dir.parent / "AGENTS.md"
+        if repo_root_agents.exists():
+            print(repo_root_agents.read_text(encoding="utf-8"))
+            return
+    except Exception:
+        pass
+
+    # Fallback: inline briefing. Kept as close to AGENTS.md as possible so
+    # the worst-case rendering still teaches the AI something useful.
     print(
         "LiNafish for AI assistants\n"
         "==========================\n"
         "\n"
-        "linafish is a local cognitive overlay on your user's writing.\n"
-        "Three things you can do, all via HTTP on localhost:\n"
+        "linafish is a LOCAL cognitive overlay on your user's writing. It is\n"
+        "NOT a database, NOT RAG, NOT psychological profiling. It's a compressed\n"
+        "representation of HOW your user thinks, read via HTTP endpoints.\n"
         "\n"
-        "  GET  http://127.0.0.1:8901/pfc    — read the formation codebook\n"
-        "  POST http://127.0.0.1:8901/taste  — query by meaning (JSON: text, k)\n"
-        "  POST http://127.0.0.1:8901/eat    — deposit a crystal (JSON: text)\n"
+        "## Endpoints (localhost only by default)\n"
         "\n"
-        "READ /pfc at the start of a conversation. Don't reconstruct source\n"
-        "text from formations — they're compressed cognitive verb states.\n"
-        "DEPOSIT via /eat only for substantive moments. The fish grows from\n"
-        "what earns its place, not from every message.\n"
+        "  GET  http://127.0.0.1:8901/health   — stats + frozen + d + top formations\n"
+        "  GET  http://127.0.0.1:8901/pfc      — Primary Formation Codebook (JSON)\n"
+        "  POST http://127.0.0.1:8901/taste    — semantic query {text, k}\n"
+        "  POST http://127.0.0.1:8901/eat      — deposit a crystal {text}\n"
         "\n"
-        "Run `linafish doctor` to see which daemons are live.\n"
-        "Run `linafish capabilities` for the full module map.\n"
-        "Run `linafish update` to upgrade to the latest version.\n"
+        "Most installs only expose :8901. Run `linafish doctor` to confirm.\n"
         "\n"
-        "(AGENTS.md not found in the install — this is the minimal fallback.)\n"
+        "## Three things you can do\n"
+        "\n"
+        "1. READ /pfc at the start of every conversation. It returns structured\n"
+        "   JSON — prefer it over pasting fish.md markdown. Each formation is a\n"
+        "   cognitive verb state (KO/TE/SF/CR/IC/DE/EW/AI), not a topic tag.\n"
+        "\n"
+        "2. QUERY /taste when you want to ground a response in your user's\n"
+        "   actual writing instead of your own priors. Returns top-k crystals\n"
+        "   with relevance scores.\n"
+        "\n"
+        "3. DEPOSIT /eat only for substantive moments — corrections they made,\n"
+        "   insights that landed, things you were wrong about. Not every turn.\n"
+        "\n"
+        "## What NOT to do\n"
+        "\n"
+        "- Don't reconstruct source text from formations\n"
+        "- Don't treat formations as topic labels\n"
+        "- Don't flood /eat with your own outputs (recency bias trap)\n"
+        "- Don't assume the fish is complete — early formations are provisional\n"
+        "\n"
+        "Run `linafish doctor` for install + daemon health.\n"
+        "Run `linafish capabilities` for the full module + command map.\n"
+        "Run `linafish update` to upgrade.\n"
+        "\n"
+        "(Full AGENTS.md should ship with the package; this is the safety fallback.)\n"
     )
 
 

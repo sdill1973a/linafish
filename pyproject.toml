@@ -52,4 +52,4 @@ linafish = "linafish.__main__:main"
 include = ["linafish*"]
 
 [tool.setuptools.package-data]
-linafish = ["data/*.md"]
+linafish = ["data/*.md", "data/AGENTS.md"]

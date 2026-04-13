@@ -511,27 +511,76 @@ READERS = {
 
 # Extensions we explicitly never try to read (binary formats without a
 # text extraction path in this module). A directory walk filters these
-# out rather than attempting read_text on them.
+# out rather than attempting read_text on them. Aggressive by design —
+# better to miss a .bak that happened to be text than ingest a .bin and
+# produce garbage crystals.
 BINARY_SKIP = {
-    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".ico",
-    ".mp3", ".wav", ".m4a", ".flac", ".ogg", ".aac",
-    ".mp4", ".mov", ".avi", ".mkv", ".webm",
-    ".zip", ".tar", ".gz", ".bz2", ".xz", ".7z", ".rar", ".iso",
-    ".exe", ".dll", ".so", ".dylib", ".class", ".o", ".a",
-    ".pyc", ".pyo",
-    ".db", ".sqlite", ".sqlite3",
-    ".ttf", ".otf", ".woff", ".woff2",
+    # Images
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif",
+    ".ico", ".cur", ".svg", ".psd", ".ai", ".eps", ".indd", ".heic", ".heif",
+    ".raw", ".arw", ".cr2", ".nef", ".orf", ".rw2",
+    # Audio
+    ".mp3", ".wav", ".m4a", ".flac", ".ogg", ".oga", ".aac", ".opus",
+    ".wma", ".amr", ".aiff", ".au",
+    # Video
+    ".mp4", ".mov", ".avi", ".mkv", ".webm", ".wmv", ".flv", ".m4v",
+    ".3gp", ".mpg", ".mpeg", ".vob",
+    # Archives / installers
+    ".zip", ".tar", ".gz", ".bz2", ".xz", ".zst", ".lz4",
+    ".7z", ".rar", ".iso", ".dmg", ".pkg", ".msi", ".deb", ".rpm",
+    ".apk", ".ipa", ".jar", ".war", ".ear",
+    # Executables / libraries / object files
+    ".exe", ".dll", ".so", ".dylib", ".class", ".o", ".a", ".lib",
+    ".sys", ".bin", ".obj", ".com", ".app",
+    # Python + other bytecode
+    ".pyc", ".pyo", ".pyd",
+    # Databases
+    ".db", ".sqlite", ".sqlite3", ".db-journal", ".mdb", ".accdb",
+    ".realm", ".leveldb", ".idx", ".pack",
+    # Fonts
+    ".ttf", ".otf", ".woff", ".woff2", ".eot", ".fon", ".fnt",
+    # Backups / editor state / OS cruft that's almost never content
+    ".bak", ".old", ".orig", ".tmp", ".temp", ".swp", ".swo", ".swn",
+    ".ds_store", ".lnk",
+    # Git / VCS internals (directories usually, but just in case)
+    ".pack", ".idx",
+    # Proprietary office binaries we can't read (.doc/.xls/.ppt — legacy)
+    ".doc", ".xls", ".ppt", ".dot", ".xlt", ".pot",
+    # Large media containers
+    ".psdx", ".aep", ".prproj",
+    # Compiled docs
+    ".chm", ".mobi", ".azw", ".azw3",
 }
+
+# Files larger than this that fall through to read_text get skipped — a
+# 50 MB unknown suffix is almost certainly binary-ish and reading it as
+# UTF-8 would produce noise and block the ingest for minutes. Known
+# readers (pdf/docx/pptx) still handle large files via their own paths.
+FALLTHROUGH_MAX_BYTES = 5 * 1024 * 1024  # 5 MB
 
 
 def ingest_file(path: Path) -> list[Chunk]:
-    """Ingest a single file. Unknown suffixes fall back to read_text."""
+    """Ingest a single file. Unknown suffixes fall back to read_text with
+    a size guard so we don't try to UTF-8 decode a 500 MB binary blob."""
     suffix = path.suffix.lower()
     if suffix in BINARY_SKIP:
+        return []
+    # Also skip hidden files (start with dot) and common no-suffix cruft
+    if path.name.startswith(".") and suffix == "":
         return []
     reader = READERS.get(suffix)
     if reader is None:
         # Fall through: treat anything we don't explicitly skip as text.
+        # But only if the file is small enough to plausibly be text — a
+        # giant unknown file is almost certainly binary we missed in
+        # BINARY_SKIP, and reading it as UTF-8 pollutes the fish.
+        try:
+            size = path.stat().st_size
+        except Exception:
+            return []
+        if size > FALLTHROUGH_MAX_BYTES:
+            print(f"  [skip] {path.name} ({size:,} bytes) — unknown suffix, too large to fall through")
+            return []
         try:
             return read_text(path)
         except Exception:
