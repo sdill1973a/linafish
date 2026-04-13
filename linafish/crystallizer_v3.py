@@ -22,6 +22,22 @@ from typing import List, Tuple, Optional, Dict
 from itertools import combinations
 
 
+# Maximum text length stored per crystal. Set to 0 to disable truncation.
+#
+# The original value was 300, hardcoded inline at the Crystal constructor.
+# That silently capped every deposit to a headline. Telemetry texts survived
+# intact because they're short, but substantive conversation crystals were
+# cut at the first sentence — and then when the corpus was clustered, the
+# content signal had been truncated out while the telemetry signal was still
+# fully represented. The flat-formations problem was caused by this truncation
+# upstream of clustering, not by clustering parameters downstream.
+#
+# Raised to 32768 so ordinary pages and session turns survive fully while
+# still bounding pathological inputs. Diagnosed 2026-04-13 during a session
+# where the same bug was observed from both sides of the Anchor/Olorina wire.
+MAX_CRYSTAL_TEXT = 32768
+
+
 # ---------------------------------------------------------------------------
 # DATA STRUCTURES
 # ---------------------------------------------------------------------------
@@ -506,10 +522,14 @@ def crystallize(text: str, vectorizer: MIVectorizer,
     h = hashlib.md5(f"{ts}{text[:100]}".encode()).hexdigest()[:4]
     crystal_id = f"c3_{int(datetime.now(timezone.utc).timestamp())}_{h}"
 
+    # Preserve full crystal text. The previous 300-char cap silently
+    # truncated every substantive deposit to a headline, leaving only
+    # short telemetry texts fully represented. See exp/ai-usability doc
+    # and 2026-04-13 session diagnosis for the full story.
     return Crystal(
         id=crystal_id,
         ts=ts,
-        text=text[:300],
+        text=text[:MAX_CRYSTAL_TEXT] if MAX_CRYSTAL_TEXT else text,
         source=source,
         mi_vector=mi_vec,
         resonance=[],  # filled after PCA
