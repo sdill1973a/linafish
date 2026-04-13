@@ -39,7 +39,10 @@ from .engine import FishEngine
 
 
 DEFAULT_MANIFEST = {
-    "central": "anchor-writing",
+    # "central" is derived from the state-dir basename when the
+    # manifest doesn't explicitly name it. The old hardcoded
+    # "anchor-writing" was Anchor-specific and broke stranger installs.
+    "central": None,
     "members": {}
 }
 
@@ -75,7 +78,7 @@ class School:
             self.manifest = dict(DEFAULT_MANIFEST)
 
         # Central fish engine — the mouth
-        central_name = self.manifest.get("central", "anchor-writing")
+        central_name = self.manifest.get("central") or self.state_dir.name or "central"
         self.central = FishEngine(
             state_dir=self.central_state_dir,
             name=central_name,
@@ -210,7 +213,7 @@ class School:
         config = self.manifest.get("members", {}).get(member_name, {})
 
         # Read central crystal log
-        central_name = self.manifest.get("central", "anchor-writing")
+        central_name = self.manifest.get("central") or self.state_dir.name or "central"
         crystal_log = self.central_state_dir / f"{central_name}_crystals.jsonl"
 
         if not crystal_log.exists():
