@@ -891,6 +891,53 @@ def _detect_install_mode():
     return False, None, str(pkg_dir)
 
 
+def cmd_introduce(args):
+    """Print AGENTS.md — the AI-facing introduction to linafish.
+
+    Designed for consumption by AI assistants that land on a user's box and
+    need to understand what linafish is, what endpoints are live, and how
+    to use it. Run `linafish introduce` and feed the output to the AI.
+    """
+    from importlib.resources import files
+    import linafish as _pkg
+
+    # Find AGENTS.md — first try repo root (editable install), then package data
+    pkg_dir = Path(_pkg.__file__).resolve().parent
+    candidates = [
+        pkg_dir.parent / "AGENTS.md",          # editable install: repo root
+        pkg_dir / "data" / "AGENTS.md",         # packaged wheel: inside package
+        pkg_dir / "AGENTS.md",                  # alt: inside package
+    ]
+    for c in candidates:
+        if c.exists():
+            print(c.read_text(encoding="utf-8"))
+            return
+
+    # Fallback: a minimal inline briefing so the command always works
+    print(
+        "LiNafish for AI assistants\n"
+        "==========================\n"
+        "\n"
+        "linafish is a local cognitive overlay on your user's writing.\n"
+        "Three things you can do, all via HTTP on localhost:\n"
+        "\n"
+        "  GET  http://127.0.0.1:8901/pfc    — read the formation codebook\n"
+        "  POST http://127.0.0.1:8901/taste  — query by meaning (JSON: text, k)\n"
+        "  POST http://127.0.0.1:8901/eat    — deposit a crystal (JSON: text)\n"
+        "\n"
+        "READ /pfc at the start of a conversation. Don't reconstruct source\n"
+        "text from formations — they're compressed cognitive verb states.\n"
+        "DEPOSIT via /eat only for substantive moments. The fish grows from\n"
+        "what earns its place, not from every message.\n"
+        "\n"
+        "Run `linafish doctor` to see which daemons are live.\n"
+        "Run `linafish capabilities` for the full module map.\n"
+        "Run `linafish update` to upgrade to the latest version.\n"
+        "\n"
+        "(AGENTS.md not found in the install — this is the minimal fallback.)\n"
+    )
+
+
 def cmd_doctor(args):
     """Health check for your linafish install and (optionally) a specific fish.
 
@@ -1228,6 +1275,7 @@ def main():
         description=(
             "LiNafish — sees deeply, loves fiercely.\n"
             "\n"
+            "  linafish introduce     — AI-facing briefing (paste into your AI)\n"
             "  linafish update        — upgrade to latest (run this first if unsure)\n"
             "  linafish doctor        — health check of install, deps, and running fish\n"
             "  linafish capabilities  — full module + command map\n"
@@ -1442,6 +1490,10 @@ def main():
     update_p.add_argument("--force-pip", action="store_true",
                           help="Run pip upgrade even on an editable install (normally a no-op)")
 
+    # introduce — AI-facing briefing (AGENTS.md contents)
+    intro_p = sub.add_parser("introduce",
+        help="Print AGENTS.md — the AI-facing briefing. Paste into an AI assistant.")
+
     # doctor — health check for install + fish + live daemons
     doctor_p = sub.add_parser("doctor",
         help="Health check: python, linafish version, install mode, deps, daemons, fish health.")
@@ -1522,6 +1574,7 @@ def main():
         "capabilities": cmd_capabilities,
         "update": cmd_update,
         "doctor": cmd_doctor,
+        "introduce": cmd_introduce,
     }
     commands[args.command](args)
 
