@@ -884,7 +884,9 @@ def _detect_install_mode():
     except Exception:
         return False, None, "unknown"
     pkg_dir = pkg_file.parent
-    is_editable = "site-packages" not in str(pkg_dir)
+    # Some Linux distros use dist-packages instead of site-packages.
+    _path_str = str(pkg_dir)
+    is_editable = not ("site-packages" in _path_str or "dist-packages" in _path_str)
     if is_editable:
         # parent of the linafish/ package dir is the repo root
         return True, str(pkg_dir.parent), str(pkg_dir)
