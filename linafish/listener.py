@@ -118,8 +118,14 @@ class FishListener:
     # SOURCE: MQTT
     # -------------------------------------------------------------------
 
-    def listen_mqtt(self, broker: str, port: int = 1883, topics: str = "+/conv/+"):
-        """Subscribe to MQTT and eat every message."""
+    def listen_mqtt(self, broker: str, port: int = 1883, topics: str = "+/conv/+",
+                    username: str = None, password: str = None):
+        """Subscribe to MQTT and eat every message.
+
+        s95 2026-04-13: added username/password support so authenticated
+        brokers (port 1884 on .67) can be subscribed to. Called with the
+        parsed user:pass@ embedded in the mqtt:// URL from __main__.py.
+        """
         try:
             import paho.mqtt.client as mqtt
         except ImportError:
@@ -147,8 +153,11 @@ class FishListener:
         client = mqtt.Client(client_id=f"linafish-{self.engine.name}", clean_session=True)
         client.on_connect = on_connect
         client.on_message = on_message
+        if username is not None:
+            client.username_pw_set(username, password)
 
-        print(f"Connecting to {broker}:{port}...")
+        auth_note = f" (auth: {username})" if username else ""
+        print(f"Connecting to {broker}:{port}{auth_note}...")
         try:
             client.connect(broker, port, 60)
         except Exception as e:

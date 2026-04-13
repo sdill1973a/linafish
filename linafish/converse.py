@@ -203,7 +203,24 @@ class ConverseHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
         self.end_headers()
-        self.wfile.write(body.encode("utf-8"))
+        # s95 2026-04-13: Anchor diagnosed that a client with a low HTTP_TIMEOUT
+        # can abort the TCP connection before the server finishes clustering +
+        # writing the response. Unhandled, BaseHTTPServer treats it as fatal and
+        # the whole daemon shuts down ("Converse stopped 5685 crystals"). Wrap
+        # the response write so client disconnects log and return instead of
+        # taking the daemon out. Let both our daemons tolerate fire-and-forget
+        # clients — the request still landed on the server side.
+        try:
+            self.wfile.write(body.encode("utf-8"))
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError) as e:
+            # Client dropped mid-response. The feed/taste already happened
+            # server-side; only the reply got lost. Log quietly and return.
+            try:
+                import sys as _sys
+                print(f"[converse] client dropped during response: {type(e).__name__}", file=_sys.stderr)
+            except Exception:
+                pass
+            return
 
     def do_OPTIONS(self):
         """CORS preflight."""

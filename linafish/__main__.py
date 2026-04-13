@@ -760,20 +760,30 @@ def cmd_listen(args):
     if source == "stdin":
         listener.listen_stdin()
     elif source.startswith("mqtt://"):
-        # mqtt://host:port/topic,topic2
+        # mqtt://[user:pass@]host[:port]/topic,topic2
+        # s95 2026-04-13: added user:pass@ support for authenticated brokers
         rest = source[7:]  # strip mqtt://
         if "/" in rest:
             host_port, topics = rest.split("/", 1)
         else:
             host_port = rest
             topics = "+/conv/+"
+        # Extract optional user:pass@ prefix
+        username = None
+        password = None
+        if "@" in host_port:
+            auth, host_port = host_port.rsplit("@", 1)
+            if ":" in auth:
+                username, password = auth.split(":", 1)
+            else:
+                username = auth
         if ":" in host_port:
             host, port = host_port.rsplit(":", 1)
             port = int(port)
         else:
             host = host_port
             port = 1883
-        listener.listen_mqtt(host, port, topics)
+        listener.listen_mqtt(host, port, topics, username=username, password=password)
     elif source.startswith("folder:"):
         path = source[7:]
         listener.listen_folder(path, interval=args.interval)
