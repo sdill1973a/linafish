@@ -95,12 +95,17 @@ def compute_emergence(
     total_ops = 0
 
     for crystal in crystals:
-        for op in crystal.top_operations:
+        # Older crystal schemas (pre-1.1.2) may lack top_operations / dominant.
+        # Mirror the guard already used in glyph_evolution.py so emergence
+        # metrics degrade gracefully on legacy corpora instead of crashing.
+        top_ops = crystal.top_operations if hasattr(crystal, 'top_operations') else []
+        dominant = crystal.dominant if hasattr(crystal, 'dominant') else None
+        for op in top_ops:
             all_ops.add(op)
             total_ops += 1
 
             # Meta operations (AI pathway)
-            if crystal.dominant == "AI":
+            if dominant == "AI":
                 meta_count += 1
 
             # Self-referential: operations that reference the system itself
