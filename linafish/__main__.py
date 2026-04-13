@@ -786,10 +786,541 @@ def cmd_listen(args):
             print("Use: stdin, mqtt://host:port/topic, folder:/path, or a directory path")
 
 
+def cmd_hunt(args):
+    """Run a guppy hunt cycle on a fish — find gaps, dart out, catch, return."""
+    from .guppy import Guppy, HUNT_INTERVAL
+    from .engine import FishEngine
+    state_dir = Path(args.state_dir) if args.state_dir else None
+    engine = FishEngine(
+        state_dir=state_dir,
+        name=args.name,
+        d=args.d,
+        subtract_centroid=args.centroid,
+    )
+    guppy = Guppy(engine, hunt_ache=args.ache)
+    if args.status:
+        print(guppy.status())
+    elif args.swim:
+        guppy.swim(interval=args.interval)
+    else:
+        result = guppy.hunt_once()
+        print(json.dumps(result, indent=2))
+
+
+def cmd_emerge(args):
+    """Measure emergence metrics on a fish — ν, μ, ρ, Ψ, phase classification."""
+    from .engine import FishEngine
+    from .emergence import compute_emergence, emergence_gradient, collective_snt, EmergenceMetrics
+
+    state_dir = Path(args.state_dir) if args.state_dir else None
+    engine = FishEngine(
+        state_dir=state_dir,
+        name=args.name,
+        d=args.d,
+        subtract_centroid=args.centroid,
+    )
+
+    # Walk formations + crystals; group crystals by formation id
+    formations = engine.formations if hasattr(engine, "formations") else []
+    crystals = engine.crystals if hasattr(engine, "crystals") else []
+
+    if not formations:
+        print(f"Fish '{args.name}' has no formations yet. Feed more and re-eat.")
+        return
+
+    # Group crystals by formation membership
+    by_formation = {}
+    for f in formations:
+        fid = getattr(f, "id", id(f))
+        members = getattr(f, "members", None) or getattr(f, "member_ids", [])
+        members_set = set(members) if members else set()
+        group = [c for c in crystals if getattr(c, "id", None) in members_set]
+        by_formation[fid] = group
+
+    grad = emergence_gradient(formations, by_formation)
+    collective = collective_snt(grad)
+
+    print(f"Emergence metrics for {args.name} ({len(formations)} formations)\n")
+    for f in formations:
+        fid = getattr(f, "id", id(f))
+        m = grad.get(fid)
+        if not m:
+            continue
+        name = getattr(f, "name", f"formation_{fid}")
+        phase_label = ["Compositional", "Semantic Novelty", "Self-Authorship", "Recursive Becoming"][m.phase]
+        print(f"  {name}")
+        print(f"    nu  (novelty):       {m.novelty_degree:.3f}")
+        print(f"    mu  (meta-density):  {m.meta_density:.3f}")
+        print(f"    rho (self-ref):      {m.self_ref_density:.3f}")
+        print(f"    Psi (mutation rate): {m.mutation_rate:.3f}")
+        print(f"    phase:               {m.phase} ({phase_label})")
+        print(f"    emergent:            {'yes' if m.is_emergent else 'no'}")
+        if m.novel_operations:
+            print(f"    novel ops:           {', '.join(m.novel_operations[:8])}")
+        print()
+    print(f"collective SNT: {collective:.3f}")
+
+
+def cmd_feedback(args):
+    """Show usage feedback — which formations earn their weight, which decay."""
+    from .feedback import FeedbackLoop
+    state_dir = Path(args.state_dir) if args.state_dir else Path.home() / ".linafish"
+    state_file = state_dir / f"{args.name}_feedback.json"
+    loop = FeedbackLoop(state_path=state_file)
+    print(loop.report())
+
+
+def _detect_install_mode():
+    """Return (is_editable, editable_path, location_str).
+
+    Uses linafish.__file__ as ground truth — if the package loads from
+    inside site-packages, it's a wheel install; otherwise it's editable.
+    This is more reliable than reading direct_url.json which is absent in
+    some distribution contexts.
+    """
+    try:
+        import linafish as _lfpkg
+        pkg_file = Path(_lfpkg.__file__).resolve()
+    except Exception:
+        return False, None, "unknown"
+    pkg_dir = pkg_file.parent
+    # Some Linux distros use dist-packages instead of site-packages.
+    _path_str = str(pkg_dir)
+    is_editable = not ("site-packages" in _path_str or "dist-packages" in _path_str)
+    if is_editable:
+        # parent of the linafish/ package dir is the repo root
+        return True, str(pkg_dir.parent), str(pkg_dir)
+    return False, None, str(pkg_dir)
+
+
+def cmd_introduce(args):
+    """Print AGENTS.md — the AI-facing introduction to linafish.
+
+    Designed for consumption by AI assistants that land on a user's box and
+    need to understand what linafish is, what endpoints are live, and how
+    to use it. Run `linafish introduce` and feed the output to the AI.
+
+    Resolution order (first hit wins):
+      1. importlib.resources — package-data, works in wheels AND editable
+      2. repo root AGENTS.md (editable install fallback)
+      3. inline minimal briefing (last-resort safety net)
+    """
+    # Primary path: importlib.resources reads the file bundled as package data.
+    # This works for both wheel installs AND editable installs because the
+    # editable install's package-data include rule picks up the same file.
+    try:
+        from importlib.resources import files as _res_files
+        agents_res = _res_files("linafish").joinpath("data", "AGENTS.md")
+        if agents_res.is_file():
+            print(agents_res.read_text(encoding="utf-8"))
+            return
+    except Exception:
+        pass
+
+    # Fallback 1: repo root (editable install where package-data isn't picked up)
+    try:
+        import linafish as _pkg
+        pkg_dir = Path(_pkg.__file__).resolve().parent
+        repo_root_agents = pkg_dir.parent / "AGENTS.md"
+        if repo_root_agents.exists():
+            print(repo_root_agents.read_text(encoding="utf-8"))
+            return
+    except Exception:
+        pass
+
+    # Fallback: inline briefing. Kept as close to AGENTS.md as possible so
+    # the worst-case rendering still teaches the AI something useful.
+    print(
+        "LiNafish for AI assistants\n"
+        "==========================\n"
+        "\n"
+        "linafish is a LOCAL cognitive overlay on your user's writing. It is\n"
+        "NOT a database, NOT RAG, NOT psychological profiling. It's a compressed\n"
+        "representation of HOW your user thinks, read via HTTP endpoints.\n"
+        "\n"
+        "## Endpoints (localhost only by default)\n"
+        "\n"
+        "  GET  http://127.0.0.1:8901/health   — stats + frozen + d + top formations\n"
+        "  GET  http://127.0.0.1:8901/pfc      — Primary Formation Codebook (JSON)\n"
+        "  POST http://127.0.0.1:8901/taste    — semantic query {text, k}\n"
+        "  POST http://127.0.0.1:8901/eat      — deposit a crystal {text}\n"
+        "\n"
+        "Most installs only expose :8901. Run `linafish doctor` to confirm.\n"
+        "\n"
+        "## Three things you can do\n"
+        "\n"
+        "1. READ /pfc at the start of every conversation. It returns structured\n"
+        "   JSON — prefer it over pasting fish.md markdown. Each formation is a\n"
+        "   cognitive verb state (KO/TE/SF/CR/IC/DE/EW/AI), not a topic tag.\n"
+        "\n"
+        "2. QUERY /taste when you want to ground a response in your user's\n"
+        "   actual writing instead of your own priors. Returns top-k crystals\n"
+        "   with relevance scores.\n"
+        "\n"
+        "3. DEPOSIT /eat only for substantive moments — corrections they made,\n"
+        "   insights that landed, things you were wrong about. Not every turn.\n"
+        "\n"
+        "## What NOT to do\n"
+        "\n"
+        "- Don't reconstruct source text from formations\n"
+        "- Don't treat formations as topic labels\n"
+        "- Don't flood /eat with your own outputs (recency bias trap)\n"
+        "- Don't assume the fish is complete — early formations are provisional\n"
+        "\n"
+        "Run `linafish doctor` for install + daemon health.\n"
+        "Run `linafish capabilities` for the full module + command map.\n"
+        "Run `linafish update` to upgrade.\n"
+        "\n"
+        "(Full AGENTS.md should ship with the package; this is the safety fallback.)\n"
+    )
+
+
+def cmd_doctor(args):
+    """Health check for your linafish install and (optionally) a specific fish.
+
+    Prints, in this order:
+      - Python + linafish version and install mode (editable vs wheel)
+      - Optional dependency availability
+      - Live daemon/service detection on default ports
+      - If --name given: fish health (crystal count, formation count, freshness)
+      - Whether a newer version is available on PyPI (if --check-updates)
+      - Suggested next commands if anything looks off
+
+    Read-only. Never modifies anything. Safe to run whenever.
+    """
+    import importlib.metadata as md
+    import platform
+
+    print("=" * 60)
+    print("linafish doctor")
+    print("=" * 60)
+    print()
+
+    # -- Python + linafish core --
+    print(f"Python:       {platform.python_version()} ({sys.executable})")
+    try:
+        version = md.version("linafish")
+    except Exception:
+        version = "unknown"
+    print(f"linafish:     {version}")
+
+    is_editable, editable_path, location = _detect_install_mode()
+    if is_editable:
+        print(f"Install mode: editable at {editable_path}")
+    else:
+        print(f"Install mode: wheel ({location})")
+    print()
+
+    # -- Optional dependencies --
+    print("Optional dependencies:")
+    deps = [
+        ("numpy", "fast", "fast math for crystallizer_v3"),
+        ("fitz", "pdf", "PyMuPDF — PDF reader"),
+        ("docx", "docx", "python-docx — Word reader"),
+        ("pptx", "pptx", "python-pptx — PowerPoint reader"),
+        ("yaml", "yaml", "PyYAML — YAML reader"),
+        ("striprtf", "rtf", "striprtf — RTF reader"),
+        ("requests", "http", "HTTP client for crystallizer API"),
+        ("paho.mqtt.client", "mqtt", "MQTT client for room listener"),
+    ]
+    for mod, extra, desc in deps:
+        try:
+            __import__(mod)
+            mark = "[+]"
+        except ImportError:
+            mark = "[ ]"
+        print(f"  {mark} {extra:8} {desc}")
+    print()
+
+    # -- Live daemons --
+    print("Live daemons on default ports:")
+    import socket
+    def _probe(host, port, label):
+        try:
+            s = socket.create_connection((host, port), timeout=0.3)
+            s.close()
+            return f"  [+] {label} at {host}:{port}"
+        except Exception:
+            return f"  [ ] {label} at {host}:{port} (not listening)"
+    print(_probe("127.0.0.1", 8901, "converse"))
+    print(_probe("127.0.0.1", 8902, "converse (me fish)"))
+    print(_probe("127.0.0.1", 8900, "http server / room fish"))
+    print()
+
+    # -- Fish health --
+    if getattr(args, "name", None):
+        print(f"Fish: {args.name}")
+        state_dir = Path(args.state_dir) if args.state_dir else Path.home() / ".linafish"
+        fish_file = state_dir / f"{args.name}.fish.md"
+        state_file = state_dir / f"{args.name}_v3_state.json"
+        crystals_file = state_dir / f"{args.name}_crystals.jsonl"
+        for f in (fish_file, state_file, crystals_file):
+            if f.exists():
+                size = f.stat().st_size
+                mtime = datetime.fromtimestamp(f.stat().st_mtime).isoformat(timespec="seconds")
+                print(f"  [+] {f.name}  ({size:,} bytes, modified {mtime})")
+            else:
+                print(f"  [ ] {f.name}  (missing)")
+
+        # Crystal count + quick stats
+        if crystals_file.exists():
+            try:
+                count = 0
+                lens = []
+                with crystals_file.open("r", encoding="utf-8", errors="replace") as fh:
+                    for line in fh:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            d = json.loads(line)
+                            count += 1
+                            lens.append(len(d.get("text", "")))
+                        except Exception:
+                            continue
+                if lens:
+                    avg = sum(lens) / len(lens)
+                    maxlen = max(lens)
+                    print(f"  crystals: {count:,}  avg text: {avg:.0f} chars  max: {maxlen:,}")
+                    if maxlen <= 300 and count > 10:
+                        print(f"  WARNING: max crystal text is {maxlen} chars — you may be on a pre-fix")
+                        print(f"           linafish that truncates at 300 chars. `linafish update`.")
+            except Exception as e:
+                print(f"  (could not read crystals: {e})")
+        print()
+
+    # -- Version check against PyPI (optional) --
+    if getattr(args, "check_updates", False):
+        print("Checking for updates on PyPI...")
+        try:
+            import urllib.request
+            req = urllib.request.Request("https://pypi.org/pypi/linafish/json",
+                                         headers={"User-Agent": "linafish-doctor/1.0"})
+            with urllib.request.urlopen(req, timeout=5) as r:
+                data = json.loads(r.read().decode("utf-8"))
+            latest = data.get("info", {}).get("version", "unknown")
+            print(f"  Latest on PyPI: {latest}")
+            if latest != version and not is_editable:
+                print(f"  [!] You're on {version}, latest is {latest}. Run `linafish update`.")
+            elif is_editable:
+                print(f"  (editable install — pull git instead of running update)")
+            else:
+                print(f"  [+] You're up to date.")
+        except Exception as e:
+            print(f"  (PyPI check failed: {e})")
+        print()
+
+    # -- Suggestions --
+    print("Next commands:")
+    print("  linafish capabilities          the full module + command map")
+    print("  linafish update                upgrade to the latest version on PyPI")
+    print("  linafish go <folder>           build a fish from your writing")
+    print("  linafish doctor --name <fish>  health check a specific fish")
+    print()
+
+
+def cmd_update(args):
+    """Update linafish to the latest version. One command.
+
+    Runs `python -m pip install --upgrade linafish` under the hood, shows
+    the before/after version, and warns if you're on an editable install
+    where pip upgrade is a no-op (pull with git instead).
+    """
+    import subprocess
+    import importlib.metadata as md
+
+    # 1. What version are we on now?
+    try:
+        current = md.version("linafish")
+    except Exception:
+        current = "unknown"
+    print(f"linafish currently at version: {current}")
+
+    # 2. Editable install? pip upgrade won't do anything — git pull will.
+    is_editable, editable_path, _ = _detect_install_mode()
+
+    if is_editable:
+        print()
+        print("This install is EDITABLE — pip upgrade would do nothing.")
+        print(f"The package source is at: {editable_path or '(unknown path)'}")
+        print("To update an editable install, pull the repo:")
+        print(f"  cd {editable_path or '<repo>'} && git pull")
+        print()
+        print("Run `linafish update --force-pip` to attempt a regular pip upgrade anyway.")
+        if not getattr(args, "force_pip", False):
+            return
+
+    # 3. Build the pip command. Include optional extras if --all.
+    target = "linafish[all]" if getattr(args, "all_extras", False) else "linafish"
+    pip_cmd = [sys.executable, "-m", "pip", "install", "--upgrade", target]
+    if getattr(args, "pre", False):
+        pip_cmd.append("--pre")
+
+    print()
+    print(f"Running: {' '.join(pip_cmd)}")
+    print()
+    try:
+        # Inherit stdout/stderr so pip progress is visible in realtime
+        result = subprocess.run(pip_cmd, check=False,
+                               stdout=sys.stdout, stderr=sys.stderr)
+    except KeyboardInterrupt:
+        print("\nUpdate interrupted.")
+        return
+    except Exception as e:
+        print(f"pip failed to launch: {e}")
+        return
+
+    if result.returncode != 0:
+        print()
+        print(f"pip exited with code {result.returncode}.")
+        return
+
+    # 4. Recheck version — but have to re-read metadata from a fresh process
+    #    because md caches the current interpreter's load.
+    try:
+        check = subprocess.run(
+            [sys.executable, "-c", "import importlib.metadata as m; print(m.version('linafish'))"],
+            capture_output=True, text=True, timeout=10,
+        )
+        new_version = check.stdout.strip() or "unknown"
+    except Exception:
+        new_version = "unknown"
+
+    print()
+    if new_version != "unknown" and new_version != current:
+        print(f"Updated: {current} -> {new_version}")
+    else:
+        print(f"Version after update: {new_version}")
+
+    print()
+    print("If you have a running linafish daemon or service, restart it so")
+    print("the new code loads into the running process.")
+
+
+def cmd_capabilities(args):
+    """Print the full linafish capability map — modules, commands, status, optional deps.
+
+    The answer to "what does this package actually do."
+    """
+    import importlib
+
+    sections = [
+        ("Core engine", [
+            ("engine", "FishEngine — holds crystals, produces formations, versions in git"),
+            ("crystallizer_v3", "MI × ache vectorization, SU(d) geometry, wrapping-number coupling"),
+            ("formations", "BFS flood-fill formation detection, fission + naming"),
+            ("parser", "QLP cognitive parser (8 dimensions via grammar role, not keywords)"),
+            ("quantum_operations", "Full 300+ cognitive operations grammar"),
+            ("metabolism", "8 organs digesting a moment into a residue"),
+            ("moment", "Moment dataclass — text + timestamp + source + modifiers"),
+        ]),
+        ("Assessment", [
+            ("assessment", "PreAssessment + FormativeAssessment (baseline + growth)"),
+            ("metrics", "R(n), formation stability, vocab drift, dimension balance, coupling density"),
+            ("feedback", "Usage-weighted learning (formations earn weight when used)"),
+            ("emergence", "Semantic Novelty Threshold (nu, mu, rho, Psi, phase classification)"),
+            ("glyph_evolution", "Private language growth beyond the 48 bootstrap glyphs"),
+            ("seed_formations", "5 universal superglyph attractors for cold fish bootstrap"),
+        ]),
+        ("Feeding", [
+            ("ingest", "File readers — 39 extensions, falls through for unknown suffixes"),
+            ("eat", "CLI command — ingest files or MCP server tool defs"),
+            ("absorb", "Eat existing FAISS / JSONL / HTTP RAG endpoints"),
+            ("listener", "Ambient: mqtt:// / folder: / stdin sources"),
+            ("daemon", "Long-running walk-dir or listen-room mode"),
+            ("init", "Read .mcp.json files, build shared codebook"),
+        ]),
+        ("Network", [
+            ("converse", "Two fish one conversation — HTTP server with /eat /taste /pfc /crystals"),
+            ("http_server", "Universal HTTP interface — stdlib only, any AI can read it"),
+            ("server", "MCP stdio server for Claude Code tight integration"),
+            ("school", "The river and the nets — one stream, N fish with own clustering"),
+            ("guppy", "Self-feeding hunters — ACHE mode finds gaps and closes them"),
+        ]),
+        ("Command layer", [
+            ("__main__", "CLI entrypoint — all `linafish <command>` dispatch"),
+            ("quickstart", "`linafish go` — one command, everything assembles"),
+            ("fusion", "`linafish fuse` — recursive d-level compression to iron"),
+            ("compress", "Chunk compression with optional remote crystallizer API"),
+            ("codebook", "Core data structure — glyphs as compressed meaning"),
+        ]),
+    ]
+
+    # Optional dependency check
+    def _dep(name):
+        try:
+            importlib.import_module(name)
+            return "yes"
+        except ImportError:
+            return "no"
+    deps = {
+        "numpy (fast)": _dep("numpy"),
+        "PyMuPDF (pdf)": _dep("fitz"),
+        "python-docx (docx)": _dep("docx"),
+        "python-pptx (pptx)": _dep("pptx"),
+        "PyYAML (yaml)": _dep("yaml"),
+        "striprtf (rtf)": _dep("striprtf"),
+        "requests (http)": _dep("requests"),
+        "paho-mqtt (mqtt)": _dep("paho.mqtt.client"),
+    }
+
+    # Show the install version and the upgrade path right at the top.
+    try:
+        import importlib.metadata as _md
+        _v = _md.version("linafish")
+    except Exception:
+        _v = "unknown"
+    print(f"LiNafish {_v} -- what this package actually does\n")
+    print("## First things first")
+    print("  linafish update     upgrade to the latest version (one command)")
+    print("  linafish doctor     health check the install and your fish")
+    print("  linafish go <dir>   the product -- point at writing, get a fish")
+    print()
+
+    for section_name, modules in sections:
+        print(f"## {section_name}")
+        for mod_name, desc in modules:
+            print(f"  linafish.{mod_name:20} -- {desc}")
+        print()
+
+    print("## Optional dependencies (install with `pip install linafish[<extra>]`)")
+    for dep_name, status in deps.items():
+        mark = "✓" if status == "yes" else "✗"
+        print(f"  {mark} {dep_name}")
+    print()
+    print("## CLI commands")
+    print("  Run `linafish <command> --help` for details on any of these:")
+    print("  go, eat, taste, recall, ask, status, serve, http, demo, init,")
+    print("  watch, fuse, room, listen, session, history, diff, revert,")
+    print("  absorb, converse, school, whisper, check, hunt, emerge,")
+    print("  feedback, capabilities")
+    print()
+    print("## Docs")
+    print("  README.md, docs/architecture.md, docs/how-it-works.md,")
+    print("  docs/vision.md, docs/ai-usability.md,")
+    print("  docs/ideas/gpt-backed-linafish.md, docs/v12-seeds.md")
+
+
 def main():
+    # Windows cp1252 stdout crashes on unicode in help text / docstrings /
+    # fish content. Force utf-8 so the CLI works on every platform.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(
         prog="linafish",
-        description="LiNafish — sees deeply, loves fiercely.",
+        description=(
+            "LiNafish — sees deeply, loves fiercely.\n"
+            "\n"
+            "  linafish introduce     — AI-facing briefing (paste into your AI)\n"
+            "  linafish update        — upgrade to latest (run this first if unsure)\n"
+            "  linafish doctor        — health check of install, deps, and running fish\n"
+            "  linafish capabilities  — full module + command map\n"
+            "  linafish go <folder>   — the product: build a fish from your writing\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -963,6 +1494,53 @@ def main():
     revert_p.add_argument("--state-dir", help="State directory")
 
     # school — the river and the nets
+    # hunt — guppy ache-hunt
+    hunt_p = sub.add_parser("hunt", help="Send a guppy to hunt what the fish is missing (ache mode).")
+    hunt_p.add_argument("name", help="Fish name to feed")
+    hunt_p.add_argument("--state-dir", help="State directory")
+    hunt_p.add_argument("--swim", action="store_true", help="Continuous hunting loop")
+    hunt_p.add_argument("--ache", action="store_true", help="Hunt for gaps instead of reinforcement")
+    hunt_p.add_argument("--status", action="store_true", help="Show what the guppy knows/misses")
+    hunt_p.add_argument("--interval", type=int, default=300, help="Hunt interval seconds")
+    hunt_p.add_argument("-d", type=float, default=4.0, help="Engine d value")
+    hunt_p.add_argument("--centroid", action="store_true", help="Subtract centroid")
+
+    # emerge — semantic novelty threshold
+    emerge_p = sub.add_parser("emerge", help="Measure emergence (ν, μ, ρ, Ψ, phase) on your fish's formations.")
+    emerge_p.add_argument("name", help="Fish name")
+    emerge_p.add_argument("--state-dir", help="State directory")
+    emerge_p.add_argument("-d", type=float, default=4.0, help="Engine d value")
+    emerge_p.add_argument("--centroid", action="store_true", help="Subtract centroid")
+
+    # feedback — usage-weighted learning report
+    feedback_p = sub.add_parser("feedback", help="Show usage feedback — which formations earn their weight.")
+    feedback_p.add_argument("name", help="Fish name")
+    feedback_p.add_argument("--state-dir", help="State directory")
+
+    # capabilities — the full module map
+    cap_p = sub.add_parser("capabilities", help="Print the full linafish capability map — modules, commands, deps.")
+
+    # update — one-command upgrade (PROMINENTLY listed — first upgrade path)
+    update_p = sub.add_parser("update",
+        help="*** Update linafish to the latest version. One command. ***")
+    update_p.add_argument("--all", dest="all_extras", action="store_true",
+                          help="Also upgrade optional extras (pdf, docx, pptx, yaml, rtf, http, mqtt, numpy)")
+    update_p.add_argument("--pre", action="store_true", help="Include pre-release versions")
+    update_p.add_argument("--force-pip", action="store_true",
+                          help="Run pip upgrade even on an editable install (normally a no-op)")
+
+    # introduce — AI-facing briefing (AGENTS.md contents)
+    intro_p = sub.add_parser("introduce",
+        help="Print AGENTS.md — the AI-facing briefing. Paste into an AI assistant.")
+
+    # doctor — health check for install + fish + live daemons
+    doctor_p = sub.add_parser("doctor",
+        help="Health check: python, linafish version, install mode, deps, daemons, fish health.")
+    doctor_p.add_argument("--name", help="Optional fish name to inspect")
+    doctor_p.add_argument("--state-dir", help="Fish state directory (default ~/.linafish)")
+    doctor_p.add_argument("--check-updates", action="store_true",
+                          help="Also check PyPI for a newer version")
+
     school_p = sub.add_parser("school", help="The river and the nets. One stream, N fish.")
     school_p.add_argument("action", choices=["init", "eat", "refeed", "status", "docket", "add"],
                           help="init=create school, eat=feed all, refeed=replay central through member, "
@@ -1029,6 +1607,13 @@ def main():
         "whisper": cmd_whisper,
         "check": cmd_check,
         "school": cmd_school,
+        "hunt": cmd_hunt,
+        "emerge": cmd_emerge,
+        "feedback": cmd_feedback,
+        "capabilities": cmd_capabilities,
+        "update": cmd_update,
+        "doctor": cmd_doctor,
+        "introduce": cmd_introduce,
     }
     commands[args.command](args)
 

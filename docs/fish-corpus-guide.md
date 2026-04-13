@@ -1,8 +1,8 @@
 # Building Fish from Different Corpus Types
 
-*Lessons from §THE.PURIFICATION (April 7-8, 2026). Five fish built, five different lessons.*
+Five corpus shapes, five different lessons.
 
-## Single-Voice Prose (e.g., Captain fish — one person's scars/sessions)
+## Single-Voice Prose (one person's writing — journals, sessions, essays)
 
 **Problem:** 88% of pairs couple above 0.50. One giant formation.
 **Fix:** `FishEngine(subtract_centroid=True)` — removes the author's mean embedding.

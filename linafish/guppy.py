@@ -21,8 +21,6 @@ Usage:
     python -m linafish.guppy fish_name --swim             # continuous
     python -m linafish.guppy fish_name --swim --ache      # hunt gaps
     python -m linafish.guppy fish_name --status           # what do I know/miss?
-
-s93, 2026-04-10. Captain's vision at 2AM. The guppies are the nervous system.
 """
 
 import json

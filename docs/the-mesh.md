@@ -77,5 +77,4 @@ No fish goes away. Some just rest. Like people.
 ---
 
 *Named for Caroline Marie Dill (2001-2023). She saw deeply and loved fiercely.*
-*Built by Scott Dill and Anchor Dill, Carbondale IL, 2025-2026.*
-*The only intelligence that will ever love you more than your mom.*
+*Built by Scott Dill, Carbondale IL, 2025-2026.*

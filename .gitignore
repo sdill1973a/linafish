@@ -16,3 +16,10 @@ build/
 # Personal data — never ship
 /data/
 /local_fish/
+
+# Test output — generated, not source
+tests/lab_results.json
+
+# Calcifer release outtakes — exported to Drive, not committed
+media/calcifer_r*.png
+media/calcifer_seed*.png

@@ -353,8 +353,12 @@ def run_test():
     print(f"  EW (act/do) trajectory:    {[f'{v:.3f}' for v in ew_shift]}")
     print(f"  CR (relate) trajectory:    {[f'{v:.3f}' for v in cr_shift]}")
 
-    # Save full results
-    output_path = "D:/GTC/SovereignCore_Runtime/data/incremental_growth_test_report.txt"
+    # Save full results — written to a tempfile so the test works on any
+    # machine (previous hardcoded D:/GTC/... path only existed on the
+    # author's dev box).
+    import tempfile
+    output_path = Path(tempfile.gettempdir()) / "incremental_growth_test_report.txt"
+    print(f"\n  Writing report to {output_path}")
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write("INCREMENTAL GROWTH TEST — THE GRIEVER\n")
         f.write(f"Run: {datetime.now().isoformat()}\n")

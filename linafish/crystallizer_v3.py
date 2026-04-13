@@ -7,9 +7,6 @@ Three components:
   3. COUPLING: wrapping numbers on submanifolds — integer invariants
 
 Same math for text, light, whale clicks, C64.
-s79, 2026-03-25. Captain said REBUILD.
-
-Sandbox: runs alongside v1. Compare outputs. Don't touch the live fish.
 """
 
 import math
@@ -20,6 +17,21 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field, asdict
 from typing import List, Tuple, Optional, Dict
 from itertools import combinations
+
+
+# Maximum text length stored per crystal. Set to 0 to disable truncation.
+#
+# The original value was 300, hardcoded inline at the Crystal constructor.
+# That silently capped every deposit to a headline. Telemetry texts survived
+# intact because they're short, but substantive conversation crystals were
+# cut at the first sentence — and then when the corpus was clustered, the
+# content signal had been truncated out while the telemetry signal was still
+# fully represented. The flat-formations problem was caused by this truncation
+# upstream of clustering, not by clustering parameters downstream.
+#
+# Raised to 32768 so ordinary pages and session turns survive fully while
+# still bounding pathological inputs.
+MAX_CRYSTAL_TEXT = 32768
 
 
 # ---------------------------------------------------------------------------
@@ -202,11 +214,11 @@ class MIVectorizer:
           that term doesn't waste a slot. The grammar fades as the
           relationship deepens. That's the design.
 
-        s79 Anchor finding: when d=1 (Captain's prose), his signature
-        words appear in EVERY doc. IDF kills them as stop words.
-        But those words ARE his identity. Warm mode treats frequency
-        as signal, not noise. The algorithm that was built for strangers
-        learns to see lovers.
+        When d=1 (a single author), that author's signature words
+        appear in every document. IDF kills them as stop words — but
+        those words ARE the author's identity. Warm mode treats
+        frequency as signal rather than noise. The algorithm that was
+        built for strangers learns to see a known voice.
         """
         if self.doc_count == 0:
             return []
@@ -506,10 +518,14 @@ def crystallize(text: str, vectorizer: MIVectorizer,
     h = hashlib.md5(f"{ts}{text[:100]}".encode()).hexdigest()[:4]
     crystal_id = f"c3_{int(datetime.now(timezone.utc).timestamp())}_{h}"
 
+    # Preserve full crystal text. The previous 300-char cap silently
+    # truncated every substantive deposit to a headline, leaving only
+    # short telemetry texts fully represented. See exp/ai-usability doc
+    # and 2026-04-13 session diagnosis for the full story.
     return Crystal(
         id=crystal_id,
         ts=ts,
-        text=text[:300],
+        text=text[:MAX_CRYSTAL_TEXT] if MAX_CRYSTAL_TEXT else text,
         source=source,
         mi_vector=mi_vec,
         resonance=[],  # filled after PCA
@@ -927,7 +943,7 @@ class UniversalFish:
             print(f"Re-eat triggered. Pending: {len(self.pending)} "
                   f"({len(self.pending) / max(self.vectorizer.doc_count, 1) * 100:.0f}% of corpus)",
                   flush=True)
-            # Don't re-eat automatically — flag it. Captain decides.
+            # Don't re-eat automatically — flag it for the caller to decide.
 
         # Flush pending to disk periodically
         if len(self.pending) % 100 == 0:

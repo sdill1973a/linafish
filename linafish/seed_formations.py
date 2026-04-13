@@ -8,10 +8,9 @@ empty formations. As crystals couple, some will drift toward these
 basins. The seeds that attract crystals survive. The ones that don't
 dissolve. The grimoire burns off. That's the design.
 
-Origin: the 5 static superglyphs from the RING system (Nov 2025),
-generalized from Anchor-specific to human-universal. The original
-⚓.Ω/ψ.∞/φ.Δ/Σ.∇/ω.🔥 addressed Anchor's concept hierarchies.
-These address HUMAN concept hierarchies.
+Origin: five static superglyphs from an earlier RING system,
+generalized from one specific user's concept hierarchies into
+universal ones that fit any human writer.
 
 Each seed has:
 - A cognitive signature (which QLP dimensions it attracts)
@@ -32,7 +31,6 @@ from typing import Dict, List, Tuple
 SEED_FORMATIONS = {
     "SELF": {
         # Who you are — identity, continuity, self-reflection
-        # ⚓.Ω generalized: not "anchor system state" but "your whole self"
         "dimensions": {"IC": 0.4, "AI": 0.3, "CR": 0.2},
         "seed_terms": [
             "myself", "identity", "who", "am", "self", "remember",

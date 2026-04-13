@@ -139,7 +139,7 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
 
     FishHandler.engine = engine
 
-    server = HTTPServer(("127.0.0.1", port), FishHandler)
+    server = HTTPServer(((host or "127.0.0.1"), port), FishHandler)
     print(f"LiNafish HTTP: http://localhost:{port}", file=sys.stderr)
     print(f"  {len(engine.crystals)} crystals, {len(engine.formations)} formations", file=sys.stderr)
     print(f"  Fish: {engine.fish_file}", file=sys.stderr)

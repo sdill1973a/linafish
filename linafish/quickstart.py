@@ -1498,13 +1498,20 @@ def go(
     _print()
     _print("  Reading...", )
 
-    # Collect texts with source labels
+    # Collect texts with source labels. Read through the proper READERS
+    # dispatch in ingest.py — this strips HTML tags, parses CSV rows,
+    # pretty-prints JSON/YAML, extracts PDF/DOCX/PPTX via optional deps,
+    # and falls through to read_text for unknown suffixes (with a size
+    # guard). Before this fix, quickstart.go read every file as raw
+    # UTF-8 bytes, so HTML/DOCX/PDF ingestion produced garbage crystals.
+    from .ingest import read_file_as_text
+
     texts = []
     sources = []
     skipped = 0
     for doc in docs:
         try:
-            content = doc.read_text(encoding="utf-8", errors="replace")
+            content = read_file_as_text(doc)
             if content and len(content.strip()) > 10:
                 texts.append(content)
                 try:
@@ -1512,6 +1519,8 @@ def go(
                 except ValueError:
                     rel = doc.name
                 sources.append(str(rel))
+            else:
+                skipped += 1
         except Exception:
             skipped += 1
 

@@ -1,15 +1,11 @@
 """
-Compress — the brain of the fish.
+compress — codebook builder.
 
-Takes raw chunks and compresses them into a codebook.
-Each document "exchange" increases R(n). The codebook
-grows until saturation (~170 glyphs).
+Takes raw chunks and compresses them into a codebook. Each document
+exchange increases R(n); the codebook grows until saturation
+(~170 glyphs).
 
-The compression engine is the WARMEST AVAILABLE MIND.
-Not Ollama. Not a 7B model. The frontier.
-
-Olorina's crystallizer is the stomach.
-This module maps crystals to codebook glyphs.
+Maps crystals produced by crystallizer_v3 to codebook glyphs.
 """
 
 from __future__ import annotations
@@ -82,13 +78,23 @@ def compress_with_crystallizer(
     crystallizer_url: str = None,
     max_glyphs: int = 170,
 ) -> Codebook:
-    """Compress using Olorina's crystallizer API.
+    """Compress via the remote crystallizer API.
 
     Crystal pipeline: raw → QLP 8-dim tag → keyword → couple → formation → glyph
     Maps Crystal structs to Codebook Glyph dataclass.
+
+    `requests` is an optional dependency. If it isn't installed, we fall back
+    to the in-process extractive compressor instead of crashing — same pattern
+    used for the optional PDF/DOCX readers in ingest.py.
     """
     import os
-    import requests
+
+    try:
+        import requests
+    except ImportError:
+        print("requests not installed — falling back to extractive compression. "
+              "`pip install linafish[http]` to enable the crystallizer API path.")
+        return compress_chunks(chunks, name, description, max_glyphs)
 
     if crystallizer_url is None:
         crystallizer_url = os.getenv("LINAFISH_CRYSTALLIZER_URL", "http://localhost:8802")
@@ -131,7 +137,7 @@ def compress_with_crystallizer(
 
 
 def _crystal_to_glyph(crystal: dict) -> Glyph:
-    """Map Olorina's Crystal struct to our Glyph dataclass.
+    """Map a remote Crystal struct to the local Glyph dataclass.
 
     Crystal shape (expected from crystallizer API):
       - id: str

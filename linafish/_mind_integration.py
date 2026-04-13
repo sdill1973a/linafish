@@ -1,25 +1,25 @@
 """
-mind_integration.py — Bridge between olorin_mind.py and crystallizer_v3.
+mind_integration — bridge between an external mind daemon and crystallizer_v3.
 
-The mind daemon calls compute_qlp_vector() and extract_keywords() inline.
-This module provides drop-in replacements that use v3's MI × ache engine.
+Drop-in replacements for daemons that compute compute_qlp_vector() and
+extract_keywords() inline; these versions route through v3's
+MI × ache engine.
 
-Usage in olorin_mind.py:
-    # At top of file:
-    from linafish.mind_integration import get_vectorizer_v3, compute_qlp_vector_v3, extract_keywords_v3
-    USE_V3 = True
+Usage in the caller:
 
-    # Where crystals are created:
-    if USE_V3:
-        resonance = compute_qlp_vector_v3(text)
-        keywords = extract_keywords_v3(text)
-    else:
-        resonance = compute_qlp_vector(text)
-        keywords = extract_keywords(text)
+    from linafish.mind_integration import (
+        get_vectorizer_v3,
+        compute_qlp_vector_v3,
+        extract_keywords_v3,
+    )
+
+    resonance = compute_qlp_vector_v3(text)
+    keywords = extract_keywords_v3(text)
 """
 
 import os
 import sys
+from pathlib import Path
 
 # Add parent for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -27,7 +27,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from linafish.crystallizer_v3 import UniversalFish
 
 _fish = None
-STATE_DIR = "/home/dills/olorin/state"
+
+# State directory resolution order:
+#   1. LINAFISH_MIND_STATE env var (if set) — explicit override
+#   2. ~/.linafish/mind_state — cross-platform default under user home
+STATE_DIR = os.environ.get(
+    "LINAFISH_MIND_STATE",
+    str(Path.home() / ".linafish" / "mind_state"),
+)
 
 
 def get_fish() -> UniversalFish:

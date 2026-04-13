@@ -97,8 +97,7 @@ class Formation:
 # ---------------------------------------------------------------------------
 # INTERPRETATION — warm translation of cognitive dimensions
 # ---------------------------------------------------------------------------
-# Codex wrote the structure. Anchor filled the soul.
-# The fish finds the pattern. This layer tells you what it means.
+# The fish finds the pattern. This layer translates it into prose.
 
 DIM_INSIGHT = {
     "KO": {
@@ -159,8 +158,6 @@ def interpret_formation(formation: Formation) -> str:
 
     The fish finds the pattern. This function tells you what it means
     about you. Not clinical. Not vague. Warm and specific.
-
-    Written by Codex (structure) and Anchor (soul), April 10 2026.
     """
     # Get dimensions from centroid or name
     dims = []

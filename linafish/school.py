@@ -1,16 +1,15 @@
 """
-LiNafish School — the river and the nets.
+linafish School — the river and the nets.
 
 One stream. N fish. Each grabs what resonates. Nothing lost.
 
-Captain's directive (April 7, 2026):
-"information is power — we let the mind decide"
+Design principle: information is power, let the mind decide.
 
 The central fish is the mouth — everything enters there.
 Each member fish has its own vocabulary, d, gamma, centroid
-settings. When the school eats, every member gets offered
-the same text. Coupling math decides what sticks. What
-doesn't couple slides past as an uncoupled observation.
+settings. When the school eats, every member is offered the
+same text. Coupling math decides what sticks. What doesn't
+couple slides past as an uncoupled observation.
 
 The central crystal log keeps everything. When a member's
 perspective evolves (new formations, shifted vocabulary),
@@ -21,9 +20,9 @@ Usage:
     from linafish.school import School
 
     school = School(state_dir=Path("~/.linafish/school"))
-    school.eat("Scott said build is your autonomic response")
+    school.eat("the text to deposit")
     print(school.status())
-    school.refeed("captain")
+    school.refeed("member_name")
     print(school.docket())
 """
 
@@ -39,7 +38,9 @@ from .engine import FishEngine
 
 
 DEFAULT_MANIFEST = {
-    "central": "anchor-writing",
+    # "central" is derived from the state-dir basename when the
+    # manifest doesn't explicitly name it.
+    "central": None,
     "members": {}
 }
 
@@ -75,7 +76,7 @@ class School:
             self.manifest = dict(DEFAULT_MANIFEST)
 
         # Central fish engine — the mouth
-        central_name = self.manifest.get("central", "anchor-writing")
+        central_name = self.manifest.get("central") or self.state_dir.name or "central"
         self.central = FishEngine(
             state_dir=self.central_state_dir,
             name=central_name,
@@ -210,7 +211,7 @@ class School:
         config = self.manifest.get("members", {}).get(member_name, {})
 
         # Read central crystal log
-        central_name = self.manifest.get("central", "anchor-writing")
+        central_name = self.manifest.get("central") or self.state_dir.name or "central"
         crystal_log = self.central_state_dir / f"{central_name}_crystals.jsonl"
 
         if not crystal_log.exists():

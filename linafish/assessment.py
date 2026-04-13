@@ -400,7 +400,7 @@ class PreAssessment:
           2 < d <= 5: BLEND -- mix of frequency and distinctiveness
           d > 5:   STRANGER -- IDF, rare/distinctive terms dominate
 
-        KEY INSIGHT (s86 Anchor, 2026-04-02): d reflects the RELATIONSHIP
+        KEY INSIGHT: d reflects the RELATIONSHIP
         between the fish and the corpus, not the content's internal warmth.
         A stranger reading warm text (Van Gogh's love letters) should still
         start at high d because the FISH doesn't know Van Gogh yet. Content
