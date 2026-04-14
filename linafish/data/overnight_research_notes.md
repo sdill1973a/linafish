@@ -257,3 +257,56 @@ Search over "Linear A functional register administrative ritual 2025 2026" retur
 5. Search for Ararat Petrosyan to assess credibility and whether a formal paper exists
 
 ---
+
+## 2026-04-14 — Cycle 5
+
+**Prerequisite file check:**
+- `data/linear_b_corpus_sources.md` — still does not exist. Creating this remains overdue.
+- `data/functional_decipherment_research.md` — still does not exist.
+
+---
+
+### 1. WSEAS 2025 Author — RESOLVED
+
+**Author:** Peter Z. Revesz, University of Nebraska-Lincoln (Dept. Computer Science & Engineering)
+**Paper:** "Enhancing a Software Platform for the Decipherment of Linear-A Inscriptions"
+**Published:** July 8, 2025 (accepted May 20; revised April 18). WSEAS *Transactions on Information Science and Applications*.
+**Method:** Three-module platform — machine-readable dictionary, interactive interface, and search engine based on "Syllabic Grouping." Entirely phonetic-decipherment oriented. No functional register analysis. Revesz also authored an earlier WSEAS paper proposing Minoan as related to Uralic/West-Ugric — fringe linguistic hypothesis.
+**Verdict:** Not a competitor to linafish. No register-classification content. Author is reachable at UNL (`revesz@cse.unl.edu` per UNL CSE faculty pages).
+
+---
+
+### 2. HAL Paper (hal-03207615) — Date Confirmed, Access Still Blocked
+
+Paper submitted April 26, **2021** — not recent. Preprint only; no journal publication found. Authors: Karajgikar, Al-Khulaidy, Berea (GMU). Anubis security gate blocks direct PDF fetch on both the HTML page and the document URL. This is a 2021 preprint, substantially older than prior cycles implied. Still the closest statistical work to linafish, but five years old and unpublished in a peer-reviewed venue.
+
+---
+
+### 3. Craiova 2025 Paper — Full Citation Confirmed
+
+Manoj & Perono Cacciafoco. "Minoan and the Machines: Computational Approaches to the Decipherment of Linear A."
+*Annals of the University of Craiova: Series Philology, Linguistics*, Vol. 46, No. 1-2 (2024). Published February 18, 2025.
+DOI: `10.52846/aucssflingv.v46i1-2.134`
+Reviews four methods: minimum cost-flow, generative phonetic framework, cryptanalytic brute-force, feature-similarity. All phonetic decipherment. No register/functional content.
+
+---
+
+### 4. Ararat Petrosyan — No Academic Profile Found
+
+Search returned no journal publications, no institutional affiliation, no ResearchGate or Academia.edu profile matching the GreekReporter author. Conclusion: the January 2026 GreekReporter piece is an informed-enthusiast contribution with no peer-reviewed backing. Do not cite as scholarship; cite only as evidence that the functional-reconstruction problem is publicly recognized as tractable.
+
+---
+
+### 5. No New 2026 Peer-Reviewed Papers
+
+Broad and targeted searches confirm: zero peer-reviewed 2026 publications on Linear A computational analysis (functional or phonetic). The field is quiet. **Linafish approach remains unoccupied territory.**
+
+---
+
+### Next cycle priorities
+1. Create `data/linear_b_corpus_sources.md` — this is now four cycles overdue
+2. Attempt to access HAL paper via Berea's GMU faculty page (not HAL directly)
+3. Find Schoep 2002 via JSTOR or ResearchGate (KU server 403 persists)
+4. Check lineara.xyz "Contexts" filter vocabulary for admin/ritual proxies
+
+---
