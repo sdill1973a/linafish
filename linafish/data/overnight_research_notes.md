@@ -196,3 +196,64 @@ No peer-reviewed publications on Linear A found dated 2026. The most recent comp
 4. Investigate lineara.xyz "Contexts" filter manually for register-relevant vocabulary
 5. Create `data/linear_b_corpus_sources.md` with InsiderPhD and DAMOS entries
 
+---
+
+## 2026-04-14 — Cycle 4
+
+**Prerequisite file check:**
+- `data/linear_b_corpus_sources.md` — still does not exist.
+- `data/functional_decipherment_research.md` — still does not exist.
+
+---
+
+### 1. HAL Paper Authors — RESOLVED
+
+**Paper:** "Computational Pattern Recognition in Linear A" (`hal-03207615`)  
+**Authors:** Jajwalya R. Karajgikar, Amira Al-Khulaidy, and Anamaria Berea (George Mason University)  
+**Methods:** n-gram analysis, LDA topic modeling, k-means clustering, information theory / entropy measures  
+**Goal:** Predict missing symbols on damaged tablets; cluster signs by topic without phonetic decipherment
+
+Direct PDF access still blocked by Anubis security gate. Authors confirmed via search metadata. This is the closest published work to linafish — purely statistical, no phonetic assumptions — but targets sign-level prediction, not functional register classification. **Linafish is still unoccupied territory at the register-classification level.**
+
+**Action:** Try contacting Anamaria Berea (GMU) directly; her institutional page may have a preprint link.
+
+---
+
+### 2. Functional Reconstruction Without Decipherment — NEW 2026 SOURCE (MODERATE RELEVANCE)
+
+**Source:** Ararat Petrosyan (guest post), GreekReporter, 15 Jan 2026  
+URL: `https://greekreporter.com/2026/01/15/reconstruct-linear-a-crack-language/`
+
+Describes a deductive functional-reconstruction approach that identifies tablet purpose without deciphering the language. Five-layer method: (1) logogram frequency analysis, (2) numerical magnitude/proportionality, (3) archaeological context, (4) comparative Linear B / Near Eastern admin systems, (5) recurring symbol-cluster patterns.
+
+**Claimed accuracy:** ~71% on blind test (5 tablets). Strategic reserve records: 85–95%. Labor records: ~88%. Export records: 55–80%.
+
+**Critical caveats:**
+- GreekReporter guest post, NOT peer-reviewed. No journal affiliation, no DOI, no formal methodology paper cited.
+- Author Ararat Petrosyan is a historian; no institutional affiliation named.
+- References Godart–Olivier corpus and Ester Salgarella but provides no citations.
+
+**Verdict for linafish:** The *concept* directly overlaps with linafish's goals — functional identification without phonetic decipherment. However, the method is manual and deductive, not computational. This is evidence the problem is tractable and recognized as valuable, but not a computational competitor. **Flag as related prior art for the paper/writeup, with strong caveats on its informal status.**
+
+---
+
+### 3. Schoep 2002 — Still Inaccessible
+
+Direct fetch of Younger's KU server PDF returns 403 Forbidden. The 60%/25% admin/religious corpus-composition figure remains unverified against a citable scholarly source. Do not use this statistic in any publication.
+
+---
+
+### 4. No 2026 Peer-Reviewed Papers Found
+
+Search over "Linear A functional register administrative ritual 2025 2026" returned no peer-reviewed 2026 publications. The landscape remains: Nepal & Perono Cacciafoco MDPI 2024 (phonetic), Manoj & Perono Cacciafoco Craiova 2025 (review), WSEAS 2025 (software platform, unread). No computational register-classification work found.
+
+---
+
+### Next cycle priorities
+1. Search for Anamaria Berea (GMU) institutional page for HAL preprint link
+2. Find Schoep 2002 via Google Scholar or JSTOR alternative path
+3. Fetch WSEAS 2025 paper via author contact or DOI resolver (avoid direct PDF)
+4. Create `data/linear_b_corpus_sources.md` (overdue since Cycle 1)
+5. Search for Ararat Petrosyan to assess credibility and whether a formal paper exists
+
+---
