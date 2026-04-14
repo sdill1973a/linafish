@@ -1046,10 +1046,19 @@ def cmd_doctor(args):
 
     # -- Python + linafish core --
     print(f"Python:       {platform.python_version()} ({sys.executable})")
+    # Prefer the in-source __version__ because on editable installs
+    # (`pip install -e .`) the dist-info metadata can lag behind
+    # pyproject.toml until the next pip reinstall, leading to doctor
+    # reporting a stale version for anyone dev-working on the package.
+    # Fall back to importlib.metadata for the wheel-install case.
     try:
-        version = md.version("linafish")
+        import linafish as _lfpkg
+        version = getattr(_lfpkg, "__version__", None) or md.version("linafish")
     except Exception:
-        version = "unknown"
+        try:
+            version = md.version("linafish")
+        except Exception:
+            version = "unknown"
     print(f"linafish:     {version}")
 
     is_editable, editable_path, location = _detect_install_mode()
