@@ -148,6 +148,15 @@ def compute_emergence(
     total_ops = 0
 
     for crystal in crystals:
+        # Resolution of the merge with origin/master 35a6897: the upstream
+        # commit added hasattr guards here to silent-degrade legacy crystals
+        # that lack top_operations / dominant. The helpers below are a
+        # strict superset of that behaviour — they return an empty list
+        # when the attribute is missing (same silent-degrade outcome), and
+        # additionally extract v3 chain/modifier data when the crystal is
+        # a crystallizer_v3.Crystal rather than a MetabolicCrystal. Using
+        # the helpers preserves both failure modes upstream was guarding
+        # against plus the real v3 signal the load-path fix exposes.
         ops_for_crystal = _crystal_ops(crystal)
         dominant = _crystal_dominant(crystal)
         for op in ops_for_crystal:
