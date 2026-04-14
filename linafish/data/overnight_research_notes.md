@@ -376,3 +376,79 @@ Broad and targeted searches return zero peer-reviewed 2026 publications on Linea
 5. Find Schoep 2002 full text via JSTOR, WorldCat, or ILL path
 
 ---
+
+## 2026-04-14 — Cycle 7
+
+**Prerequisite file check:**
+- `data/linear_b_corpus_sources.md` — still does not exist. Six cycles overdue.
+- `data/functional_decipherment_research.md` — still does not exist.
+
+---
+
+### 1. DAMOS EpiDoc XML Export — STATUS CHANGE (HIGH PRIORITY)
+
+**Prior cycles:** Export described as "planned," subprojects page last modified 2017, no download visible.
+
+**This cycle:** Multiple independent search results confirm an EpiDoc-TEI XML export function is now **live in the DAMOS interface**. A paper titled "Exporting Mycenaean: From a Relational Database to EpiDoc XML files (and back again?)" is indexed at `journals.uio.no/dhnbpub/article/view/12295` — direct fetch returned 503 but the abstract is visible in search snippets.
+
+Key details extracted from search snippets:
+- Export produces EpiDoc-TEI compliant XML
+- Goal: FAIR data compliance — increase integration with other epigraphic datasets
+- A future **import** function is also planned (EpiDoc XML → DAMOS), enabling community contributions
+- References to "Aurora 2025" in snippets suggest a 2025 interface update version
+
+**Critical open question:** Is this a per-document export (click on one tablet, download its XML) or a bulk export endpoint (download all ~1,500+ documents as a ZIP or via API)? The paper title "and back again?" suggests bidirectional import/export, not necessarily bulk.
+
+**Action:** (a) Access `damos.hf.uio.no` directly and locate the EpiDoc export button. (b) Email Federico Aurora (`federico.aurora@ub.uio.no`) specifically asking: "Is the EpiDoc export described in your DHN paper available for bulk download or only per-document? Is a full corpus ZIP or API endpoint available for research use?"
+
+---
+
+### 2. Brent Davis (Melbourne) — Syllabotactic Analysis of Linear A
+
+**Author:** A/Prof Brent Davis, University of Melbourne (Historical & Philosophical Studies)  
+**Background:** PhD on Minoan ritual vessels and Linear A; BA Linguistics from Stanford
+
+**Method:** "Syllabotactic analysis" — statistical method assessing whether Linear A and Cretan Hieroglyphic meet specific linguistic structural criteria. Not phonetic assignment; instead, structural/distributional analysis of sign sequences.
+
+**Published lecture:** UT Austin Scripts Workshop, March 4, 2022 (`sites.utexas.edu/scripts/2022/03/04/brent-davis...`)
+
+**Relevance to linafish:** Syllabotactic analysis operates on sign-sequence distributions without phonetic decipherment — overlaps methodologically with linafish's distributional coupling approach more than any other researcher found to date. Davis is not doing functional register classification, but his distributional tools are adjacent.
+
+**No 2025-2026 papers found** in this search. His Academia.edu page (`unimelb.academia.edu/BrentDavis`) and Melbourne faculty page are the next places to check.
+
+**Action:** Fetch Davis's Academia.edu publication list for any 2024-2026 papers.
+
+---
+
+### 3. SpokenPast 2025 Article — Unread (Server 503)
+
+Title: "AI Breakthrough in Deciphering Linear A: 2025 Minoan..." at `spokenpast.com/articles/ai-deciphering-linear-a-minoan-language-2025/`
+
+Server returned 503 on direct fetch. Indexed in search results alongside the HAL paper and WSEAS 2025. Likely pop-sci, but could summarize a real 2025 research development. Title implies a claimed "breakthrough." Prior cycles have flagged similar pop-sci overclaiming (Nepal 2024, GreekReporter Petrosyan 2026). Treat with skepticism until content can be read.
+
+**Action:** Retry fetch next cycle.
+
+---
+
+### 4. Emerging Scholarly Consensus — Relevant to Framing
+
+Multiple 2025-2026 sources converge on this claim (paraphrased from search snippets): "Every specialist working on Linear A agrees that the breakthrough, if it comes, will not come primarily from better algorithms, but from the ground — specifically from a bilingual inscription or a large archive of new tablets."
+
+**Implication for linafish:** This framing validates the linafish approach by implication. If full phonetic decipherment requires new physical evidence, then the tractable computational contribution is *functional pattern detection* — what linafish does. The framing positions linafish as the realistic computational contribution given current corpus constraints.
+
+---
+
+### 5. No New 2026 Peer-Reviewed Papers
+
+All searches return zero 2026 peer-reviewed publications on Linear A (computational, functional, or phonetic). The field remains quiet. Linafish approach unoccupied.
+
+---
+
+### Next cycle priorities
+1. Retry `spokenpast.com/articles/ai-deciphering-linear-a-minoan-language-2025/` fetch
+2. Retry `journals.uio.no/dhnbpub/article/view/12295` (DAMOS EpiDoc paper) fetch
+3. Check Brent Davis Academia.edu for 2024-2026 publications
+4. Access `damos.hf.uio.no` directly — locate and test the EpiDoc export button
+5. Create `data/linear_b_corpus_sources.md` — six cycles overdue
+
+---
