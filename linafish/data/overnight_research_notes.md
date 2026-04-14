@@ -310,3 +310,69 @@ Broad and targeted searches confirm: zero peer-reviewed 2026 publications on Lin
 4. Check lineara.xyz "Contexts" filter vocabulary for admin/ritual proxies
 
 ---
+
+## 2026-04-14 — Cycle 6
+
+**Prerequisite file check:**
+- `data/linear_b_corpus_sources.md` — still does not exist. Five cycles overdue.
+- `data/functional_decipherment_research.md` — still does not exist.
+
+---
+
+### 1. WSEAS 2025 Paper — AUTHOR CORRECTION (HIGH PRIORITY)
+
+Previous cycles (Cycle 5) incorrectly attributed the WSEAS 2025 Linear A paper to Peter Z. Revesz (UNL). That attribution was wrong.
+
+**Correct authors:** Mavridaki, Zacharis, and Papakitsos  
+**Correct title:** "Enhancing a Software Platform for the Decipherment of Linear-A Inscriptions"  
+**WSEAS Transactions on Information Science and Applications, July 2025**
+
+Content: machine-readable dictionary + software platform using a spreadsheet-row-per-artifact schema mapping words to cognate candidates. Entirely phonetic-decipherment oriented. No register analysis.
+
+Revesz (UNL) is a *different* WSEAS Linear A author — he proposed a West-Ugric/Minoan connection. Both are fringe phonetic work with no overlap with linafish.
+
+---
+
+### 2. HAL Paper — Berea Contact Confirmed, Paper Not on Faculty Page
+
+Anubis security gate still blocks `hal.science/hal-03207615` (both HTML and PDF).  
+Berea's GMU faculty page (`science.gmu.edu/directory/anamaria-berea`) lists no Linear A publications — the paper does not appear in her institutional profile. Her email is `aberea@gmu.edu`.
+
+**Action:** Email `aberea@gmu.edu` directly, reference hal-03207615, ask for a PDF copy or preprint link. This is the shortest path around the Anubis block.
+
+---
+
+### 3. DAMOS — Status Truly Unchanged
+
+Subprojects page last modified **July 5, 2017**. No new subprojects, no EpiDoc export, no API, no bulk download mentioned anywhere. The `ub-web@ub.uio.no` contact on the page is generic. Federico Aurora (`federico.aurora@ub.uio.no`) from Cycle 1 remains the only targeted contact. No path forward without emailing him directly.
+
+---
+
+### 4. Schoep 2002 — Full Citation Confirmed
+
+**Schoep, I. (2002).** "The administration of neopalatial Crete: a critical assessment of the Linear A tablets and their role in the administrative process." *Minos: Revista de filología egea*, 17, pp. 1–230.
+
+Search confirms this is the canonical scholarly work on Linear A tablet administration. The corpus total: ~7,400 signs across ~1,427 artifacts. Schoep documents the expansion of Linear A from administrative into non-administrative (religious/cultic) contexts during the Neopalatial period — directly supporting the admin/ritual binary linafish targets. However, no precise percentage breakdown (60%/25%) surfaces from the search snippets. The figure likely originates from Kiley 2025 (Academia.edu, non-peer-reviewed). Do not cite as authoritative.
+
+---
+
+### 5. lineara.xyz — Context Filter Structure Confirmed
+
+Filter categories confirmed: **Word Types, Contexts, Tags, Scribes, Supports, Frequency, Findspots, Sites.** No functional-type (admin/ritual) tag exists. The `Contexts` and `Tags` filters are the best register proxies. No example values were returned by automated fetch — requires manual browser exploration. Still no bulk download.
+
+---
+
+### 6. No New 2026 Peer-Reviewed Papers
+
+Broad and targeted searches return zero peer-reviewed 2026 publications on Linear A (computational or functional). Linafish approach remains unoccupied territory.
+
+---
+
+### Next cycle priorities
+1. Email `aberea@gmu.edu` re: HAL preprint PDF (draft text)
+2. Email `federico.aurora@ub.uio.no` re: DAMOS data snapshot (draft text — overdue since Cycle 1)
+3. Create `data/linear_b_corpus_sources.md` — now five cycles overdue
+4. Manually browse lineara.xyz Contexts and Tags filter values
+5. Find Schoep 2002 full text via JSTOR, WorldCat, or ILL path
+
+---
