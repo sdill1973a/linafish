@@ -620,6 +620,13 @@ class FishEngine:
         if len(self.formations) > 60:
             self.formations = hierarchical_merge(self.formations, target=50)
 
+        # Level 4 learning loop: formations teach the metabolic engine what
+        # each cognitive dimension looks like in this corpus. Before this,
+        # formation_memory was only populated from quickstart.go(); every
+        # incremental eat()/eat_path()/re_eat()/load cycle left it empty.
+        if self.fish._has_metabolism and self.formations:
+            self.fish.metabolic_engine.teach_from_formations(self.formations)
+
     def _save_state(self):
         """Save state as fish.md — formations on top, crystal JSON at bottom."""
         # Top: human-readable formations
