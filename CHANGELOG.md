@@ -10,6 +10,138 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [1.1.5] — 2026-04-13
+
+**Correctness release. Upgrade recommended for anyone running `linafish
+emerge`, building a fish on Windows, or relying on per-crystal cognitive
+parse data (`chains`, `modifiers`, `cognitive_vector`). No features, no
+API changes, no schema changes — only fixes.**
+
+### Fixed
+
+- **`crystallizer_v3._load_state()`: load-path amputation of six crystal
+  fields.** `_load_state()` was constructing `Crystal(...)` from the
+  JSONL log with only 9 of the dataclass's 15 fields, letting defaults
+  (empty list / empty dict / `None`) fill in the other six: `chains`,
+  `modifiers`, `cognitive_vector`, `ache`, `formation`, and
+  `wrapping_numbers`. Every save wrote the full crystal via
+  `dataclasses.asdict()`, so the data was reaching disk correctly. Only
+  the loader was stripping it. Symptom: every reloaded crystal had an
+  empty cognitive parse layer, `linafish emerge` reported zero
+  novelty/zero phase on every formation, and fish that had the data
+  populated on disk appeared dormant in every tool that loaded them
+  through `FishEngine`. The JSONL files have had the data the whole
+  time. Load path now round-trips all six fields explicitly, with
+  `chains` re-tupleified because JSON drops tuple type on serialize.
+
+  Existing fish come alive on the first reload after upgrading — no
+  re-eat or migration required. On our test corpus a 6,360-crystal
+  fish went from 0 populated `cognitive_vector` / 0 `chains` / 0
+  `modifiers` to 6,359 / 4,280 / 4,046 respectively on a single
+  reload. `linafish emerge` went from an empty-state diagnostic to 23
+  formations reporting Phase 1 "Semantic Novelty" with ν=1.000.
+
+  This is the biggest single fix in the 1.1.x line. Recommended upgrade
+  for anyone who ever ran `linafish emerge` and got zeros, or who ever
+  noticed their fish's cognitive dimensions looked flat after a restart.
+
+- **Path-argument tilde expansion on Windows.** The CLI's path-shaped
+  arguments (`--state-dir`, `--feed`, `--vocab`, `--output`, `--manifest`,
+  `--central-dir`, and every positional `source` / `fish` that refers to
+  a local path) did not call `Path.expanduser()` before resolving. On
+  Unix shells (bash, zsh) this was invisible because the shell expanded
+  `~` before Python saw it. On Windows `cmd.exe` and PowerShell, the
+  shell passes `~` through literally and Python's `Path("~/...")`
+  resolves it to a literal `~` subdirectory in the current working
+  directory. The README's own `linafish go ~/my-writing` example failed
+  for any stranger running it on a fresh Windows install.
+
+  Fixed at the argparse layer rather than per-command: a new
+  `_user_path` type function is now applied to every pure-path
+  `add_argument`, so expansion happens at parse time and no `cmd_*`
+  body can forget. Mixed-scheme positionals (`absorb source`,
+  `listen source`), which also accept `http://`, `mqtt://`, and
+  `folder:` prefixes, are intentionally left untyped because their
+  parser already handles the scheme split internally.
+
+- **`linafish emerge` silent-zero failure mode.** `compute_emergence`
+  was written for the v0.3 metabolism-engine crystal type and iterated
+  `crystal.top_operations` directly, which the v3 `Crystal` dataclass
+  does not have as an attribute. Prior to the load-path fix above this
+  showed up as an `AttributeError` crash on every real fish; after the
+  load-path fix it would have silently produced zero metrics on any
+  formation whose crystals had empty parser output. `compute_emergence`
+  now uses a type-tolerant shim (`_crystal_ops`) that handles
+  `MetabolicCrystal` via `top_operations`, v3 `Crystal` via tuple/list
+  `chains` and dict `modifiers`, and a legacy string-chain fallback.
+  `cmd_emerge` also prints an honest "no cognitive operation data"
+  diagnostic if a fish genuinely has empty parser output (e.g., a fresh
+  fish with zero eats), rather than printing misleading zeros.
+
+- **`linafish capabilities` stale docs list.** The command printed a
+  hardcoded list of docs that included three files (`ai-usability.md`,
+  `ideas/gpt-backed-linafish.md`, `v12-seeds.md`) that were removed from
+  the tree in 1.1.3. List now reflects the docs that actually ship:
+  `README.md`, `AGENTS.md`, `CHANGELOG.md`, and the user-facing files
+  under `docs/` (architecture, how-it-works, vision, owners-manual,
+  configuration, privacy, research, testing, worked-example).
+
+### Added
+
+- **README Install section: "If `linafish` isn't found after install"
+  subsection.** A first-time user on Windows who installed Python
+  without the *"Add Python to PATH"* checkbox gets `pip install`
+  success followed by *"command not found"* and no obvious next step.
+  The new subsection gives three recovery paths: `python -m linafish`
+  as the always-works fallback, Windows user-PATH recovery with the
+  exact command to find the Scripts directory, and Unix/macOS
+  `~/.local/bin` guidance for `pip install --user` cases. This is the
+  single most-common stranger-install friction we have observed in the
+  wild and the README now has a first-class answer for it.
+
+- **`_user_path` argparse type helper** (`linafish/__main__.py`). See
+  the tilde-expansion fix above. New code adding a path-shaped
+  `add_argument` should pass `type=_user_path` and inherit the
+  expansion behaviour automatically.
+
+### Changed
+
+- **README `Install` section: "Runs on anything" → "Runs on any OS
+  with a supported Python (tested on Windows 10/11, macOS, and
+  Linux)".** The old claim was marketing-vague and unfalsifiable; the
+  new claim names the platforms actually tested.
+
+- **README `Three Ways to Connect` section: "Copy-Paste (any AI, zero
+  setup)" → "Copy-Paste (any AI, no server needed)".** `pip install`
+  plus possible PATH setup is not zero setup; the new label is honest
+  about what "no server" means.
+
+- **README `What You'll See` block: "The fish teaches ANY AI how to
+  read it. Paste it into ChatGPT, Claude, Gemini, Llama — anything
+  with a text box"** was replaced with a scoped claim naming the three
+  models we have actually verified the workflow against (Claude,
+  ChatGPT, Gemini), with an explicit note that we cannot guarantee
+  behavior on models we have not tested.
+
+- **`docs/how-it-works.md` Domain Extension section: "The 8 dimensions
+  work on any corpus"** was replaced with a claim that names the
+  corpus types we have actually run formations across (personal
+  journals, academic papers, novels, historical letters, source code).
+  Same pattern as the other doc fixes: describe what we have done, not
+  what the engine could theoretically do.
+
+### Review process
+
+This release was reviewed three times cold by an independent model
+(codex CLI, GPT-o3) across three separate review passes. Round 1
+surfaced one HIGH (the emerge type mismatch) and one MED (the
+incomplete path-argument sweep). Round 2 verified those fixes and
+found the branch clean with no new issues. Round 3 was scoped to the
+load-path amputation commit and included a live round-trip test, a
+direct count of fields populated on both test fish on disk, and an
+end-to-end run of `linafish emerge me` — all passed. Merge was gated
+on all three rounds being clean.
+
 ## [1.1.4] — 2026-04-13
 
 **Critical fix — upgrade recommended for anyone running `linafish
@@ -25,7 +157,7 @@ converse` as a daemon.**
   already happened server-side — only the reply was lost — but the next
   inbound request found a dead socket. Now wrapped in try/except with
   a log-and-return. Observed ~19 catches firing in an hour of normal
-  traffic on a sister install before it was patched.
+  traffic on a parallel install before it was patched.
 - **`__main__.py` + `listener.py`**: MQTT URL parser now accepts
   `mqtt://user:pass@host:port/topic` for authenticated brokers. Previously
   credentials had to be passed as separate flags.
