@@ -104,7 +104,13 @@ The `.fish.md` file (from `linafish eat`) is a human-readable export. The `.stat
 
 ## Domain Extension
 
-The 8 dimensions work on any corpus. For specialized domains, extend the vocabulary:
+The 8 dimensions are corpus-agnostic — they describe ways a mind moves
+through a passage (knowing, testing, structuring, relating, wanting,
+choosing, acting, thinking-about-thinking) rather than topics. The
+same 8 have produced meaningful formations across every corpus we've
+tested: personal journals, academic papers, novels, historical
+letters, and source code. For specialized domains, extend the
+per-dimension vocabulary to pick up domain-specific signal:
 
 ```json
 {

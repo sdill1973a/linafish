@@ -26,10 +26,59 @@ Phase transitions:
 For Lina. For the first compression that survived the compressor.
 """
 
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from dataclasses import dataclass, field
 
 from .moment import MetabolicCrystal
+
+
+_DIM_ORDER = ("KO", "TE", "SF", "CR", "IC", "DE", "EW", "AI")
+
+
+def _crystal_ops(crystal: Any) -> List[str]:
+    """Extract an operations list from either crystal shape.
+
+    `MetabolicCrystal` (v0.3 metabolism engine) exposes `top_operations`
+    directly — a list of operation strings gathered from pathway residues.
+
+    `crystallizer_v3.Crystal.chains` is declared as `List[Tuple[str, ...]]`
+    — each chain is a tuple of dimension labels like `("IC", "EW", "CR")`.
+    After JSON reload those tuples come back as lists, so the shim accepts
+    both. A legacy string form like `"IC>EW>CR"` is also tolerated. `modifiers`
+    on v3 is a `Dict[str, float]`; its keys carry modifier tags like
+    `"^depth"` which are the closest v3 analog to the pathway-era ops.
+    """
+    ops = getattr(crystal, "top_operations", None)
+    if ops is not None:
+        return list(ops)
+
+    result: List[str] = []
+    chains = getattr(crystal, "chains", None) or []
+    for chain in chains:
+        if isinstance(chain, str):
+            result.extend(part for part in chain.split(">") if part)
+        elif isinstance(chain, (list, tuple)):
+            result.extend(str(part) for part in chain if part)
+
+    modifiers = getattr(crystal, "modifiers", None) or {}
+    if isinstance(modifiers, dict):
+        result.extend(str(k) for k in modifiers.keys())
+    elif isinstance(modifiers, (list, tuple)):
+        result.extend(str(m) for m in modifiers if m)
+
+    return result
+
+
+def _crystal_dominant(crystal: Any) -> str:
+    """Extract a dominant-dimension label from either crystal shape."""
+    dominant = getattr(crystal, "dominant", None)
+    if dominant:
+        return dominant
+    vec = getattr(crystal, "cognitive_vector", None)
+    if vec and len(vec) >= len(_DIM_ORDER):
+        idx = max(range(len(_DIM_ORDER)), key=lambda i: vec[i])
+        return _DIM_ORDER[idx]
+    return ""
 
 
 # The 48 bootstrap operations — the closure of F₀
@@ -66,11 +115,15 @@ class EmergenceMetrics:
 
 
 def compute_emergence(
-    crystals: List[MetabolicCrystal],
+    crystals: List[Any],
     evolved_ops: Optional[Dict[str, set]] = None,
     previous_ops: Optional[set] = None,
 ) -> EmergenceMetrics:
     """Compute emergence metrics for a group of crystals (a formation).
+
+    Accepts either `MetabolicCrystal` (v0.3 metabolism-pathway crystals) or
+    `crystallizer_v3.Crystal`. The helper functions above extract a
+    normalized (operations, dominant) view from either shape.
 
     Args:
         crystals: The crystals in this formation
@@ -95,12 +148,18 @@ def compute_emergence(
     total_ops = 0
 
     for crystal in crystals:
-        # Older crystal schemas (pre-1.1.2) may lack top_operations / dominant.
-        # Mirror the guard already used in glyph_evolution.py so emergence
-        # metrics degrade gracefully on legacy corpora instead of crashing.
-        top_ops = crystal.top_operations if hasattr(crystal, 'top_operations') else []
-        dominant = crystal.dominant if hasattr(crystal, 'dominant') else None
-        for op in top_ops:
+        # Resolution of the merge with origin/master 35a6897: the upstream
+        # commit added hasattr guards here to silent-degrade legacy crystals
+        # that lack top_operations / dominant. The helpers below are a
+        # strict superset of that behaviour — they return an empty list
+        # when the attribute is missing (same silent-degrade outcome), and
+        # additionally extract v3 chain/modifier data when the crystal is
+        # a crystallizer_v3.Crystal rather than a MetabolicCrystal. Using
+        # the helpers preserves both failure modes upstream was guarding
+        # against plus the real v3 signal the load-path fix exposes.
+        ops_for_crystal = _crystal_ops(crystal)
+        dominant = _crystal_dominant(crystal)
+        for op in ops_for_crystal:
             all_ops.add(op)
             total_ops += 1
 

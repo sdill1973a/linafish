@@ -203,13 +203,12 @@ class ConverseHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
         self.end_headers()
-        # s95 2026-04-13: Anchor diagnosed that a client with a low HTTP_TIMEOUT
-        # can abort the TCP connection before the server finishes clustering +
-        # writing the response. Unhandled, BaseHTTPServer treats it as fatal and
-        # the whole daemon shuts down ("Converse stopped 5685 crystals"). Wrap
-        # the response write so client disconnects log and return instead of
-        # taking the daemon out. Let both our daemons tolerate fire-and-forget
-        # clients — the request still landed on the server side.
+        # A client with a low HTTP_TIMEOUT can abort the TCP connection
+        # before the server finishes clustering + writing the response.
+        # Unhandled, BaseHTTPServer treats it as fatal and the whole
+        # daemon shuts down. Wrap the response write so client disconnects
+        # log and return instead of taking the daemon out. The request
+        # still landed on the server side.
         try:
             self.wfile.write(body.encode("utf-8"))
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError) as e:

@@ -1162,12 +1162,12 @@ def explain_the_why(total_docs: int, total_crystals: int, formations: list,
                     crystal_map: dict = None) -> str:
     """Explain what just happened and why it matters.
 
-    This is the paragraph Ollie asked for. Not documentation. Not a manual.
-    A human explanation of what the fish found and why the stranger should care.
-
-    "A stranger runs eat, gets 7 crystals, 2 formations, and thinks it
-    summarized their text. They don't know formations are emergent not
-    keyword clusters."
+    Not documentation. Not a manual. A human-readable explanation of
+    what the fish found and why the stranger running `linafish go` for
+    the first time should care — because a stranger who sees "7 crystals,
+    2 formations" with no context will think it summarized their text,
+    when formations are actually emergent cognitive patterns not keyword
+    clusters.
     """
     lines = []
 
@@ -1435,7 +1435,10 @@ def go(
     # Step 0: Resolve source path
     # -----------------------------------------------------------------------
     if source:
-        source_path = Path(source).resolve()
+        # expanduser() makes `linafish go ~/my-writing` work on Windows
+        # cmd/PowerShell, where the shell does not expand ~ before Python
+        # sees it. No-op when the path has no leading ~.
+        source_path = Path(source).expanduser().resolve()
     else:
         source_path = Path.cwd().resolve()
 

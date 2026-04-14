@@ -611,7 +611,18 @@ class UniversalFish:
             self.frozen = state.get('frozen', False)
             self.vocab = state.get('vocab', [])
 
-        # Load crystals from JSONL log (authoritative source)
+        # Load crystals from JSONL log (authoritative source).
+        #
+        # Prior to this fix the load path silently amputated six fields
+        # (chains, modifiers, cognitive_vector, ache, formation,
+        # wrapping_numbers) by omitting them from the Crystal(...)
+        # construction and letting the dataclass defaults take over.
+        # Every save wrote the full crystal via asdict(); every load
+        # stripped the cognitive parse layer back to empty. The JSONL
+        # files on disk have had the data the whole time — the loader
+        # was just not reading it. Fix: round-trip every persisted
+        # field explicitly, and re-tupleify the chains list because
+        # JSON drops tuple type on serialize.
         if os.path.exists(self.crystal_log_path):
             import json
             loaded = 0
@@ -629,7 +640,13 @@ class UniversalFish:
                             keywords=d.get('keywords', []),
                             mi_vector=d.get('mi_vector', []),
                             couplings=[(x[0], x[1]) for x in d.get('couplings', [])],
+                            wrapping_numbers=d.get('wrapping_numbers', {}) or {},
                             structural=d.get('structural', False),
+                            ache=d.get('ache', 0.0) or 0.0,
+                            formation=d.get('formation'),
+                            cognitive_vector=d.get('cognitive_vector', []) or [],
+                            chains=[tuple(ch) for ch in (d.get('chains', []) or [])],
+                            modifiers=d.get('modifiers', {}) or {},
                         )
                         disk_crystals.append(c)
                         loaded += 1
