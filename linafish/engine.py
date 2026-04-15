@@ -695,8 +695,16 @@ class FishEngine:
     # Backward-compat alias — extension code may call the private name.
     _rebuild_formations = rebuild_formations
 
-    def _save_state(self):
-        """Save state as fish.md — formations on top, crystal JSON at bottom."""
+    def _save_state(self, commit: Optional[bool] = None):
+        """Save state as fish.md — formations on top, crystal JSON at bottom.
+
+        commit: override the instance-level ``git_autocommit`` flag for
+            this single call. None (default) honors ``self.git_autocommit``.
+            True forces a commit regardless. False forces a skip regardless.
+            Batch consumers (eat_many) pass ``commit=False`` to disable
+            per-checkpoint commits independent of how the engine was
+            constructed.
+        """
         # Top: human-readable formations
         if self.formations:
             top = formations_to_codebook_text(
@@ -877,10 +885,11 @@ class FishEngine:
         self._save_assessment_state()
 
         # Version it — unless the caller opted out of autocommit.
-        # Batch consumers set git_autocommit=False on construction to
-        # skip the per-save commit and drive their own commit after
-        # the full batch completes.
-        if self.git_autocommit:
+        # Precedence: per-call `commit=` override > instance git_autocommit.
+        # Batch consumers pass commit=False explicitly; single-eat paths
+        # pass commit=None and inherit the instance default.
+        should_commit = commit if commit is not None else self.git_autocommit
+        if should_commit:
             source = getattr(self, '_last_source', '')
             new_crystals = getattr(self, '_last_new_crystals', 0)
             total = len(self.fish.crystals)
@@ -941,6 +950,151 @@ class FishEngine:
             "crystals_added": 1,
             "total_crystals": len(self.fish.crystals),
             "formations": len(self.formations),
+        }
+
+    # -------------------------------------------------------------------
+    # EAT_MANY — batched in-memory ingest
+    # -------------------------------------------------------------------
+
+    def eat_many(
+        self,
+        texts: List[str],
+        save_every: Optional[int] = None,
+        commit: bool = False,
+        source: str = "batch",
+    ) -> dict:
+        """Ingest a batch of texts in one pass — the fast path.
+
+        Unlike calling ``eat()`` in a loop, ``eat_many`` batches the
+        expensive work:
+
+        1. Co-occurrence learning runs once on the full batch rather
+           than once per text.
+        2. The freeze-and-vocab step happens once at the start.
+        3. Formations are rebuilt once at the end (or every
+           ``save_every`` texts, if set).
+        4. ``_save_state`` is called once at the end (or every
+           ``save_every`` texts).
+        5. Per-text ``git commit`` is skipped regardless of the
+           instance-level ``git_autocommit`` flag — eat_many runs in
+           batch semantics end-to-end.
+
+        The measured cost of ``git commit`` on the eat() hot path was
+        ~130 ms per call on a fresh repo; a 200-doc batch via eat()
+        spent most of its time in git. eat_many lets batch consumers
+        pay that cost zero or one times total instead of n times.
+
+        Args:
+            texts: sequence of strings. Empty, whitespace-only, or
+                <10-char entries are silently skipped. Non-string
+                entries raise ``TypeError`` — callers passing mixed
+                data get an explicit signal rather than a partial
+                batch.
+            save_every: optional checkpoint frequency — call
+                ``_save_state`` every N successful crystallizations.
+                None (default) saves only at the end of the batch.
+            commit: if True, run a single ``_git_commit`` at the end
+                of the batch summarizing the work. Default False;
+                callers can drive their own commits externally.
+            source: default source tag applied to every text in the
+                batch. Use ``eat()`` per-text if you need distinct
+                provenance per document.
+
+        Raises:
+            TypeError: if ``texts`` contains any non-string entry.
+
+        Returns:
+            dict with ``crystals_added``, ``total_crystals``,
+            ``formations``, and ``batch_size`` (number of texts that
+            actually passed the length/type gate and were processed).
+
+        On mid-batch exceptions (from ``crystallize_text``, I/O, etc.),
+        eat_many wraps the crystallization loop in ``try/finally`` so
+        whatever crystals landed before the failure are persisted via
+        ``rebuild_formations`` + ``_save_state`` in the finally block.
+        The final git commit is NOT fired on exception paths — only
+        successful completion of the whole batch is versioned.
+        """
+        # Validate once, up front. Non-string entries are a programming
+        # error — fail loud instead of silently dropping them.
+        valid: List[str] = []
+        for idx, t in enumerate(texts):
+            if not isinstance(t, str):
+                raise TypeError(
+                    f"eat_many: texts[{idx}] is {type(t).__name__}, "
+                    f"expected str"
+                )
+            if len(t.strip()) >= 10:
+                valid.append(t)
+        if not valid:
+            return {
+                "crystals_added": 0,
+                "total_crystals": len(self.fish.crystals),
+                "formations": len(self.formations),
+                "batch_size": 0,
+            }
+
+        # Pre-assess on the full batch (first eat only).
+        # The assessment gets the whole corpus at once — much better
+        # signal than the single-text pre-assess path in eat().
+        if not self._pre_assessed and HAS_ASSESSMENT:
+            self.pre_assess(valid)
+
+        # Phase 1: Learn co-occurrence once across the full batch
+        self.fish.learn(valid)
+
+        # Phase 2: Freeze and rebuild vocab once
+        if not self.fish.frozen:
+            seed_terms, seed_weight = self._resolve_seed_terms()
+            self.fish.vocab = self.fish.vectorizer.get_vocab(
+                size=self.vocab_size, d=self.d,
+                seed_terms=seed_terms,
+                seed_weight=seed_weight,
+            )
+            self.fish.frozen = True
+            self.fish.epoch += 1
+
+        # Phase 3: Crystallize each text. No rebuild_formations or
+        # _save_state per text — we hold off until either a save_every
+        # checkpoint or the end of the batch. Wrap in try/finally so
+        # a mid-batch exception still persists whatever partial work
+        # has already landed in memory.
+        prev_total = len(self.fish.crystals)
+        crystals_added = 0
+        batch_succeeded = False
+        try:
+            for i, text in enumerate(valid):
+                before = len(self.fish.crystals)
+                crystal = self.fish.crystallize_text(text, source=source)
+                if crystal:
+                    self.docs_ingested += 1
+                    self._last_source = source
+                    self._last_new_crystals = len(self.fish.crystals) - before
+                    crystals_added += self._last_new_crystals
+
+                # Optional periodic checkpoint (no commit even if autocommit=True)
+                if save_every and (i + 1) % save_every == 0:
+                    self.rebuild_formations()
+                    self._save_state(commit=False)
+            batch_succeeded = True
+        finally:
+            # Persist whatever partial work we have regardless of exception
+            self.rebuild_formations()
+            self._save_state(commit=False)
+
+        # Optional single-shot commit — only on success, never on exception.
+        if commit and batch_succeeded:
+            total = len(self.fish.crystals)
+            fcount = len(self.formations)
+            self._git_commit(
+                f"eat_many: {source} | +{crystals_added}c over {len(valid)} docs | {total}c {fcount}f"
+            )
+
+        return {
+            "crystals_added": crystals_added,
+            "total_crystals": len(self.fish.crystals),
+            "formations": len(self.formations),
+            "batch_size": len(valid),
         }
 
     # -------------------------------------------------------------------
