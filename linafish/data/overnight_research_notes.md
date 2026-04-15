@@ -510,3 +510,60 @@ Both SpokenPast URLs (the "AI Breakthrough 2025" article and "Can AI Crack Linea
 4. Create `data/linear_b_corpus_sources.md` — seven cycles overdue
 
 ---
+
+## 2026-04-15 — Cycle 9
+
+**Prerequisite file check:**
+- `data/linear_b_corpus_sources.md` — still does not exist. Eight cycles overdue.
+- `data/functional_decipherment_research.md` — still does not exist.
+
+---
+
+### 1. InsiderPhD Linear B Dataset — STATUS UNCHANGED
+
+GitHub repo `InsiderPhD/Linear-B-Dataset` confirmed present and public. Structure as documented in Cycles 1–2: semicolon-delimited CSVs; `tablet-sets/tablets.csv` has columns `identifier, location, series, inscription, original`; no explicit functional-type tag but `series` codes serve as proxy. No new commits. Download as ZIP still the recommended path. No new findings this cycle.
+
+---
+
+### 2. DAMOS — Homepage Still Shows No Export UI
+
+Direct fetch of `damos.hf.uio.no` confirms: homepage has Home, How to search, About, and News navigation only. No visible export button, API documentation, or download link on the front page. The bulk EpiDoc export confirmed in Cycle 8 (Aurora et al. 2025 DHN paper) is likely buried inside the search results interface, not the front page.
+
+**Action still required:** Email `federico.aurora@ub.uio.no` asking specifically: (1) Is the bulk EpiDoc export live? (2) What is the entry point in the search UI? (3) Can a full-corpus ZIP be provided for research use? This has been listed as the top priority since Cycle 8 and remains undone.
+
+---
+
+### 3. Melbourne MDAP Deep Neural Network Project — DETAILS CONFIRMED
+
+**Project page:** `unimelb.edu.au/mdap/research/2024-collaborations/using-deep-neural-network-models-in-the-decipherment-of-linear-a` (403 on direct fetch, but indexed metadata confirms content).
+
+**Method:** Pre-train DNN models on candidate related languages; fine-tune on Linear A to test cognacy level. This is a **phonetic-decipherment / cognacy-testing** approach, not register classification. No published paper found from this project — 2024 collaboration still in progress. Not a competitor to linafish.
+
+**Status:** Blocked at 403. No researcher names found this cycle. Action: Search by Melbourne MDAP faculty roster or via LinkedIn for project lead.
+
+---
+
+### 4. Brent Davis Cambridge CUP Chapter — DOI CONFIRMED
+
+**Full DOI:** `10.1017/9781009490122` — Cambridge University Press, 2024.
+**Chapter:** "Cretan Hieroglyphic" (within a broader Cambridge volume on Bronze Age Aegean scripts).
+**Method:** Syllabotactic analysis — statistical evaluation of sign-sequence distributions without phonetic assignment. Tests whether Cretan Hieroglyphic and Linear A encode the same language. Most methodologically adjacent published work to linafish.
+
+This DOI appears to be for the **volume**, not the specific chapter — the Melbourne Find-an-Expert entry (`findanexpert.unimelb.edu.au/scholarlywork/1973585`) is the clearest citation anchor. No full text available without library access.
+
+---
+
+### 5. No New 2026 Peer-Reviewed Papers
+
+Broad arxiv and web search confirms zero peer-reviewed 2026 publications on Linear A (computational, phonetic, or functional). One Academia.edu paper titled "The Decipherment of Linear A: A Breakthrough in Minoan Linguistics" indexed — likely Kiley's non-peer-reviewed Academia.edu paper already flagged in Cycle 3. Treat as informal. Linafish approach remains unoccupied territory in the published literature.
+
+---
+
+### Next cycle priorities
+1. Email `federico.aurora@ub.uio.no` — DAMOS bulk EpiDoc export (highest priority, eight cycles overdue)
+2. Search Melbourne MDAP faculty/team page for DNN project researcher names
+3. Attempt `damos.hf.uio.no/search` or equivalent to locate EpiDoc export UI entry point
+4. Create `data/linear_b_corpus_sources.md` — eight cycles overdue
+5. Verify Kiley Academia.edu "Breakthrough" paper identity (confirm it is the same Cycle 3 paper)
+
+---
