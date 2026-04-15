@@ -739,3 +739,55 @@ All searches (broad and targeted) return zero peer-reviewed 2026 publications on
 4. Inspect `github.com/L-Colin/Linear-A-decipherment-programme` for usable data files
 
 ---
+
+## 2026-04-15 — Cycle 13
+
+**Prerequisite file check:**
+- `data/linear_b_corpus_sources.md` — still does not exist. Twelve cycles overdue.
+- `data/functional_decipherment_research.md` — still does not exist.
+
+---
+
+### 1. InsiderPhD Linear B Dataset — Confirmed Unchanged
+
+GitHub repo `InsiderPhD/Linear-B-Dataset` confirmed public, no new commits since April 2018. Structure and schema unchanged: semicolon-delimited CSVs; `tablets.csv` columns `identifier, location, series, inscription, original`; `series` code remains functional proxy. ZIP download is available now without any prerequisite action. Fully unblocked data source.
+
+---
+
+### 2. DAMOS — License Re-Confirmed, No New Export Path
+
+Direct fetch of `damos.hf.uio.no` this cycle confirms: CC BY-NC-SA 4.0 content license, GPL-3.0 software license. No bulk export, API, or download visible on any front-facing page. Contact remains `federico.aurora@ub.uio.no`. Status unchanged from Cycles 8–12. Prior finding stands: bulk EpiDoc export described in Aurora et al. DHN 2025 paper is a development project, not yet a deployed public endpoint. No agent research can substitute for the email to Federico Aurora.
+
+---
+
+### 3. New Computational Approaches (2025–2026) — No New Papers
+
+Web search over "Linear A computational decipherment 2025 2026 new research" returns the identical set documented in prior cycles:
+- Nepal & Perono Cacciafoco, MDPI *Information* 15(2):73 (2024) — phonetic, feature-similarity + brute-force consonant matching
+- Mavridaki, Zacharis & Papakitsos, WSEAS *ISA* (July 2025) — phonetic, software platform
+- Manoj & Perono Cacciafoco, Craiova *Linguistics* Vol. 46 (Feb 2025) — review of four computational methods
+- Karajgikar, Al-Khulaidy & Berea, HAL-03207615 (2021 preprint, unpublished) — statistical pattern recognition
+
+Zero peer-reviewed 2026 publications found. Twelfth consecutive confirmation. Linafish approach remains unoccupied territory.
+
+SpokenPast "AI Breakthrough 2025" article has returned 403/503 for six consecutive cycles. Permanently deprioritized.
+
+---
+
+### 4. Standing Action Items (Human Operator Required)
+
+The following cannot be advanced by further agent research:
+1. **Email `federico.aurora@ub.uio.no`** — DAMOS bulk EpiDoc export access (twelve cycles overdue)
+2. **Email `simon@phis.me`** — SigLA JSON/CSV inscription data dump (identified Cycle 11)
+3. **Create `data/linear_b_corpus_sources.md`** — all content exists in these notes, needs collation
+4. **Download InsiderPhD ZIP** — `github.com/InsiderPhD/Linear-B-Dataset` via Code > Download ZIP
+
+---
+
+### Next cycle priorities
+1. Check `github.com/L-Colin/Linear-A-decipherment-programme` for usable sign/corpus data files
+2. Retry Brent Davis Academia.edu for any 2025–2026 publications
+3. Search arXiv, Zenodo, OSF for 2026 Linear A preprints
+4. Attempt JSTOR/WorldCat path for Schoep 2002 corpus composition figures
+
+---
