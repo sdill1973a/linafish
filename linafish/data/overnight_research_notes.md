@@ -625,3 +625,59 @@ ArXiv cs.LG/2025-05 and cs.LG/2026-03 listings checked — no Linear A papers. B
 4. Fetch `damos.hf.uio.no` search results page to locate EpiDoc export UI entry point
 
 ---
+
+## 2026-04-15 — Cycle 11
+
+**Prerequisite file check:**
+- `data/linear_b_corpus_sources.md` — still does not exist. Ten cycles overdue.
+- `data/functional_decipherment_research.md` — still does not exist.
+
+---
+
+### 1. InsiderPhD Linear B Dataset — Confirmed Unchanged
+
+GitHub repo `InsiderPhD/Linear-B-Dataset` still present and public, no new commits. Schema confirmed as before: semicolon-delimited CSVs; `tablets.csv` columns `identifier, location, series, inscription, original`; `series` code as functional proxy. No new findings; no new action required this cycle.
+
+---
+
+### 2. SigLA GitHub Repos — FALSE MATCHES RESOLVED
+
+Cycle 10 flagged `github.com/mattalejo/sigla` and `github.com/gielletm/sigla-main` as potential SigLA (Signs of Linear A) mirrors. Both confirmed false matches:
+- `mattalejo/sigla` — Flutter/Dart nutrition tracking app for children. `food_data.csv` contains dietary data.
+- `gielletm/sigla-main` — Java-based Italian government accounting system.
+
+Neither contains Linear A data. The canonical SigLA site is `sigla.phis.me`. About and Help pages confirm CC BY-NC-SA 4.0 license but provide no download links or API endpoints.
+
+**New finding:** Contact emails extracted from About page: `ester.salgarella@gmail.com` (Salgarella, Cambridge) and `simon@phis.me` (Simon Castellan). Prior cycles had only Salgarella's institutional name. `simon@phis.me` is new — Castellan built and hosts the site, making him the faster path for a data request.
+
+**Action:** Email `simon@phis.me` asking for a JSON or CSV dump of inscription-to-sign mappings. He built the infrastructure; he can provide the data format.
+
+---
+
+### 3. DAMOS EpiDoc Export — Confirmed Work-in-Progress, Not Deployed
+
+Direct fetch of the Aurora et al. DHN 2025 paper (PDF accessible at `journals.uio.no/dhnbpub/article/download/12295/10165/45410`). Key findings:
+- Export described as a **development project**, not a deployed public service.
+- No URL, API endpoint, or UI entry point is named in the paper.
+- Bidirectional goal (export *and* import) suggests the system is still being built.
+- The export is framed as corpus-level, not per-document — but public access not yet confirmed.
+
+**Status:** Email to `federico.aurora@ub.uio.no` remains the only unblocked path. Ten cycles overdue.
+
+---
+
+### 4. No New 2025-2026 Computational Papers — Tenth Consecutive Confirmation
+
+Broad search returns zero peer-reviewed 2025-2026 publications on Linear A functional analysis. All results are the same set documented in prior cycles: Nepal & Perono Cacciafoco MDPI 2024 (phonetic), Craiova 2025 (review), WSEAS 2025 (software platform). SpokenPast "AI Breakthrough 2025" article remains 503 — permanently deprioritizing. Linafish approach remains unoccupied territory.
+
+**Useful framing from 2026 search snippets:** "Sign sequences appearing exclusively before or after a number likely denote a commodity or measurement unit. Sequences recurring on libation tables in the same position are almost certainly religious formulae." This is the exact functional-template signal linafish targets. Good citation material for the paper.
+
+---
+
+### Next cycle priorities
+1. Email `simon@phis.me` re: SigLA JSON/CSV data dump — now primary contact (replaces Salgarella email as first step)
+2. Email `federico.aurora@ub.uio.no` re: DAMOS bulk EpiDoc export — ten cycles overdue
+3. Create `data/linear_b_corpus_sources.md` — ten cycles overdue
+4. Check `damos.hf.uio.no/search` directly to locate any EpiDoc export UI entry point
+
+---
