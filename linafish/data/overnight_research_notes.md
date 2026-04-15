@@ -452,3 +452,61 @@ All searches return zero 2026 peer-reviewed publications on Linear A (computatio
 5. Create `data/linear_b_corpus_sources.md` — six cycles overdue
 
 ---
+
+## 2026-04-15 — Cycle 8
+
+**Prerequisite file check:**
+- `data/linear_b_corpus_sources.md` — still does not exist. Seven cycles overdue.
+- `data/functional_decipherment_research.md` — still does not exist.
+
+---
+
+### 1. DAMOS EpiDoc Bulk Export — CONFIRMED BULK (HIGH PRIORITY)
+
+**Paper confirmed:** "Exporting Mycenaean: From a Relational Database to EpiDoc XML files (and back again?)" by Federico Aurora, Damir Nedić, Asgeir Nesøen, and Dag Haug. Published 2025 in DHN conference proceedings (`journals.uio.no/dhnbpub/article/view/12295`).
+
+**Key result:** The export is explicitly described as a **bulk function** — not per-document. Users can export all DAMOS data as EpiDoc-TEI compliant XML. A future import pipeline is also planned (community-contribution path).
+
+**Gap:** DAMOS homepage and news section (last update June 2023) show no announcement of this feature and no visible export button. The bulk export may only appear from within the search results interface, not the front page. DAMOS news page confirmed: no EpiDoc announcement listed.
+
+**Immediate action:** Email Federico Aurora (`federico.aurora@ub.uio.no`) asking: (1) Is the bulk EpiDoc export live and publicly accessible? (2) What is the entry point in the UI? (3) Can a full-corpus ZIP or equivalent be provided directly for research use?
+
+---
+
+### 2. Brent Davis (Melbourne) — 2024 Cambridge Chapter — NEW PEER-REVIEWED FIND
+
+**Title:** "Investigations into the Language(s) behind Cretan Hieroglyphic and Linear A"
+**Author:** Brent Davis (University of Melbourne)
+**Year:** 2024 | **Publisher:** Cambridge University Press
+
+Uses syllabotactic analysis to statistically evaluate whether Cretan Hieroglyphic and Linear A encode the same language. Conclusions not yet extractable from available metadata. This is the most methodologically adjacent *published* work to linafish found across all cycles — distributional/structural analysis without phonetic assignment. Not register-classification, but the same anti-phonetic distributional toolkit.
+
+**Action:** Locate the parent Cambridge volume title; obtain via library or contact Davis at Melbourne.
+
+---
+
+### 3. Melbourne MDAP Project — Deep Neural Network for Linear A (2024, Blocked)
+
+A 2024 Melbourne MDAP collaboration titled "Using deep neural network models to aid in the decipherment of Linear A" was indexed but its page returned 403. Name implies phonetic decipherment focus, not functional analysis. Not a competitor. **Action:** Search via Google Scholar for researchers' names and any published output.
+
+---
+
+### 4. No 2025-2026 Functional Register Papers
+
+Search for "Linear A functional register administrative religious classification 2025 2026" returned zero relevant results. No computational register-classification work published. Linafish approach remains unoccupied territory.
+
+---
+
+### 5. SpokenPast — Still Blocked
+
+Both SpokenPast URLs (the "AI Breakthrough 2025" article and "Can AI Crack Linear A") returned 403 for a second consecutive cycle. Deprioritizing; likely pop-sci with no novel scholarly content.
+
+---
+
+### Next cycle priorities
+1. Email `federico.aurora@ub.uio.no` re: DAMOS bulk EpiDoc export access (this is now the highest priority data source)
+2. Locate parent Cambridge volume for Brent Davis 2024 chapter
+3. Search for Melbourne MDAP DNN project researchers/output
+4. Create `data/linear_b_corpus_sources.md` — seven cycles overdue
+
+---
