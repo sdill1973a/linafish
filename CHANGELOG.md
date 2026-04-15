@@ -10,6 +10,70 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [1.1.6] — Unreleased
+
+**Persistence-safety release in progress. Items land incrementally;
+the release is wrapped when the full plate is ready.**
+
+### Added
+
+- **`FishEngine(git_autocommit: bool = True)`** — new constructor
+  keyword. When `True` (the default, preserving 1.1.5 behavior), every
+  `_save_state()` commits the fish repo as before. When `False`, the
+  per-save commit is skipped entirely. Batch consumers should pass
+  `git_autocommit=False` and drive a single commit after their full
+  batch completes. Measured on 25 sequential `eat()` calls: 3306 ms
+  with autocommit on vs 128 ms with autocommit off — the per-save
+  `git commit` was the dominant cost on the hot path, not the
+  crystallization work.
+
+### Fixed
+
+- **`FishEngine._load_fish_md()`: restore `docs_ingested` on reload.**
+  The save path had always been writing `docs_ingested` into the
+  `FISH_STATE` JSON block at the bottom of `fish.md`, but the load
+  path only rebuilt formations and ignored the metadata block. Every
+  boot was silently resetting the counter to zero, so display strings
+  like `N crystals from M documents` were dropping M across sessions
+  and R(n) computation lost its document-count denominator. Parser
+  handles malformed / non-object / corrupt payloads as best-effort;
+  corrupt state files are not fatal to boot.
+
+- **`MIVectorizer.load()` and `UniversalFish._load_state()`: graceful
+  recovery on corrupt state files.** Both sites were calling
+  `json.load()` with no exception handling, so a single corrupt byte
+  in `mi_vectorizer.json` or `*_v3_state.json` raised through the
+  whole `FishEngine` constructor and aborted init. Both sites now
+  catch `(OSError, json.JSONDecodeError, UnicodeDecodeError)`, guard
+  with `isinstance(dict)` before any `.get()` calls, log at warning
+  level, and fall through to the already-initialized defaults.
+  Recovery is automatic — the next `_save_state` rewrites clean
+  files. Handles missing files, truncated JSON, malformed JSON,
+  non-object JSON payloads, and invalid-UTF-8 byte sequences.
+
+- **`listener.py` / `guppy.py`: docstring scrubs.** Removed a
+  private-host octet from `FishListener.listen_mqtt()` and an
+  internal session-tag reference from `guppy.py` module docstring.
+  No behavior change — package source is cleaner for stranger
+  readers.
+
+### Changed
+
+- **`FishEngine.rebuild_formations()` is now public.** The method was
+  previously named `_rebuild_formations` and called from `fusion.py`,
+  `quickstart.py`, and extension code through the private name. The
+  public name is the canonical entry point; `_rebuild_formations`
+  remains as a class-level alias for backward compatibility.
+
+- **Level 4 formation memory wire-in landed in
+  `rebuild_formations()`.** The metabolic engine's
+  `teach_from_formations()` now fires on every rebuild, not only
+  from `quickstart.go()`. Incremental `eat()` / `eat_path()` /
+  `re_eat()` / load paths all populate formation memory consistently
+  now.
+
+---
+
 ## [1.1.5] — 2026-04-13
 
 **Correctness release. Upgrade recommended for anyone running `linafish

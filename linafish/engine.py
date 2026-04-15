@@ -105,7 +105,8 @@ class FishEngine:
     def __init__(self, state_dir: Optional[Path] = None, name: str = "linafish",
                  vocab_size: int = 200, d: float = 4.0,
                  seed_grammar: bool = True, min_gamma: float = None,
-                 subtract_centroid: bool = False):
+                 subtract_centroid: bool = False,
+                 git_autocommit: bool = True):
         self.name = name
         self.state_dir = state_dir or Path.home() / ".linafish"
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -115,6 +116,17 @@ class FishEngine:
         self.min_gamma = min_gamma  # Override adaptive gamma (for single-author corpora)
         self.subtract_centroid = subtract_centroid  # Remove global signal before coupling
         self.seed_grammar = seed_grammar
+        # git_autocommit: if True (default) every _save_state commits the
+        # fish repo. Interactive single-shot eat() expects this — you want
+        # per-eat versioning for the debug log and scar replay. Batch
+        # consumers (mass re-ingest, corpus load, bulk eat_many) should
+        # pass git_autocommit=False and drive commits manually (or skip
+        # them entirely) — every eat() otherwise runs `git commit` which
+        # Ollie's codex empirically measured as the dominant cost on
+        # 200-doc batches (12.666 ms first-20 mean -> 114.381 ms last-20
+        # mean — the latency slope is the git commit overhead, not the
+        # crystallization work).
+        self.git_autocommit = git_autocommit
 
         # The v3 universal fish — MI x ache, no keywords
         self.fish = UniversalFish(state_dir=str(self.state_dir))
@@ -864,18 +876,22 @@ class FishEngine:
         # Also save assessment state
         self._save_assessment_state()
 
-        # Version it
-        source = getattr(self, '_last_source', '')
-        new_crystals = getattr(self, '_last_new_crystals', 0)
-        total = len(self.fish.crystals)
-        fcount = len(self.formations)
-        if source:
-            msg = f"ate: {source} | {total}c {fcount}f"
-            if new_crystals:
-                msg += f" | +{new_crystals}"
-        else:
-            msg = f"{total}c {fcount}f"
-        self._git_commit(msg)
+        # Version it — unless the caller opted out of autocommit.
+        # Batch consumers set git_autocommit=False on construction to
+        # skip the per-save commit and drive their own commit after
+        # the full batch completes.
+        if self.git_autocommit:
+            source = getattr(self, '_last_source', '')
+            new_crystals = getattr(self, '_last_new_crystals', 0)
+            total = len(self.fish.crystals)
+            fcount = len(self.formations)
+            if source:
+                msg = f"ate: {source} | {total}c {fcount}f"
+                if new_crystals:
+                    msg += f" | +{new_crystals}"
+            else:
+                msg = f"{total}c {fcount}f"
+            self._git_commit(msg)
 
     # -------------------------------------------------------------------
     # EAT — single document
