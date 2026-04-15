@@ -31,10 +31,23 @@ def _user_path(value):
 
 
 def cmd_eat(args):
-    """Ingest files and build a fish using the crystallizer."""
-    from .crystallizer import crystallize, extend_vocabulary, couple_crystals, tag_diamonds
-    from .formations import detect_formations, hierarchical_merge, formations_to_codebook_text
-    from .ingest import ingest_directory, ingest_file
+    """Ingest files and build a fish using the v3 metabolic engine.
+
+    Rewired 2026-04-15 (fork/step1, second commit): now uses FishEngine.eat_path
+    instead of v1 crystallizer.crystallize. The persistent fish lives at
+    ~/.linafish/{name}/ as a side effect of FishEngine, and a copy of the
+    rendered fish.md is written to --output (or ./{name}.fish.md) for
+    backward compat with v1 cmd_eat's filesystem footprint.
+
+    UX deltas vs v1, all flagged at runtime:
+      --hint     no-op (v3 cognitive parser has no context_hint)
+      --vocab    no-op (v3 has its own seed_terms via FishEngine.seed_grammar,
+                 not a drop-in for v1's extend_vocabulary)
+      --description preserved by rewriting the codebook title line in-memory
+                    after FishEngine renders the fish.md
+      --output   preserved as a cwd-copy on top of the persistent ~/.linafish copy
+    """
+    from .engine import FishEngine
 
     # expanduser() makes ~/path work on Windows cmd/PowerShell.
     source = Path(args.source).expanduser()
@@ -42,75 +55,67 @@ def cmd_eat(args):
         print(f"Error: {source} not found")
         sys.exit(1)
 
+    if args.hint:
+        print(f"  [warn] --hint is a no-op under v3 (FishEngine has no "
+              f"context_hint equivalent). Continuing without hint.")
     if args.vocab:
-        vocab = json.loads(Path(args.vocab).read_text(encoding="utf-8"))
-        extend_vocabulary(vocab)
+        print(f"  [warn] --vocab is a no-op under v3 (FishEngine uses its "
+              f"own seed_terms mechanism via seed_grammar, not the v1 "
+              f"extend_vocabulary path). Continuing without vocab override.")
 
-    # Ingest using structured reader, crystallize per chunk (no double-chunking)
-    all_crystals = []
-    if source.is_dir():
-        chunks = ingest_directory(source)
-        for chunk in chunks:
-            c = crystallize(chunk.text, source=chunk.source,
-                           context_hint=args.hint or "")
-            if c:
-                all_crystals.append(c)
-    else:
-        chunks = ingest_file(source)
-        if chunks:
-            for chunk in chunks:
-                c = crystallize(chunk.text, source=chunk.source,
-                               context_hint=args.hint or "")
-                if c:
-                    all_crystals.append(c)
-        else:
-            # Fallback for unsupported formats
-            content = source.read_text(encoding="utf-8", errors="replace")
-            c = crystallize(content, source=source.name,
-                           context_hint=args.hint or "")
-            if c:
-                all_crystals.append(c)
+    # Eat through FishEngine — persists to ~/.linafish/{name}/
+    name = args.name or source.stem
+    engine = FishEngine(name=name)
+    result = engine.eat_path(source)
 
-    if not all_crystals:
+    if not engine.fish.crystals:
         print("No content found.")
         sys.exit(1)
 
-    print(f"  {len(all_crystals)} crystals from {source}")
+    print(f"  {result.get('crystals_added', 0)} crystals added "
+          f"({result.get('total_crystals', 0)} total) from {source}")
+    print(f"  {result.get('formations', 0)} formations")
 
-    # Couple once across all crystals, tag diamonds
-    couple_crystals(all_crystals)
-    tag_diamonds(all_crystals)
+    # Read the fish.md FishEngine wrote during eat_path
+    if engine.fish_file.exists():
+        codebook = engine.fish_file.read_text(encoding="utf-8")
+    else:
+        codebook = ""
 
-    # Form
-    formations = detect_formations(all_crystals)
-    print(f"  {len(formations)} formations")
+    # If --description was passed, override the first-line title in the
+    # rendered codebook. v1 passed args.description directly into
+    # formations_to_codebook_text as the title; FishEngine renders with
+    # its own default. Rewriting the title line in-memory preserves the
+    # user-facing semantic without round-tripping through FishEngine.
+    if args.description and codebook:
+        lines = codebook.splitlines()
+        for i, line in enumerate(lines):
+            if line.startswith("# "):
+                lines[i] = f"# {args.description}"
+                break
+        codebook = "\n".join(lines) + ("\n" if codebook.endswith("\n") else "")
 
-    # Hierarchical merge if needed
-    if len(formations) > 60:
-        formations = hierarchical_merge(formations, target=50)
-        print(f"  -> {len(formations)} meta-formations")
-
-    # Render
-    name = args.name or source.stem
-    codebook = formations_to_codebook_text(
-        formations,
-        title=args.description or f"LiNafish: {name}",
-        crystals=all_crystals,
-    )
-
-    # Save
+    # Save to --output or default. Mirrors v1's filesystem footprint;
+    # the persistent copy at engine.fish_file is the new addition.
     output = Path(args.output) if args.output else Path(f"{name}.fish.md")
     output.write_text(codebook, encoding="utf-8")
-    print(f"\nFish: {output} ({len(codebook)} chars, {len(formations)} formations)")
+    print(f"\nFish: {output} ({len(codebook)} chars, "
+          f"{result.get('formations', 0)} formations)")
+    print(f"Persisted: {engine.fish_file}")
 
     # Explain what just happened — the WHY (v0.4.3)
-    if formations:
+    # Reach into engine.formations and engine.fish.crystals to feed the
+    # existing portrait/why helpers in quickstart. Same output shape as v1.
+    if engine.formations:
         try:
             from .quickstart import build_full_portrait, explain_the_why
-            crystal_map = {c.id: c for c in all_crystals}
-            portrait = build_full_portrait(formations, len(all_crystals), len(all_crystals), crystal_map)
+            crystal_map = {c.id: c for c in engine.fish.crystals}
+            n_crystals = len(engine.fish.crystals)
+            portrait = build_full_portrait(engine.formations, n_crystals,
+                                           n_crystals, crystal_map)
             print(f"\n{portrait}")
-            why = explain_the_why(len(all_crystals), len(all_crystals), formations, crystal_map)
+            why = explain_the_why(n_crystals, n_crystals,
+                                  engine.formations, crystal_map)
             print(f"\n{why}")
         except Exception:
             pass  # Portrait is bonus, not critical
