@@ -5,8 +5,8 @@ Born from a corpus. Grows by hunting. Reports to the room.
 Talks to other guppies through shared water.
 
 Two hunting modes:
-  REINFORCE — hunt for more of what you already know (original)
-  ACHE — hunt for what you're MISSING (new: §THE.NERVOUS.SYSTEM)
+  REINFORCE — hunt for more of what you already know
+  ACHE — hunt for what you're MISSING
 
 The ache hunt: read your own formations, find where you're thin,
 build queries from what's absent, dart out, nibble, dart back,

@@ -122,9 +122,10 @@ class FishListener:
                     username: str = None, password: str = None):
         """Subscribe to MQTT and eat every message.
 
-        s95 2026-04-13: added username/password support so authenticated
-        brokers (port 1884 on .67) can be subscribed to. Called with the
-        parsed user:pass@ embedded in the mqtt:// URL from __main__.py.
+        Supports username/password authentication so brokers that require
+        credentials (e.g. authenticated MQTT on a non-default port) can be
+        subscribed to. Called with the parsed user:pass@ embedded in the
+        mqtt:// URL from __main__.py.
         """
         try:
             import paho.mqtt.client as mqtt
