@@ -567,3 +567,61 @@ Broad arxiv and web search confirms zero peer-reviewed 2026 publications on Line
 5. Verify Kiley Academia.edu "Breakthrough" paper identity (confirm it is the same Cycle 3 paper)
 
 ---
+
+## 2026-04-15 — Cycle 10
+
+**Prerequisite file check:**
+- `data/linear_b_corpus_sources.md` — still does not exist. Nine cycles overdue.
+- `data/functional_decipherment_research.md` — still does not exist.
+
+---
+
+### 1. SigLA — LOCAL DOWNLOAD CONFIRMED (HIGH PRIORITY, ACTION AVAILABLE NOW)
+
+**Prior cycles:** CC BY-NC-SA 4.0 license confirmed; no download link visible on homepage; action flagged as "email Salgarella."
+
+**This cycle:** Search snippets from the published SigLA paper (Salgarella & Castellan) confirm explicitly:
+
+> "The website can be downloaded and run locally, ensuring a very small load on the server and that SigLA (or copies thereof) can be easily hosted."
+
+This is intentional by design — the site is a static or near-static web app meant to be mirrored. Two GitHub repos surfaced in search results that may be forks or mirrors: `github.com/mattalejo/sigla` and `github.com/gielletm/sigla-main`. These need verification.
+
+**Immediate action:** Check those two GitHub repos for the canonical SigLA data files. If either contains the inscription JSON, we have the full dataset without an email request. Contact to Salgarella is still appropriate for scholarly acknowledgment, but is no longer a blocker.
+
+---
+
+### 2. DAMOS EpiDoc Export — No New Access Path Found
+
+journals.uio.no returned 503 again. The epigraphy.info poster PDF (Workshop 8, Poster 1) is binary image — text extraction failed. The DHN 2025 paper by Aurora, Nedić, Nesøen, and Haug remains confirmed via search snippets but unread in full. No new UI entry point found.
+
+**Status:** Email to `federico.aurora@ub.uio.no` remains the only unblocked path. This is now **nine cycles overdue** as an action item. No further research can advance this — it requires the email to be sent.
+
+---
+
+### 3. Melbourne MDAP DNN Project — PI Confirmed, No Publication
+
+**Confirmed PI:** Brent Davis (University of Melbourne, Historical & Philosophical Studies). No co-investigator names found. No published output from this 2024 project. Project page (`unimelb.edu.au/mdap/research/2024-collaborations/...`) remains blocked at 403. Method: pre-train DNN on candidate cognate languages; fine-tune on Linear A. Phonetic-decipherment focus — not a competitor.
+
+**Brent Davis 2025-2026 publications:** Academia.edu page returned 503 this cycle. No new publications found via search. The 2024 CUP chapter remains his most recent confirmed work.
+
+---
+
+### 4. No New 2026 Peer-Reviewed Papers — Ninth Consecutive Confirmation
+
+ArXiv cs.LG/2025-05 and cs.LG/2026-03 listings checked — no Linear A papers. Broad search for "Linear A computational 2026" returns only the same set of 2024-2025 papers documented in prior cycles. The field is quiet. **Linafish approach remains unoccupied territory.**
+
+---
+
+### 5. SpokenPast — Deprioritized
+
+"Can AI Crack the Minoan Linear A Script?" article returned 503 for third consecutive cycle. Deprioritized permanently unless a cached version surfaces. Likely pop-sci synthesis with no novel scholarly content.
+
+---
+
+### Next cycle priorities
+1. Check `github.com/mattalejo/sigla` and `github.com/gielletm/sigla-main` for SigLA data files (JSON, CSV) — this is now the **top priority** and requires no email
+2. Email `federico.aurora@ub.uio.no` re: DAMOS bulk EpiDoc export — nine cycles overdue, no further research can substitute for this
+3. Create `data/linear_b_corpus_sources.md` — nine cycles overdue
+4. Fetch `damos.hf.uio.no` search results page to locate EpiDoc export UI entry point
+
+---
