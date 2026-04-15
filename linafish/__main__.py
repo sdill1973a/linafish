@@ -339,23 +339,6 @@ def cmd_go(args):
     )
 
 
-def cmd_init(args):
-    """Eat all MCP servers — local and remote — build shared codebook."""
-    from .init import init_fish
-
-    codebook, mcp_path = init_fish(
-        remotes=args.remote if args.remote else None,
-        fish_name=args.name,
-        live=args.live,
-        backup=not args.no_backup,
-    )
-
-    # Save as fish
-    output = Path(args.output) if args.output else Path(f"{args.name}.fish.md")
-    codebook.save(output)
-    print(f"\nSaved: {output}")
-
-
 def cmd_watch(args):
     """Watch a directory. Eat new files as they arrive. The fish grows continuously."""
     from .engine import FishEngine
@@ -1304,7 +1287,6 @@ def cmd_capabilities(args):
             ("absorb", "Eat existing FAISS / JSONL / HTTP RAG endpoints"),
             ("listener", "Ambient: mqtt:// / folder: / stdin sources"),
             ("daemon", "Long-running walk-dir or listen-room mode"),
-            ("init", "Read .mcp.json files, build shared codebook"),
         ]),
         ("Network", [
             ("converse", "Two fish one conversation — HTTP server with /eat /taste /pfc /crystals"),
@@ -1366,7 +1348,7 @@ def cmd_capabilities(args):
     print()
     print("## CLI commands")
     print("  Run `linafish <command> --help` for details on any of these:")
-    print("  go, eat, taste, recall, ask, status, serve, http, demo, init,")
+    print("  go, eat, taste, recall, ask, status, serve, http, demo,")
     print("  watch, fuse, room, listen, session, history, diff, revert,")
     print("  absorb, converse, school, whisper, check, hunt, emerge,")
     print("  feedback, capabilities")
@@ -1492,16 +1474,6 @@ def main():
     demo_p.add_argument("--hint", help="Context hint")
     demo_p.add_argument("--api-key", help="Gemini API key")
     demo_p.add_argument("--model", default="gemini-2.5-flash", help="Gemini model")
-
-    # init — eat all MCP servers (local + remote)
-    init_p = sub.add_parser("init", help="Eat all MCP servers, build shared codebook")
-    init_p.add_argument("-r", "--remote", action="append", default=[],
-                        help="Remote .mcp.json (ssh://user@host/path or local path). Repeatable.")
-    init_p.add_argument("-n", "--name", default="linafish", help="Fish name")
-    init_p.add_argument("-o", "--output", type=_user_path, help="Output path for fish")
-    init_p.add_argument("--live", action="store_true",
-                        help="Spawn local servers to discover tools (slower, more thorough)")
-    init_p.add_argument("--no-backup", action="store_true", help="Skip .mcp.json backup")
 
     # watch — continuous directory monitoring
     watch_p = sub.add_parser("watch", help="Watch a folder. Fish eats new files automatically.")
@@ -1668,7 +1640,6 @@ def main():
         "serve": cmd_serve,
         "http": cmd_http,
         "demo": cmd_demo,
-        "init": cmd_init,
         "watch": cmd_watch,
         "fuse": cmd_fuse,
         "room": cmd_room,
