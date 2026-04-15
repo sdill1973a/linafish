@@ -106,7 +106,8 @@ class FishEngine:
                  vocab_size: int = 200, d: float = 4.0,
                  seed_grammar: bool = True, min_gamma: float = None,
                  subtract_centroid: bool = False,
-                 git_autocommit: bool = True):
+                 git_autocommit: bool = True,
+                 dedupe: bool = False):
         self.name = name
         self.state_dir = state_dir or Path.home() / ".linafish"
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -127,6 +128,13 @@ class FishEngine:
         # mean — the latency slope is the git commit overhead, not the
         # crystallization work).
         self.git_autocommit = git_autocommit
+        # dedupe: when True, crystallize_text hashes incoming text and
+        # short-circuits if the same text has already been crystallized
+        # this session (or was present on disk at load time). Off by
+        # default — repeated eats stack into independent crystals as
+        # before. Turn on for mass re-ingest, scraped-corpus loads, or
+        # anywhere you can't guarantee the caller is deduping upstream.
+        self.dedupe = dedupe
 
         # The v3 universal fish — MI x ache, no keywords.
         #
@@ -147,6 +155,9 @@ class FishEngine:
         self.fish.fish_state_path = str(self.state_dir / f"{name}_v3_state.json")
         self.fish.pending_path = str(self.state_dir / f"{name}_pending.jsonl")
         self.fish.crystal_log_path = str(self.state_dir / f"{name}_crystals.jsonl")
+        # Propagate dedupe flag BEFORE the load so _load_state populates
+        # the hash set from the loaded crystals if dedupe is enabled.
+        self.fish.dedupe = dedupe
         # First and only load — against name-scoped paths, never
         # against the shared defaults.
         self.fish._load_state()

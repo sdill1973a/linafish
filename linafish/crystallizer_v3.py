@@ -177,6 +177,17 @@ def _acquire_lock(lock_path: str, timeout: float = 5.0) -> None:
             time.sleep(0.05)
 
 
+def _content_hash(text: str) -> str:
+    """Return a stable short hash of ``text`` for content-dedup lookups.
+
+    md5 is used for speed, not cryptographic strength — this is a
+    dedup key, not a security boundary. Text is encoded utf-8 before
+    hashing so the hash is stable across platforms.
+    """
+    import hashlib
+    return hashlib.md5(text.encode("utf-8")).hexdigest()
+
+
 def _release_lock(lock_path: str) -> None:
     """Release a lock acquired via ``_acquire_lock``.
 
@@ -760,6 +771,14 @@ class UniversalFish:
         self.crystals: List[Crystal] = []
         self.pending: List[dict] = []  # queued for next re-eat
         self.epoch = 0  # how many times the fish has re-eaten
+        # Content-dedup (plate item 12). When ``dedupe`` is True,
+        # ``crystallize_text`` consults ``_seen_hashes`` before
+        # creating a new crystal; a repeat of the same text is a
+        # no-op instead of creating a duplicate. Off by default —
+        # callers that want dedup set this to True on the instance
+        # (FishEngine propagates its own ``dedupe`` kwarg here).
+        self.dedupe = False
+        self._seen_hashes: set = set()
         if state_dir is None:
             state_dir = os.path.join(os.path.expanduser("~"), ".linafish")
         self.state_dir = state_dir
@@ -870,6 +889,14 @@ class UniversalFish:
             if loaded > 0:
                 self.frozen = True
 
+        # Populate the content-dedup set from whatever crystals are now
+        # in memory. Cheap if dedup is off (we just skip the build);
+        # O(n) one-time if dedup is on, then O(1) per crystallize check.
+        if self.dedupe:
+            self._seen_hashes = {
+                _content_hash(c.text) for c in self.crystals if c.text
+            }
+
     def _save_state(self):
         """Persist state atomically.
 
@@ -951,6 +978,13 @@ class UniversalFish:
 
         If not frozen, queues to pending instead.
 
+        When ``self.dedupe`` is True, incoming text is hashed and
+        checked against ``self._seen_hashes`` before any work is done.
+        A match is a no-op — ``crystallize_text`` returns None and the
+        caller's ``docs_ingested`` counter stays put. The dedup check
+        happens after the length gate and before the freeze gate so
+        repeats don't pile up in the pending queue either.
+
         v0.4: Also runs the metabolic engine if available, enriching
         the crystal with 8-pathway residues, metabolic chain, and ache
         distribution. The MI vector stays — co-occurrence is still how
@@ -959,10 +993,28 @@ class UniversalFish:
         if not text or len(text.strip()) < 10:
             return None
 
+        # Dedup: compute the hash once, check the seen set, remember
+        # the value for the success-path add below. The add is
+        # deliberately deferred until AFTER persistence succeeds —
+        # if ``_flush_pending`` or ``crystallize`` raises, the hash
+        # must NOT be in the seen set or the caller's retry would
+        # be silently dropped as a "duplicate."
+        text_hash: Optional[str] = None
+        if self.dedupe:
+            text_hash = _content_hash(text)
+            if text_hash in self._seen_hashes:
+                return None  # already seen this exact text
+
         if not self.frozen:
             # Queue for next epoch
             self.pending.append({'text': text, 'source': source})
             self._flush_pending()
+            # Persistence committed — NOW it's safe to record the
+            # hash so pre-freeze repeats are caught on subsequent
+            # submissions. Without this add the same text could
+            # pile up in the pending JSONL across many submissions.
+            if text_hash is not None:
+                self._seen_hashes.add(text_hash)
             return None
 
         crystal = crystallize(text, self.vectorizer, source=source,
@@ -986,6 +1038,11 @@ class UniversalFish:
 
         self.crystals.append(crystal)
         self._persist_crystal(crystal)
+        # Hash is added LAST — only after crystal is on disk. If
+        # anything above raises, the seen set stays clean and a
+        # retry re-runs the whole pipeline.
+        if text_hash is not None:
+            self._seen_hashes.add(text_hash)
         return crystal
 
     def _persist_crystal(self, crystal: Crystal):
