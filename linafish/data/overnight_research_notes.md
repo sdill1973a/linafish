@@ -681,3 +681,61 @@ Broad search returns zero peer-reviewed 2025-2026 publications on Linear A funct
 4. Check `damos.hf.uio.no/search` directly to locate any EpiDoc export UI entry point
 
 ---
+
+## 2026-04-15 — Cycle 12
+
+**Prerequisite file check:**
+- `data/linear_b_corpus_sources.md` — still does not exist. Eleven cycles overdue.
+- `data/functional_decipherment_research.md` — still does not exist.
+
+---
+
+### 1. InsiderPhD Linear B Dataset — No Change
+
+GitHub repo `InsiderPhD/Linear-B-Dataset` confirmed public, no new commits. Schema unchanged: semicolon-delimited CSVs; `tablets.csv` has `identifier, location, series, inscription, original`; `series` code remains functional proxy. No blockers to downloading the ZIP; this is executable now without email.
+
+---
+
+### 2. DAMOS — `/search` Returns 404; Email Still Required
+
+Direct fetch of `damos.hf.uio.no/search` returned HTTP 404. The EpiDoc export UI entry point is not at that path. Prior finding (Cycle 11): Aurora et al. 2025 DHN paper describes bulk export as a **development project**, no public endpoint named. The export may only be accessible from within the main search results UI (authenticated or otherwise), or may not yet be deployed publicly.
+
+**Status:** Email `federico.aurora@ub.uio.no` remains the sole unblocked path. Now **eleven cycles overdue**. Provide this email draft to the human operator for sending — no further agent research can advance this.
+
+---
+
+### 3. SigLA Cambridge Repository — Paper Only, Rights Reserved
+
+Cambridge repository entry (`repository.cam.ac.uk/items/25c5d712-6e4c-4435-86a5-30f769ea4072`) is the accepted conference paper describing SigLA, not the dataset itself. Marked "All rights reserved" — not freely downloadable as data. Does not replace the need to contact Simon Castellan (`simon@phis.me`) for a JSON/CSV dump.
+
+---
+
+### 4. Nepal & Perono Cacciafoco Code — GitHub Repo Identified
+
+The MDPI 2024 paper (phonetic decipherment, not register analysis) released their Python program at `github.com/L-Colin/Linear-A-decipherment-programme`. This is worth checking: the repo may include a structured Linear A sign list or corpus data as a side effect of the tool. Not a direct competitor (phonetic, not functional), but could contain usable sign-frequency data.
+
+**Action (low priority):** Inspect `L-Colin/Linear-A-decipherment-programme` for any data files.
+
+---
+
+### 5. Anamaria Berea (GMU) — Confirmed Shifted Research Focus
+
+Google Scholar and GMU news confirm Berea's 2025 work is entirely focused on a lunar cultural archive project ("Pioneers of Tomorrow"). No Linear A papers in 2025 or 2026. The 2021 HAL preprint (`hal-03207615`) remains her only Linear A-adjacent work. The Anubis block on HAL remains; email to `aberea@gmu.edu` requesting a PDF copy is still the shortest path.
+
+**Verdict:** Lower priority than DAMOS and SigLA. The 2021 preprint is unpublished and five years old.
+
+---
+
+### 6. No New 2026 Peer-Reviewed Papers — Eleventh Consecutive Confirmation
+
+All searches (broad and targeted) return zero peer-reviewed 2026 publications on Linear A (computational, functional, or phonetic). Every result is the same 2024-2025 set documented in prior cycles. **Linafish approach remains unoccupied territory.**
+
+---
+
+### Next cycle priorities
+1. Email `simon@phis.me` re: SigLA JSON/CSV dump — executable now, no further research needed
+2. Email `federico.aurora@ub.uio.no` re: DAMOS bulk EpiDoc export — eleven cycles overdue, no agent action can substitute
+3. Create `data/linear_b_corpus_sources.md` — eleven cycles overdue
+4. Inspect `github.com/L-Colin/Linear-A-decipherment-programme` for usable data files
+
+---
