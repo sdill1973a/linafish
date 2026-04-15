@@ -607,7 +607,7 @@ class FishEngine:
         """
         if not (self.fish_file.exists() and self.fish.crystals):
             return
-        self._rebuild_formations()
+        self.rebuild_formations()
 
         try:
             text = self.fish_file.read_text(encoding="utf-8")
@@ -634,8 +634,19 @@ class FishEngine:
             f"docs_ingested={self.docs_ingested}"
         )
 
-    def _rebuild_formations(self):
-        """Detect formations from current crystals."""
+    def rebuild_formations(self):
+        """Detect formations from current crystals.
+
+        Public entry point for reconstituting formations after a
+        batch load or after external mutation of ``self.fish.crystals``.
+        Also fires the Level 4 metabolic learning loop
+        (``teach_from_formations``) so formation memory stays in sync
+        with whatever is on disk.
+
+        The legacy ``_rebuild_formations`` name is preserved as an
+        alias below the method body for backward compatibility with
+        extension code that may call the private name.
+        """
         crystals = self.fish.crystals
         if len(crystals) < 2:
             self.formations = []
@@ -668,6 +679,9 @@ class FishEngine:
         # incremental eat()/eat_path()/re_eat()/load cycle left it empty.
         if self.fish._has_metabolism and self.formations:
             self.fish.metabolic_engine.teach_from_formations(self.formations)
+
+    # Backward-compat alias — extension code may call the private name.
+    _rebuild_formations = rebuild_formations
 
     def _save_state(self):
         """Save state as fish.md — formations on top, crystal JSON at bottom."""
@@ -904,7 +918,7 @@ class FishEngine:
         self.docs_ingested += 1
         self._last_source = source
         self._last_new_crystals = len(self.fish.crystals) - prev_count
-        self._rebuild_formations()
+        self.rebuild_formations()
         self._save_state()
 
         return {
@@ -988,7 +1002,7 @@ class FishEngine:
         if new_crystals:
             self.fish._compute_couplings(new_crystals)
             self.docs_ingested += 1
-            self._rebuild_formations()
+            self.rebuild_formations()
 
             # Capture initial R(n) after first batch
             r_n = self._compute_r_n()
@@ -1085,7 +1099,7 @@ class FishEngine:
         self.fish.pending = []
 
         # Rebuild formations to see what survived
-        self._rebuild_formations()
+        self.rebuild_formations()
         post_formations = {f.name for f in self.formations}
 
         survived = pre_formations & post_formations

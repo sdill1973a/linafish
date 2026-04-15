@@ -1607,7 +1607,7 @@ def go(
                 engine.fish.crystals = all_crystals
                 engine.fish._compute_couplings(all_crystals)
                 engine.docs_ingested = total
-                engine._rebuild_formations()
+                engine.rebuild_formations()
 
                 if engine.fish._has_metabolism and engine.formations:
                     engine.fish.metabolic_engine.teach_from_formations(engine.formations)

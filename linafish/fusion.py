@@ -669,7 +669,7 @@ class FusionEngine:
 
         if new_crystals:
             engine.fish._compute_couplings(new_crystals)
-        engine._rebuild_formations()
+        engine.rebuild_formations()
 
         _log(f"  Initial: {len(new_crystals)} crystals, "
              f"{len(engine.formations)} formations")
@@ -713,7 +713,7 @@ class FusionEngine:
                     new_crystals.append(c)
             if new_crystals:
                 engine.fish._compute_couplings(new_crystals)
-            engine._rebuild_formations()
+            engine.rebuild_formations()
 
             epochs = cycle + 1
         else:
@@ -835,7 +835,7 @@ class FusionEngine:
                         cj.couplings.append((ci.id, g))
 
         # Re-detect formations
-        engine._rebuild_formations()
+        engine.rebuild_formations()
         _log(f"  Formations: {len(engine.formations)}")
 
         # Vocab stability check (re-eat until stable)
@@ -874,7 +874,7 @@ class FusionEngine:
                         if g >= 0.447:
                             ci.couplings.append((cj.id, g))
                             cj.couplings.append((ci.id, g))
-            engine._rebuild_formations()
+            engine.rebuild_formations()
             _log(f"  Epoch {cycle + 1}: {len(engine.formations)} formations")
             epochs = cycle + 1
 
