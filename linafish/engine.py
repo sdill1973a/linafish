@@ -122,6 +122,14 @@ class FishEngine:
         self.fish.fish_state_path = str(self.state_dir / f"{name}_v3_state.json")
         self.fish.pending_path = str(self.state_dir / f"{name}_pending.jsonl")
         self.fish.crystal_log_path = str(self.state_dir / f"{name}_crystals.jsonl")
+        # UniversalFish.__init__ already ran _load_state() against its own
+        # hardcoded `mind_crystals_v3.jsonl` default before we got here.
+        # That shared default file (a leftover from early v3 development)
+        # leaks crystals into every named fish — the second _load_state
+        # below would NOT overwrite them because of the "load only if
+        # disk has more" gate at crystallizer_v3.py:656. Clear before
+        # the name-scoped reload so each named fish starts clean.
+        self.fish.crystals = []
         self.fish._load_state()
 
         self.formations: List[Formation] = []
