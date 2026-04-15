@@ -124,8 +124,13 @@ class FishHandler(BaseHTTPRequestHandler):
 
 def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = None,
                name: str = "linafish", port: int = 8900,
-               vocab_path: Optional[Path] = None):
-    """Serve the fish over HTTP."""
+               vocab_path: Optional[Path] = None,
+               host: Optional[str] = None):
+    """Serve the fish over HTTP.
+
+    ``host`` defaults to loopback. Pass "0.0.0.0" to bind on all
+    interfaces (LAN service), or a specific interface IP.
+    """
 
     global _PRIMER
     _PRIMER = _load_primer()
