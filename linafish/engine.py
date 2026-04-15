@@ -34,6 +34,7 @@ Usage:
 """
 
 import json
+import re
 import subprocess
 import sys
 import time
@@ -595,10 +596,43 @@ class FishEngine:
     # -------------------------------------------------------------------
 
     def _load_fish_md(self):
-        """Load formations count from existing fish.md if present."""
-        if self.fish_file.exists() and self.fish.crystals:
-            self._rebuild_formations()
-            import logging as _log; _log.getLogger(__name__).debug(f"Loaded {len(self.fish.crystals)} crystals, {len(self.formations)} formations")
+        """Load formations and summary metadata from existing fish.md.
+
+        Rebuilds formations from loaded crystals and restores
+        ``docs_ingested`` from the FISH_STATE JSON block at the bottom
+        of fish.md. Without the metadata restore, ``docs_ingested``
+        resets to zero on every reload, so display strings like
+        ``N crystals from M documents`` drop M and R(n) computation
+        loses its document-count denominator across sessions.
+        """
+        if not (self.fish_file.exists() and self.fish.crystals):
+            return
+        self._rebuild_formations()
+
+        try:
+            text = self.fish_file.read_text(encoding="utf-8")
+            match = re.search(
+                r"<!-- FISH_STATE.*?-->\s*<!--\s*(\{.*?\})\s*-->",
+                text,
+                re.DOTALL,
+            )
+            if match:
+                state = json.loads(match.group(1))
+                if isinstance(state, dict):
+                    docs = state.get("docs_ingested")
+                    if isinstance(docs, int) and docs >= 0:
+                        self.docs_ingested = docs
+        except (OSError, json.JSONDecodeError):
+            # Best-effort: a missing or malformed FISH_STATE block is
+            # not fatal. _save_state rewrites a fresh block next save.
+            pass
+
+        import logging as _log
+        _log.getLogger(__name__).debug(
+            f"Loaded {len(self.fish.crystals)} crystals, "
+            f"{len(self.formations)} formations, "
+            f"docs_ingested={self.docs_ingested}"
+        )
 
     def _rebuild_formations(self):
         """Detect formations from current crystals."""
