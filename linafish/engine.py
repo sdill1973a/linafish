@@ -128,21 +128,27 @@ class FishEngine:
         # crystallization work).
         self.git_autocommit = git_autocommit
 
-        # The v3 universal fish — MI x ache, no keywords
-        self.fish = UniversalFish(state_dir=str(self.state_dir))
+        # The v3 universal fish — MI x ache, no keywords.
+        #
+        # Construct with autoload=False so UniversalFish does NOT load
+        # state from its hardcoded default paths during __init__. The
+        # prior code worked around an auto-load-then-override pattern
+        # by rebinding paths after init and calling _load_state a
+        # second time, then clearing self.fish.crystals to defeat the
+        # "load only if disk has more" gate. That workaround only
+        # patched the crystals leak; the shared-default file was also
+        # bleeding vectorizer/epoch/frozen/vocab state into every
+        # named fish because those fields had no equivalent clearing
+        # step. With autoload=False none of that data ever gets loaded
+        # in the first place, so all four leaks close at the root.
+        self.fish = UniversalFish(state_dir=str(self.state_dir), autoload=False)
         self.fish.state_dir = str(self.state_dir)
         self.fish.vectorizer_path = str(self.state_dir / "mi_vectorizer.json")
         self.fish.fish_state_path = str(self.state_dir / f"{name}_v3_state.json")
         self.fish.pending_path = str(self.state_dir / f"{name}_pending.jsonl")
         self.fish.crystal_log_path = str(self.state_dir / f"{name}_crystals.jsonl")
-        # UniversalFish.__init__ already ran _load_state() against its own
-        # hardcoded `mind_crystals_v3.jsonl` default before we got here.
-        # That shared default file (a leftover from early v3 development)
-        # leaks crystals into every named fish — the second _load_state
-        # below would NOT overwrite them because of the "load only if
-        # disk has more" gate at crystallizer_v3.py:656. Clear before
-        # the name-scoped reload so each named fish starts clean.
-        self.fish.crystals = []
+        # First and only load — against name-scoped paths, never
+        # against the shared defaults.
         self.fish._load_state()
 
         self.formations: List[Formation] = []

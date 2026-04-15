@@ -724,7 +724,36 @@ class UniversalFish:
     The grammar eats. For Lina.
     """
 
-    def __init__(self, state_dir: str = None):
+    def __init__(self, state_dir: str = None, autoload: bool = True):
+        """Initialize a UniversalFish.
+
+        Args:
+            state_dir: directory for all persisted state files. If None,
+                defaults to ``~/.linafish``.
+            autoload: if True (default), call ``_load_state()`` at the
+                end of ``__init__`` against the default hardcoded paths
+                (``fish_v3_state.json`` / ``mind_crystals_v3.jsonl`` /
+                ``mi_vectorizer.json``). Direct UniversalFish users get
+                the historical behavior with no change.
+
+                If False, construction does NOT auto-load. The caller is
+                responsible for setting name-scoped ``fish_state_path``,
+                ``pending_path``, and ``crystal_log_path`` attributes and
+                then explicitly calling ``_load_state()``. This is the
+                path ``FishEngine`` uses to prevent shared-default state
+                file leakage across differently-named fishes living in
+                the same ``state_dir``.
+
+                The prior FishEngine code worked around the auto-load by
+                rebinding ``self.fish.crystals = []`` after init, then
+                calling ``_load_state`` a second time against the
+                corrected paths. That workaround only cleared the
+                ``crystals`` leak; ``vectorizer``, ``epoch``, ``frozen``,
+                and ``vocab`` were still inheriting from whatever the
+                shared-default state file happened to contain. With
+                ``autoload=False`` none of that data ever gets loaded in
+                the first place, closing all four leaks at the root.
+        """
         self.vectorizer = MIVectorizer()
         self.vocab: List[str] = []
         self.frozen = False
@@ -760,7 +789,8 @@ class UniversalFish:
             self.glyph_evolution = None
             self._has_metabolism = False
 
-        self._load_state()
+        if autoload:
+            self._load_state()
 
     def _load_state(self):
         """Load persisted state — vectorizer, epoch, and crystals.
