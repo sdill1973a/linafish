@@ -1110,24 +1110,29 @@ class UniversalFish:
         """
         # v1.0.3: Centroid subtraction for homogeneous corpora
         if subtract_centroid:
-            import numpy as np
-            from collections import Counter as _Counter
-            vectors = [c.mi_vector for c in crystals if c.mi_vector]
-            if vectors:
-                # Filter to most common vector length (vocab may evolve between eats)
-                lengths = _Counter(len(v) for v in vectors)
-                target_len = lengths.most_common(1)[0][0]
-                eligible = [(i, c) for i, c in enumerate(crystals)
-                            if c.mi_vector and len(c.mi_vector) == target_len]
-                if eligible:
-                    V = np.array([c.mi_vector for _, c in eligible], dtype=np.float32)
-                    centroid = V.mean(axis=0)
-                    R = V - centroid
-                    norms = np.linalg.norm(R, axis=1, keepdims=True)
-                    norms[norms == 0] = 1
-                    R = R / norms
-                    for vi, (_, c) in enumerate(eligible):
-                        c.mi_vector = R[vi].tolist()
+            try:
+                import numpy as np
+                from collections import Counter as _Counter
+                vectors = [c.mi_vector for c in crystals if c.mi_vector]
+                if vectors:
+                    # Filter to most common vector length (vocab may evolve between eats)
+                    lengths = _Counter(len(v) for v in vectors)
+                    target_len = lengths.most_common(1)[0][0]
+                    eligible = [(i, c) for i, c in enumerate(crystals)
+                                if c.mi_vector and len(c.mi_vector) == target_len]
+                    if eligible:
+                        V = np.array([c.mi_vector for _, c in eligible], dtype=np.float32)
+                        centroid = V.mean(axis=0)
+                        R = V - centroid
+                        norms = np.linalg.norm(R, axis=1, keepdims=True)
+                        norms[norms == 0] = 1
+                        R = R / norms
+                        for vi, (_, c) in enumerate(eligible):
+                            c.mi_vector = R[vi].tolist()
+            except ImportError:
+                # Fallback: skip centroid subtraction (optimization for homogeneous
+                # corpora, not load-bearing — matches reduce_pca pattern at line 556)
+                pass
 
         try:
             from .parser import chain_similarity
