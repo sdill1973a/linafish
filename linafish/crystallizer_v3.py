@@ -134,7 +134,76 @@ CANONICAL_SEED_SET = frozenset(
 )
 
 
-def _atomic_write_json(path: str, data, indent: Optional[int] = None) -> None:
+def _acquire_lock(lock_path: str, timeout: float = 5.0) -> None:
+    """Acquire an exclusive file-based lock.
+
+    Uses ``os.open`` with ``O_CREAT | O_EXCL`` — an atomic
+    create-if-not-exists supported on both POSIX and Windows. If the
+    lock file already exists (another writer is mid-save), retry with
+    a short sleep up to ``timeout`` seconds. On timeout, raise
+    ``TimeoutError`` with the lock path so the caller knows which
+    lockfile to inspect if they suspect a stale lock from a crashed
+    writer.
+
+    The lockfile content is the holding PID + a UTC timestamp — not
+    machine-readable, just a diagnostic breadcrumb for a human
+    inspecting a stuck lock.
+    """
+    import os
+    import time
+
+    start = time.monotonic()
+    while True:
+        try:
+            fd = os.open(
+                lock_path,
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                0o644,
+            )
+            try:
+                content = f"{os.getpid()} {datetime.now(timezone.utc).isoformat()}\n"
+                os.write(fd, content.encode("utf-8"))
+            finally:
+                os.close(fd)
+            return
+        except FileExistsError:
+            if time.monotonic() - start >= timeout:
+                raise TimeoutError(
+                    f"Could not acquire lock {lock_path} within "
+                    f"{timeout}s — another writer holds it. "
+                    f"If you believe the holder is dead, inspect "
+                    f"and delete the lockfile manually."
+                )
+            time.sleep(0.05)
+
+
+def _release_lock(lock_path: str) -> None:
+    """Release a lock acquired via ``_acquire_lock``.
+
+    Best-effort unlink — a failed release is not fatal (the lock just
+    persists and the next writer will see it as stuck), but it IS
+    logged at warning level so operators have a breadcrumb when
+    antivirus, permissions, or a dead disk is keeping a lockfile alive.
+    """
+    import logging
+    import os
+    try:
+        os.unlink(lock_path)
+    except OSError as exc:
+        logging.getLogger(__name__).warning(
+            "Could not release lock %s (%s); next writer may see it "
+            "as stuck and require manual cleanup.",
+            lock_path, exc,
+        )
+
+
+def _atomic_write_json(
+    path: str,
+    data,
+    indent: Optional[int] = None,
+    lock: bool = True,
+    lock_timeout: float = 5.0,
+) -> None:
     """Atomically write ``data`` as JSON to ``path``.
 
     Writes to a unique temp file in the same directory as the target
@@ -152,9 +221,19 @@ def _atomic_write_json(path: str, data, indent: Optional[int] = None) -> None:
     mean that class of corruption simply cannot happen — the target
     is never in a partial state.
 
+    When ``lock=True`` (the default), also serializes writers via a
+    short-lived lockfile at ``path + ".lock"``. Two processes writing
+    the same path at the same time can interleave their temp-file
+    creation and their ``os.replace`` calls, and while neither write
+    is partial, the second write silently overwrites the first —
+    losing data if the two sources diverged. The lock forces the
+    second writer to wait for the first to finish. Lock acquisition
+    times out after ``lock_timeout`` seconds and raises
+    ``TimeoutError`` with the lockfile path.
+
     On any exception during the write, the temp file is best-effort
-    cleaned up and the exception re-raised so the caller knows the
-    save failed.
+    cleaned up, the lock is released, and the exception is re-raised
+    so the caller knows the save failed.
     """
     import json
     import os
@@ -163,24 +242,32 @@ def _atomic_write_json(path: str, data, indent: Optional[int] = None) -> None:
     dir_path = os.path.dirname(os.path.abspath(path)) or "."
     os.makedirs(dir_path, exist_ok=True)
 
-    fd, tmp_path = tempfile.mkstemp(
-        prefix=os.path.basename(path) + ".tmp.",
-        dir=dir_path,
-        suffix=".json",
-    )
+    lock_path = path + ".lock" if lock else None
+    if lock_path:
+        _acquire_lock(lock_path, timeout=lock_timeout)
+
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=indent)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_path, path)
-    except Exception:
-        # Best-effort cleanup; swallow cleanup errors, re-raise the real one.
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=os.path.basename(path) + ".tmp.",
+            dir=dir_path,
+            suffix=".json",
+        )
         try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        raise
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=indent)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, path)
+        except Exception:
+            # Best-effort cleanup; swallow cleanup errors, re-raise the real one.
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+    finally:
+        if lock_path:
+            _release_lock(lock_path)
 
 
 class MIVectorizer:
