@@ -131,14 +131,23 @@ an IC+SF combination talking. Use that to calibrate your own response shape.
 
 ## Endpoints quick reference
 
-| Method | Path | Purpose |
-|---|---|---|
-| `GET` | `/health` | Engine stats, crystal/formation counts |
-| `GET` | `/pfc` | Primary Formation Codebook — READ THIS FIRST |
-| `GET` | `/minds` | Source minds contributing to this fish |
-| `GET` | `/crystals` | Full crystal dump — use sparingly |
-| `POST` | `/taste` | Semantic query, returns top-k crystals |
-| `POST` | `/eat` | Deposit new text as a crystal |
+Two server modes expose slightly different endpoint sets. `linafish http`
+is the general-purpose single-fish server; `linafish converse` is the
+federation-oriented multi-fish server that also exposes source-provenance
+and crystal-dump routes.
+
+| Method | Path | Purpose | `http` | `converse` |
+|---|---|---|:---:|:---:|
+| `GET` | `/health` | Engine stats, crystal/formation counts | ✓ | ✓ |
+| `GET` | `/pfc` | Primary Formation Codebook — READ THIS FIRST | ✓ | ✓ |
+| `GET` | `/minds` | Source minds contributing to this fish |  | ✓ |
+| `GET` | `/crystals` | Full crystal dump — use sparingly |  | ✓ |
+| `POST` | `/taste` | Semantic query, returns top-k crystals | ✓ | ✓ |
+| `POST` | `/eat` | Deposit new text as a crystal | ✓ | ✓ |
+| `POST` | `/crystals` | Bulk crystal push — federation sync |  | ✓ |
+
+If an endpoint is not checked for your server mode, it will 404. `/health`
+and `/pfc` are the two you can always rely on.
 
 ## Privacy and scope
 
