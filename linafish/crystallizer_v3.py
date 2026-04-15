@@ -316,12 +316,32 @@ class MIVectorizer:
             json.dump(data, f)
 
     def load(self, path: str):
-        """Load persisted vectorizer state."""
-        import json, os
+        """Load persisted vectorizer state.
+
+        Best-effort recovery: a missing file, an unreadable file, a
+        malformed JSON payload, or a non-object payload all leave the
+        vectorizer in its freshly-constructed empty state. The next
+        ``save()`` will rewrite a clean file. Corruption is logged at
+        warning level; it is never fatal to FishEngine initialization.
+        """
+        import json, os, logging
         if not os.path.exists(path):
             return
-        with open(path) as f:
-            data = json.load(f)
+        try:
+            with open(path) as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+            logging.getLogger(__name__).warning(
+                "MIVectorizer.load: could not parse %s (%s); starting empty",
+                path, exc,
+            )
+            return
+        if not isinstance(data, dict):
+            logging.getLogger(__name__).warning(
+                "MIVectorizer.load: %s did not contain a JSON object; starting empty",
+                path,
+            )
+            return
         self.token_counts = Counter(data.get('token_counts', {}))
         self.pair_counts = Counter({
             tuple(k.split('|')): v
@@ -601,15 +621,35 @@ class UniversalFish:
         self._load_state()
 
     def _load_state(self):
-        """Load persisted state — vectorizer, epoch, and crystals."""
+        """Load persisted state — vectorizer, epoch, and crystals.
+
+        Both state files (``mi_vectorizer.json`` and ``*_v3_state.json``)
+        load best-effort: missing, unreadable, malformed, or non-object
+        payloads short-circuit to the already-initialized defaults so
+        FishEngine construction never crashes on a corrupt state file.
+        The next ``_save_state`` rewrites clean files.
+        """
         self.vectorizer.load(self.vectorizer_path)
         if os.path.exists(self.fish_state_path):
-            import json
-            with open(self.fish_state_path) as f:
-                state = json.load(f)
-            self.epoch = state.get('epoch', 0)
-            self.frozen = state.get('frozen', False)
-            self.vocab = state.get('vocab', [])
+            import json, logging
+            try:
+                with open(self.fish_state_path) as f:
+                    state = json.load(f)
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+                logging.getLogger(__name__).warning(
+                    "UniversalFish._load_state: could not parse %s (%s); using defaults",
+                    self.fish_state_path, exc,
+                )
+                state = None
+            if isinstance(state, dict):
+                self.epoch = state.get('epoch', 0)
+                self.frozen = state.get('frozen', False)
+                self.vocab = state.get('vocab', [])
+            elif state is not None:
+                logging.getLogger(__name__).warning(
+                    "UniversalFish._load_state: %s did not contain a JSON object; using defaults",
+                    self.fish_state_path,
+                )
 
         # Load crystals from JSONL log (authoritative source).
         #
