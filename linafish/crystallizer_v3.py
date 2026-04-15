@@ -134,6 +134,55 @@ CANONICAL_SEED_SET = frozenset(
 )
 
 
+def _atomic_write_json(path: str, data, indent: Optional[int] = None) -> None:
+    """Atomically write ``data`` as JSON to ``path``.
+
+    Writes to a unique temp file in the same directory as the target
+    (same filesystem required for atomic replace), flushes + fsyncs
+    the file descriptor so the bytes are on disk, then uses
+    ``os.replace`` to swap the temp into place. ``os.replace`` is
+    guaranteed atomic on POSIX and Windows per the Python docs —
+    after it returns, the target is either the full new content or
+    the full old content, never a partial blend.
+
+    Prevents the corruption class that plate item 20 added recovery
+    for: a single unlucky interrupt during ``json.dump`` could
+    truncate the state file mid-write, and every subsequent
+    FishEngine boot would crash on the corrupt JSON. Atomic writes
+    mean that class of corruption simply cannot happen — the target
+    is never in a partial state.
+
+    On any exception during the write, the temp file is best-effort
+    cleaned up and the exception re-raised so the caller knows the
+    save failed.
+    """
+    import json
+    import os
+    import tempfile
+
+    dir_path = os.path.dirname(os.path.abspath(path)) or "."
+    os.makedirs(dir_path, exist_ok=True)
+
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=os.path.basename(path) + ".tmp.",
+        dir=dir_path,
+        suffix=".json",
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=indent)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    except Exception:
+        # Best-effort cleanup; swallow cleanup errors, re-raise the real one.
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
 class MIVectorizer:
     """Compute mutual information vectors from token co-occurrence.
 
@@ -304,16 +353,22 @@ class MIVectorizer:
         return vector
 
     def save(self, path: str):
-        """Persist vectorizer state for reuse across sessions."""
-        import json
+        """Persist vectorizer state for reuse across sessions.
+
+        Uses ``_atomic_write_json`` so a mid-write interrupt or crash
+        cannot leave ``mi_vectorizer.json`` in a partially-written
+        state. Paired with the graceful-recovery handling in
+        ``MIVectorizer.load`` (plate item 20), corruption is now
+        prevented on the write side AND recovered from on the read
+        side if it ever slips through another path.
+        """
         data = {
             'token_counts': dict(self.token_counts.most_common()),
             'pair_counts': {f"{k[0]}|{k[1]}": v for k, v in self.pair_counts.most_common(100000)},
             'doc_count': self.doc_count,
             'token_doc_counts': dict(self.token_doc_counts.most_common()),
         }
-        with open(path, 'w') as f:
-            json.dump(data, f)
+        _atomic_write_json(path, data)
 
     def load(self, path: str):
         """Load persisted vectorizer state.
@@ -699,12 +754,18 @@ class UniversalFish:
                 self.frozen = True
 
     def _save_state(self):
-        """Persist state."""
-        import json
+        """Persist state atomically.
+
+        Both ``mi_vectorizer.json`` (via ``self.vectorizer.save``) and
+        ``*_v3_state.json`` (here) now write through
+        ``_atomic_write_json`` — a crash or kill mid-save cannot
+        leave either file in a half-written state. Plate item 10.
+        """
         self.vectorizer.save(self.vectorizer_path)
         os.makedirs(self.state_dir, exist_ok=True)
-        with open(self.fish_state_path, 'w') as f:
-            json.dump({
+        _atomic_write_json(
+            self.fish_state_path,
+            {
                 'epoch': self.epoch,
                 'frozen': self.frozen,
                 'vocab': self.vocab,
@@ -712,7 +773,9 @@ class UniversalFish:
                 'crystal_count': len(self.crystals),
                 'pending_count': len(self.pending),
                 'updated': datetime.now(timezone.utc).isoformat(),
-            }, f, indent=2)
+            },
+            indent=2,
+        )
 
     # --- Phase 1: LEARN ---
 
