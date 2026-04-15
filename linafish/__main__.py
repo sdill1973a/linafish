@@ -235,50 +235,62 @@ def cmd_http(args):
 
 
 def cmd_demo(args):
-    """One-command demo: eat -> taste -> test with Gemini."""
-    from .crystallizer import extend_vocabulary, batch_ingest, couple_crystals
-    from .formations import detect_formations, hierarchical_merge, formations_to_codebook_text
+    """One-command demo: eat -> taste -> test with Gemini.
+
+    Rewired 2026-04-15 (fork/step1): now uses FishEngine.eat_path
+    instead of the v1 crystallizer's batch_ingest. Same user-facing
+    behavior (writes ./{name}.fish.md in cwd, optional Gemini test),
+    but the cognitive pipeline goes through the v3+v4 metabolic engine
+    so the demo output reflects the current architecture.
+
+    UX delta vs v1: the --hint flag is preserved in the argparser for
+    backward compat but is a no-op — FishEngine's v3 cognitive parser
+    doesn't take a context_hint prefix. If you pass --hint we emit a
+    one-line warning. Same shape of issue codex flagged for cmd_eat
+    when it warned about UX deltas during the v1->v3 migration.
+    """
+    from .engine import FishEngine
 
     source = Path(args.source).expanduser()
     if not source.exists():
         print(f"Error: {source} not found")
         sys.exit(1)
 
+    if args.hint:
+        print(f"  [warn] --hint is a no-op under v3 (FishEngine has no "
+              f"context_hint equivalent). Continuing without hint.")
+
     print(f"=== LiNafish Demo ===\n")
 
-    # Eat
-    print(f"[1/3] Eating {source}...")
-    all_crystals = []
-    if source.is_dir():
-        for f in sorted(source.rglob("*")):
-            if f.suffix.lower() in {".md", ".txt"}:
-                try:
-                    content = f.read_text(encoding="utf-8", errors="replace")
-                    if len(content) >= 50:
-                        crystals = batch_ingest(content, source=f.name,
-                                                context_hint=args.hint or "")
-                        all_crystals.extend(crystals)
-                except Exception:
-                    pass
-    else:
-        content = source.read_text(encoding="utf-8", errors="replace")
-        all_crystals = batch_ingest(content, source=source.name,
-                                    context_hint=args.hint or "")
-
-    couple_crystals(all_crystals)
-    formations = detect_formations(all_crystals)
-    if len(formations) > 60:
-        formations = hierarchical_merge(formations, target=50)
-
+    # Eat through FishEngine — persists to ~/.linafish/{name}/
     name = args.name or source.stem
-    codebook = formations_to_codebook_text(formations, title=f"LiNafish: {name}")
+    print(f"[1/3] Eating {source}...")
+    engine = FishEngine(name=name)
+    result = engine.eat_path(source)
+
+    if not engine.fish.crystals:
+        print("No content found.")
+        sys.exit(1)
+
+    print(f"  {result.get('crystals_added', 0)} crystals added "
+          f"({result.get('total_crystals', 0)} total) "
+          f"-> {result.get('formations', 0)} formations")
+
+    # Read the fish.md FishEngine wrote during eat_path
+    if engine.fish_file.exists():
+        codebook = engine.fish_file.read_text(encoding="utf-8")
+    else:
+        codebook = ""
+
+    # Mirror to cwd for demo discoverability — preserves original UX.
+    # The persisted copy at engine.fish_file is the source of truth and
+    # remains available for `linafish recall` and `linafish status` in
+    # the user's home dir.
     fish_path = Path(f"{name}.fish.md")
     fish_path.write_text(codebook, encoding="utf-8")
-    print(f"  {len(all_crystals)} crystals -> {len(formations)} formations -> {len(codebook)} chars")
 
     # Taste
     print(f"\n[2/3] Fish contents:\n")
-    # Show first 2000 chars
     print(codebook[:2000])
     if len(codebook) > 2000:
         print(f"\n  ... ({len(codebook) - 2000} more chars)")
@@ -303,7 +315,9 @@ def cmd_demo(args):
             print(f"  Gemini test failed: {e}")
             print(f"  Fish saved at {fish_path} — paste into any AI session manually.")
     else:
-        print(f"\n[3/3] No question provided. Fish saved at {fish_path}")
+        print(f"\n[3/3] No question provided.")
+        print(f"  Fish saved at {fish_path} (cwd copy)")
+        print(f"  Persisted at {engine.fish_file} for `linafish recall`")
         print(f"  Paste into any AI session for warm-on-contact understanding.")
 
 
