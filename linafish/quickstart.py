@@ -1609,9 +1609,6 @@ def go(
                 engine.docs_ingested = total
                 engine.rebuild_formations()
 
-                if engine.fish._has_metabolism and engine.formations:
-                    engine.fish.metabolic_engine.teach_from_formations(engine.formations)
-
                 r_n = engine._compute_r_n()
                 engine.r_n_history.append(r_n)
                 engine._save_state()
