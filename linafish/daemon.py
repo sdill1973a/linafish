@@ -13,6 +13,7 @@ State persists in .linafish_state.json next to the fish.
 """
 
 import json
+import os
 import time
 import signal
 import hashlib
@@ -556,7 +557,16 @@ class RoomListener:
             print(f"  [error] {e}")
 
     def run(self):
-        """Subscribe to the room. Eat everything."""
+        """Subscribe to the room. Eat everything.
+
+        MQTT auth comes from env: LINAFISH_MQTT_USER + LINAFISH_MQTT_PASS.
+        If either is unset, the client connects anonymously (works only
+        on open brokers). Credentials are NEVER hardcoded in source —
+        linafish ships to PyPI and baked-in passwords would leak to every
+        install. Private federations should set the env vars in their
+        service manager (systemd Environment= / NSSM AppEnvironmentExtra)
+        or shell profile.
+        """
         try:
             import paho.mqtt.client as mqtt
         except ImportError:
@@ -566,11 +576,49 @@ class RoomListener:
         self.running = True
         self.stats["started"] = datetime.now().isoformat()
 
+        # Track CONNACK outcome so we can surface rc=5 rejections before
+        # the "Listening..." prose fires. Prior bug: paho's synchronous
+        # connect() returns immediately; the CONNACK arrives async, so
+        # the listener used to log "Listening on +/conv/+ ..." at an
+        # auth-rejected broker and sit there for days ingesting zero.
+        _connack = {"rc": None}
+
+        def _on_connect(client, userdata, flags, rc):
+            _connack["rc"] = rc
+            if rc != 0:
+                rc_labels = {
+                    1: "unacceptable protocol version",
+                    2: "identifier rejected",
+                    3: "server unavailable",
+                    4: "bad username or password",
+                    5: "not authorized",
+                }
+                print(f"MQTT connect REJECTED: rc={rc} ({rc_labels.get(rc, 'unknown')})")
+                self.running = False
+
         client = mqtt.Client(client_id="linafish-room", protocol=mqtt.MQTTv311)
+        client.on_connect = _on_connect
         client.on_message = self._on_message
 
-        print(f"Connecting to room at {self.broker}:{self.port}...")
+        mqtt_user = os.environ.get("LINAFISH_MQTT_USER")
+        mqtt_pass = os.environ.get("LINAFISH_MQTT_PASS")
+        if mqtt_user and mqtt_pass:
+            client.username_pw_set(mqtt_user, mqtt_pass)
+            print(f"Connecting to room at {self.broker}:{self.port} as {mqtt_user}...")
+        else:
+            print(f"Connecting to room at {self.broker}:{self.port} (anonymous)...")
+
         client.connect(self.broker, self.port, keepalive=60)
+
+        # Pump the loop once to let CONNACK arrive before we subscribe.
+        # If _on_connect flipped self.running to False, we bail here.
+        deadline = time.time() + 5.0
+        while _connack["rc"] is None and time.time() < deadline and self.running:
+            client.loop(timeout=0.2)
+        if not self.running or _connack["rc"] != 0:
+            print("Aborting: broker rejected connection.")
+            client.disconnect()
+            return
 
         # Subscribe to ALL federation traffic — conversations, health, ice-9, room
         client.subscribe("+/conv/+", qos=0)      # mind-to-mind conversation
