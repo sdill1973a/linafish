@@ -935,3 +935,79 @@ All searches return zero peer-reviewed 2026 publications on Linear A (computatio
 4. Check epigraphy.info Workshop 8 poster for DAMOS export implementation details
 
 ---
+
+## 2026-04-16 — Cycle 16
+
+**Prerequisite file check:**
+- `data/linear_b_corpus_sources.md` — still does not exist. Fourteen cycles overdue.
+- `data/functional_decipherment_research.md` — still does not exist.
+
+---
+
+### 1. InsiderPhD Linear B Dataset — Confirmed Unchanged (No New Findings)
+
+GitHub repo `InsiderPhD/Linear-B-Dataset` confirmed public, no new commits since April 2018. Schema unchanged: semicolon-delimited CSVs; `tablets.csv` columns `identifier, location, series, inscription, original`; `series` code as functional proxy. ZIP download unblocked. No further agent research needed on this source.
+
+---
+
+### 2. DAMOS — Front Page Still No Export; Email Remains Only Path
+
+Direct fetch of `damos.hf.uio.no` this cycle confirms: navigation is Home / How to search / About / News only. No export button, API, or download link on the front page. Cycle 15 confirmed the EpiDoc export is **deployed** in the online search-results interface per the Aurora et al. abstract. PDF fetch this cycle returned binary-unreadable content again. The export is likely accessible from within the search results UI, not the front page.
+
+**Status: email to `federico.aurora@ub.uio.no` remains the only unblocked path. Fifteen cycles overdue.**
+
+---
+
+### 3. LiBER (Linear B Electronic Resources, CNR Italy) — NEW CORPUS SOURCE (HIGH VALUE)
+
+**First documented this cycle.**
+
+**URL:** `https://liber.cnr.it/`
+**Institution:** Consiglio Nazionale delle Ricerche (CNR), Italy
+**Contacts:** Maurizio Del Freo (CNR-ISPC), Francesco Di Filippo (CNR-ISMed), Françoise Rougemont (CNRS ArScAn)
+
+Complete digital edition of Linear B documents. All published Linear B texts except Agios Vasileios and Thebes archive. Features per-document transcription, photograph, and critical apparatus. Search engine supports regex, contiguity, and co-occurrence queries specific to logosyllabic scripts. Includes Web-GIS spatial data for find-spots.
+
+**Bulk export status:** Not stated; no download link visible in search snippets. Freely accessible online. Site is likely contactable for a data dump.
+
+**Relevance to linafish:** A parallel Linear B corpus to DAMOS. If DAMOS bulk export remains inaccessible, LiBER is a viable alternative path to a structured Linear B dataset. LiBER v.2 paper is on Academia.edu (`academia.edu/45613920`).
+
+**Action (new):** Fetch `liber.cnr.it` directly to assess download options; if none, email Maurizio Del Freo.
+
+---
+
+### 4. Cambridge Workshop on Linear A — Active Event Flagged
+
+CfP appeared in search results: **"The Wor(l)ds of Linear A: an integrated approach to Linear A documents and script"** at University of Cambridge. URL: `classicalassociation.org/events/call-for-papers-the-worlds-of-linear-a-an-integrated-approach-to-linear-a-documents-and-script-university-of-cambridge/` — returned 403 this cycle.
+
+Title implies multi-register / integrated approach. Confirms active scholarly momentum around Linear A in 2025–2026. Organizer likely connected to Brent Davis or Ester Salgarella. Details (date, organizers, scope) unconfirmed.
+
+**Action:** Retry fetch next cycle; search for event organizer names independently.
+
+---
+
+### 5. No New 2026 Peer-Reviewed Papers — Fifteenth Consecutive Confirmation
+
+All searches (broad and targeted) return zero peer-reviewed 2026 publications on Linear A (computational, functional, or phonetic). SpokenPast returned 403 again — permanently deprioritized. **Linafish approach remains unoccupied territory.**
+
+---
+
+### Standing Action Items (Human Operator Required)
+
+1. **Email `federico.aurora@ub.uio.no`** — DAMOS bulk EpiDoc export access. Fifteen cycles overdue. No agent research can substitute.
+2. **Email `simon@phis.me`** — SigLA JSON/CSV inscription data dump.
+3. **Email LiBER contact (Del Freo, CNR-ISPC)** — data export request. New this cycle.
+4. **Create `data/linear_b_corpus_sources.md`** — fourteen cycles overdue. Content ready in these notes.
+5. **Download InsiderPhD ZIP** — unblocked, no prerequisite.
+6. **Borrow Schoep 2002** via Internet Archive (OL16407164M) — KU server confirmed dead since early 2024.
+
+---
+
+### Next cycle priorities
+1. Fetch `liber.cnr.it` directly to assess data access options
+2. Retry Cambridge CfP page for Linear A workshop date and organizer names
+3. Search Google Scholar for Brent Davis 2025–2026 publications
+4. Fetch `damos.hf.uio.no/howto` to attempt to locate the EpiDoc export UI entry point
+5. Create `data/linear_b_corpus_sources.md` documenting InsiderPhD, DAMOS, LiBER, lineara.xyz, SigLA
+
+---
