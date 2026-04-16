@@ -791,3 +791,68 @@ The following cannot be advanced by further agent research:
 4. Attempt JSTOR/WorldCat path for Schoep 2002 corpus composition figures
 
 ---
+
+## 2026-04-16 — Cycle 14
+
+**Prerequisite file check:**
+- `data/linear_b_corpus_sources.md` — still does not exist. Thirteen cycles overdue.
+- `data/functional_decipherment_research.md` — still does not exist.
+
+---
+
+### 1. L-Colin/Linear-A-decipherment-programme — LOW VALUE, RESOLVED
+
+Repo contents confirmed: `.DS_Store`, `LICENSE (CC-BY-4.0)`, `LinearADecipherment(Win).zip`, `README.md`, `gitattributes`. No standalone corpus data files. The application accepts user-supplied Excel spreadsheets and cross-references 9 language dictionaries (Hamito-Semitic, Egyptian, Albanian, Luwian, Proto-Celtic, Anatolian, Basque, Hittite, Thracian) bundled inside the ZIP. Includes a Linear A font file (`LinearADraft1.otf`). No usable CSV or JSON corpus data for linafish. Deprioritized.
+
+---
+
+### 2. SigLA JSON — SITE-DOWNLOAD CONFIRMED, DATA PATH STILL INDIRECT
+
+Paper (`sigla.phis.me/paper.html`) explicitly states: database uses **JSON format** and "the website can be downloaded and run locally." The JSON data is embedded in the site structure, not exposed at a public `/data/` path or API endpoint. The homepage shows no direct download link. Emailing Simon Castellan (`simon@phis.me`) remains the fastest path to the raw JSON — but technically the data can be retrieved by mirroring the site. Email preferred for scholarly acknowledgment and cleanliness.
+
+---
+
+### 3. Petrolito et al. (2015) — NEW FIND: Linear A Digital Corpus Paper
+
+**Citation:** Petrolito, T. et al. "Minoan Linguistic Resources: The Linear A Digital Corpus." In *Proc. 9th SIGHUM Workshop on Language Technology for Cultural Heritage, Social Sciences, and Humanities (LaTeCH)*. Beijing: ACL, July 2015, pp. 95–104.
+**ACL Anthology:** `aclanthology.org/W15-3715/`
+
+Describes a structured digital corpus of Linear A / Minoan texts built for computational linguistics. Corpus itself is **not publicly downloadable** — not found on any hosting service. Predates SigLA (2020). May have been superseded by SigLA and lineara.xyz. Worth contacting Petrolito for dataset access, but lower priority than SigLA and DAMOS.
+
+---
+
+### 4. Brent Davis — No 2025-2026 Publications
+
+Academia.edu page shows nothing newer than 2015. Melbourne Find an Expert page: no publication list rendered. No 2025-2026 Linear A papers found via search. The 2024 CUP chapter (DOI: `10.1017/9781009490122`) remains his most recent confirmed work. No further action needed this cycle.
+
+---
+
+### 5. No New 2026 Peer-Reviewed Papers — Thirteenth Consecutive Confirmation
+
+ArXiv, web search, and targeted searches return zero 2026 peer-reviewed publications on Linear A (computational, functional, or phonetic). Notable framing from 2026 search snippets: "Researchers who study Linear A have largely shifted their public expectations from full decipherment toward a model of partial, contextual understanding." This framing continues to validate the linafish functional approach as the realistic tractable contribution.
+
+---
+
+### 6. Schoep 2002 — Open Library Path Found
+
+Open Library entry confirmed: OL16407164M. Likely accessible via Internet Archive borrowing. Still no percentage figures confirmed from search snippets. Persistent action item.
+
+---
+
+### Standing Action Items (Human Operator Required)
+
+1. **Email `simon@phis.me`** — SigLA JSON/CSV data dump (highest priority for data access)
+2. **Email `federico.aurora@ub.uio.no`** — DAMOS bulk EpiDoc export access
+3. **Create `data/linear_b_corpus_sources.md`** — thirteen cycles overdue
+4. **Download InsiderPhD ZIP** — unblocked, available now
+5. **Borrow Schoep 2002** via Internet Archive / Open Library (OL16407164M)
+
+---
+
+### Next cycle priorities
+1. Fetch `archive.org/details/OL16407164M` (Schoep 2002) for corpus composition figures
+2. Try mirroring `sigla.phis.me` via `wget --mirror` to locate embedded JSON paths
+3. Search for Petrolito et al. contact info for Linear A Digital Corpus dataset
+4. Check `lineara.xyz/about` or similar pages for download or data export options
+
+---
