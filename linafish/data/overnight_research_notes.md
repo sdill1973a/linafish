@@ -1011,3 +1011,69 @@ All searches (broad and targeted) return zero peer-reviewed 2026 publications on
 5. Create `data/linear_b_corpus_sources.md` documenting InsiderPhD, DAMOS, LiBER, lineara.xyz, SigLA
 
 ---
+
+## 2026-04-16 — Cycle 17
+
+**Prerequisite file check:**
+- `data/linear_b_corpus_sources.md` — still does not exist. Fifteen cycles overdue.
+- `data/functional_decipherment_research.md` — still does not exist.
+
+---
+
+### 1. InsiderPhD Linear B Dataset — No Change
+
+GitHub repo `InsiderPhD/Linear-B-Dataset` confirmed public. Last commit April 2018. Schema unchanged: semicolon-delimited CSVs; `tablets.csv` columns `identifier, location, series, inscription, original`; `series` code as functional proxy. ZIP download unblocked. No further agent research needed.
+
+---
+
+### 2. DAMOS EpiDoc Export — STATUS CONFIRMED DEPLOYED (March 2025)
+
+This cycle's search returns an explicit confirmation: *"Users can now export data from the database as EpiDoc-TEI compliant XML files, as described in a recent article published in March 2025."* This is stronger than Cycle 15's "recently added" language. The export is **live and publicly accessible** — the question is still whether it is per-document or full-corpus bulk. The front page still shows no download link or export button; the function is accessed from within the search results UI.
+
+**Action (highest priority, sixteen cycles overdue):** Email `federico.aurora@ub.uio.no` with specific question: "Is the EpiDoc export accessible for bulk corpus download, or is it per-document only? Can a corpus-level archive be provided for research use?"
+
+---
+
+### 3. New Computational Approaches (2025–2026) — No New Papers
+
+Search returns the identical set as all prior cycles. No peer-reviewed 2026 publications on Linear A (computational, functional, or phonetic). Sixteenth consecutive confirmation. Scholarly framing from search snippets: "Researchers who study Linear A have largely shifted their public expectations from full decipherment toward a model of partial, contextual understanding." Linafish approach remains unoccupied territory.
+
+SpokenPast "AI Breakthrough 2025" article returned 503 again. Permanently deprioritized.
+
+---
+
+### 4. LiBER (CNR Italy) — Still 503
+
+Direct fetch of `liber.cnr.it` returned 503 for the second cycle it has been attempted. No data on bulk export or download confirmed. Contacts remain: Maurizio Del Freo (CNR-ISPC), Francesco Di Filippo (CNR-ISMed), Françoise Rougemont (CNRS ArScAn). 4,406 Linear B documents from Knossos, Mycenae, Tiryns, and Midea. Email Del Freo directly if DAMOS bulk export proves insufficient.
+
+---
+
+### 5. Cambridge "Wor(l)ds of Linear A" Workshop — CORRECTION
+
+**Cycle 16 flagged this as an "active event."** This is now clarified: the CfP was dated May 2022. The conference took place **24–26 May 2022** at Cambridge, organized by **Ester Salgarella**. This is a past event, not a current or upcoming one. Cycle 16 note should be treated as stale. No replacement 2025–2026 Linear A workshop found.
+
+---
+
+### 6. arXiv 2026 — No Linear A Preprints
+
+Direct arXiv search returns zero 2026 preprints on Linear A under cs.LG, cs.CL, or related categories. Field quiet.
+
+---
+
+### Standing Action Items (Human Operator Required)
+
+1. **Email `federico.aurora@ub.uio.no`** — DAMOS EpiDoc export: bulk vs. per-document? Sixteen cycles overdue.
+2. **Email `simon@phis.me`** — SigLA JSON/CSV data dump.
+3. **Create `data/linear_b_corpus_sources.md`** — fifteen cycles overdue; all content is in these notes.
+4. **Download InsiderPhD ZIP** — unblocked, no prerequisite.
+5. **Borrow Schoep 2002** via Internet Archive (OL16407164M).
+
+---
+
+### Next cycle priorities
+1. Fetch `damos.hf.uio.no` search results page directly — attempt to locate EpiDoc export UI entry point
+2. Retry `liber.cnr.it` fetch
+3. Search for Ester Salgarella 2025–2026 publications (she organized the 2022 workshop; may have published since)
+4. Create `data/linear_b_corpus_sources.md` — collate from existing notes
+
+---
