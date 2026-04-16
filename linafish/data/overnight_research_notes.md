@@ -856,3 +856,82 @@ Open Library entry confirmed: OL16407164M. Likely accessible via Internet Archiv
 4. Check `lineara.xyz/about` or similar pages for download or data export options
 
 ---
+
+## 2026-04-16 — Cycle 15
+
+**Prerequisite file check:**
+- `data/linear_b_corpus_sources.md` — still does not exist. Fourteen cycles overdue.
+- `data/functional_decipherment_research.md` — still does not exist.
+
+---
+
+### 1. DAMOS EpiDoc Export — STATUS UPGRADED: NOW DEPLOYED (HIGH PRIORITY)
+
+**Prior status (Cycles 8–14):** Aurora et al. DHN 2025 paper described bulk export as a "development project"; no public endpoint found; DAMOS front page showed nothing.
+
+**This cycle:** Direct fetch of the DHN paper abstract (journals.uio.no/dhnbpub/article/view/12295) yields a key phrase: *"we describe the export function which we recently added to DAMOS and its online interface."* This confirms the export is **deployed**, not merely planned. It is operational in the DAMOS online interface.
+
+**Still unresolved:** Whether the export is per-document (click one tablet, download its XML) or bulk (download entire corpus as ZIP or batch). The abstract does not specify scope. The import function (for community contributions) is still listed as planned, not yet deployed.
+
+**Action (highest priority):** Email `federico.aurora@ub.uio.no` NOW asking: "Is the EpiDoc export function in the DAMOS interface a per-document export or can the full corpus be exported in bulk? Can a corpus-level ZIP or equivalent be provided for research use?" This has been the top action item for seven cycles. The status change makes it more urgent, not less.
+
+---
+
+### 2. John Younger Archive — MIGRATION CONFIRMED, FORMAT CHANGED
+
+**Prior cycles:** Younger's KU server at `people.ku.edu/~jyounger/LinearA/` returned 403. Status unknown.
+
+**This cycle:** Confirmed via search: KU eliminated the secondary server **early 2024**. Younger has migrated all materials to **Academia.edu in PDF format** (`kansas.academia.edu/JYounger`).
+
+The lineara.xyz corpus tool uses Younger's transliterations and links to his commentary. The canonical current access point for his Linear A texts is Academia.edu. PDFs are not directly machine-readable without OCR. This means:
+- Schoep 2002 KU server path is definitively dead (403 was a server shutdown, not a permissions issue)
+- Younger's transliterations are still available but require PDF parsing to use computationally
+- lineara.xyz is effectively the machine-usable version of Younger's data
+
+**Action:** Attempt OCR or programmatic extraction from Younger's Academia.edu PDFs if machine-readable Linear A text is needed and DAMOS/lineara.xyz prove insufficient.
+
+---
+
+### 3. lineara.xyz — No Export Confirmed, Filter Categories Documented
+
+Confirmed: no bulk download, no API. Filter categories: Word Types, Contexts, Tags, Scribes, Supports, Frequency, Findspots, Sites. The site explicitly links to Younger's commentary and SigLA as companion resources — confirming lineara.xyz is the integrated front-end for Younger's corpus + SigLA's paleography. No new information this cycle.
+
+---
+
+### 4. Functional Classification — External Validation of Linafish Approach
+
+From search snippets (sourced from SpokenPast "Can AI Crack the Minoan Linear A Script" article, accessible this cycle via search metadata):
+
+> "A sign sequence appearing exclusively on administrative tablets, immediately before or after a number, probably denotes a commodity or a measurement unit. A sequence recurring only on libation tables and ritual vessels, consistently in the same position, is almost certainly religious in function — possibly a divine name or a formulaic invocation."
+
+> "As of early 2026, the focus remains on functional classification of texts (administrative versus ritual) rather than full linguistic decipherment."
+
+This is science-journalism framing of exactly what linafish does. It validates the problem framing and confirms the field has shifted away from phonetic decipherment as the primary computational goal.
+
+**Also noted:** The MIT Luo & Barzilay (2019) ML system for lost-language decipherment is widely cited as inapplicable to Linear A — it requires phonetic anchors that Linear A lacks. This positions linafish's anchor-free functional approach as the realistic alternative.
+
+---
+
+### 5. No New 2026 Peer-Reviewed Papers — Fourteenth Consecutive Confirmation
+
+All searches return zero peer-reviewed 2026 publications on Linear A (computational, functional, or phonetic). Same 2024–2025 set as prior cycles. **Linafish approach remains unoccupied territory in peer-reviewed literature.**
+
+---
+
+### Standing Action Items (Human Operator Required)
+
+1. **Email `federico.aurora@ub.uio.no`** — DAMOS EpiDoc export scope (now confirmed deployed; need bulk vs. per-document clarification). HIGHEST PRIORITY.
+2. **Email `simon@phis.me`** — SigLA JSON/CSV data dump
+3. **Create `data/linear_b_corpus_sources.md`** — fourteen cycles overdue
+4. **Download InsiderPhD ZIP** — `github.com/InsiderPhD/Linear-B-Dataset` — unblocked
+5. **Borrow Schoep 2002** via Internet Archive (OL16407164M) — KU server path confirmed dead
+
+---
+
+### Next cycle priorities
+1. Attempt to access DAMOS UI directly and locate the EpiDoc export button/path
+2. Fetch Younger's Academia.edu publication list for machine-readable Linear A data
+3. Search for the SpokenPast "Can AI Crack Linear A" full article text via Google cache
+4. Check epigraphy.info Workshop 8 poster for DAMOS export implementation details
+
+---
