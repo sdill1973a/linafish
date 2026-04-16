@@ -113,3 +113,9 @@ include = ["linafish*"]
 
 [tool.setuptools.package-data]
 linafish = ["data/*.md", "data/AGENTS.md"]
+
+[tool.pytest.ini_options]
+# Skip tests/archive/ during collection. Files in archive/ are kept as
+# documentation of sunset code paths and are not live regression coverage.
+# See tests/archive/README.md.
+norecursedirs = ["archive", ".venv", "__pycache__"]
