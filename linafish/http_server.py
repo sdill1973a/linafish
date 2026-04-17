@@ -122,14 +122,29 @@ class FishHandler(BaseHTTPRequestHandler):
             return
 
 
+BIND_MAP = {
+    "local": "127.0.0.1",
+    "localhost": "127.0.0.1",
+    "lan": "0.0.0.0",
+    "wan": "0.0.0.0",
+}
+
+
 def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = None,
                name: str = "linafish", port: int = 8900,
                vocab_path: Optional[Path] = None,
-               host: Optional[str] = None):
+               host: Optional[str] = None,
+               bind: str = "local"):
     """Serve the fish over HTTP.
 
-    ``host`` defaults to loopback. Pass "0.0.0.0" to bind on all
-    interfaces (LAN service), or a specific interface IP.
+    ``bind`` is the convenience shorthand mirroring ``converse``:
+      - "local" binds to 127.0.0.1 (the default)
+      - "lan"   binds to 0.0.0.0 — reachable from the LAN
+      - "wan"   binds to 0.0.0.0 with an exposure warning
+
+    ``host`` is a raw override. If set, it takes precedence over ``bind``
+    for callers that need an exact interface IP. The plate-15 callers
+    that passed ``host="0.0.0.0"`` keep working unchanged.
     """
 
     global _PRIMER
@@ -144,7 +159,11 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
 
     FishHandler.engine = engine
 
-    server = HTTPServer(((host or "127.0.0.1"), port), FishHandler)
+    resolved_host = host if host else BIND_MAP.get(bind, bind)
+    if bind == "wan" and not host:
+        print("Warning: WAN bind exposes the fish to the internet.", file=sys.stderr)
+
+    server = HTTPServer((resolved_host, port), FishHandler)
     print(f"LiNafish HTTP: http://localhost:{port}", file=sys.stderr)
     print(f"  {len(engine.crystals)} crystals, {len(engine.formations)} formations", file=sys.stderr)
     print(f"  Fish: {engine.fish_file}", file=sys.stderr)

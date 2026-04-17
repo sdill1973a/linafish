@@ -236,6 +236,7 @@ def cmd_http(args):
         name=args.name or "linafish",
         port=args.port,
         vocab_path=vocab_path,
+        bind=args.bind,
     )
 
 
@@ -1465,6 +1466,8 @@ def main():
     http_p.add_argument("-n", "--name", default="linafish", help="Fish name")
     http_p.add_argument("-p", "--port", type=int, default=8900, help="Port (default: 8900)")
     http_p.add_argument("--vocab", type=_user_path, help="Path to domain vocabulary JSON")
+    http_p.add_argument("--bind", default="local", choices=["local", "lan", "wan"],
+                        help="Bind scope (default: local = loopback; lan/wan bind 0.0.0.0)")
 
     # demo
     demo_p = sub.add_parser("demo", help="One-command demo: eat + taste + test")
