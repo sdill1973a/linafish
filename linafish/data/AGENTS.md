@@ -131,14 +131,38 @@ an IC+SF combination talking. Use that to calibrate your own response shape.
 
 ## Endpoints quick reference
 
+linafish ships two HTTP servers and they don't expose the same routes.
+`linafish http` (default port 8900) is the AI-facing read/write surface.
+`linafish converse` (default port 8901) adds cross-mind sync endpoints
+for federation use. If you're not sure which server you're talking to,
+run `linafish introduce --live` — it probes the local ports and emits
+a briefing matching what's actually responding.
+
+**Both servers:**
+
 | Method | Path | Purpose |
 |---|---|---|
+| `GET` | `/` | Service identity + endpoint list |
 | `GET` | `/health` | Engine stats, crystal/formation counts |
 | `GET` | `/pfc` | Primary Formation Codebook — READ THIS FIRST |
-| `GET` | `/minds` | Source minds contributing to this fish |
-| `GET` | `/crystals` | Full crystal dump — use sparingly |
-| `POST` | `/taste` | Semantic query, returns top-k crystals |
 | `POST` | `/eat` | Deposit new text as a crystal |
+| `POST` | `/taste` | Semantic query, returns top-k crystals |
+
+**HTTP server only (`linafish http`):**
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/boot` | Warm-boot primer + fish overlay in one payload |
+| `GET` | `/fish` | Raw `fish.md` for direct inlining |
+| `POST` | `/match` | Tight recall (BM25-style) over crystal text |
+
+**Converse server only (`linafish converse`):**
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/minds` | Source minds contributing to this fish |
+| `GET` | `/crystals` | Full crystal dump, supports `?since` and `?mind` filters |
+| `POST` | `/crystals` | Accept crystals pushed from another mind |
 
 ## Privacy and scope
 
