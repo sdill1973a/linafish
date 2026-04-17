@@ -1374,7 +1374,13 @@ class FishEngine:
 
         for g, c in scores[:top]:
             kw = ', '.join(c.keywords) if c.keywords else 'no keywords'
-            results.append(f"[{g:.3f}] {kw}")
+            src = c.source or ""
+            ts = c.ts or ""
+            # Metadata inline on the score line lets downstream consumers
+            # (fish_taste_anchor diversity floor) filter by source_prefix
+            # and age without a second round-trip. Parser reads score first,
+            # then whatever trails; body starts on the next indented line.
+            results.append(f"[{g:.3f}] src={src} | ts={ts} | {kw}")
             results.append(f"  {c.text[:200]}\n")
 
         return "\n".join(results)
