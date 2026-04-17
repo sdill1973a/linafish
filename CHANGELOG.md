@@ -57,6 +57,16 @@ the release is wrapped when the full plate is ready.**
   No behavior change — package source is cleaner for stranger
   readers.
 
+- **`http_server.serve_http()` gains `--bind` CLI + `bind=` parameter.**
+  The earlier plate-15 fix at 752ccaa restored the missing `host`
+  parameter to unblock startup, but the CLI still had no way to
+  request LAN binding — an asymmetry with `linafish converse
+  --bind lan|wan`. Ports the bindmap convention across both
+  servers so `linafish http --bind lan` works the same as
+  `linafish converse --bind lan`. Explicit `host=` still wins
+  when set, so any plate-15-era caller that passed
+  `host="0.0.0.0"` keeps working unchanged.
+
 ### Changed
 
 - **`FishEngine.rebuild_formations()` is now public.** The method was
@@ -91,6 +101,17 @@ the release is wrapped when the full plate is ready.**
   `[score] keywords`. Backward compatible with consumers that only
   parse the `[score]` prefix. Enables downstream filtering by source
   prefix / crystal age without a second round-trip.
+
+- **`linafish introduce --live` — new flag, dynamic server probe.**
+  Defaults unchanged: `linafish introduce` still prints the static
+  AGENTS.md. With `--live`, probes 127.0.0.1:{8900,8901,8902},
+  identifies each responding server as converse or HTTP based on
+  its `/` response, and emits a briefing keyed to what's actually
+  running instead of the static doc that mixes routes from both
+  server types. Addresses THX's observation that an AI landing
+  cold and reading `linafish introduce` gets `/minds` and
+  `/crystals` documented even when it's talking to the HTTP server
+  where those routes don't exist.
 
 ### Removed
 
