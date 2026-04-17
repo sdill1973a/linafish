@@ -113,6 +113,36 @@ the release is wrapped when the full plate is ready.**
   `/crystals` documented even when it's talking to the HTTP server
   where those routes don't exist.
 
+- **`linafish --version`** — new root-level argparse flag.
+  Previously users had to run `linafish doctor` or
+  `python -c "import linafish; print(linafish.__version__)"` to
+  check their install.
+
+- **`linafish room --help` documents MQTT env vars.** Help text
+  now names `LINAFISH_MQTT_USER` / `LINAFISH_MQTT_PASS` up front
+  with the fallback behavior (anonymous connect succeeds on open
+  brokers, fails with CONNACK rc=5 on authenticated ones — and
+  the daemon rewrite now surfaces the rejection instead of
+  sitting silent). Previously a user on an authenticated broker
+  had to read source to find the env var names.
+
+- **"Modes available" assessment in `doctor` and
+  `introduce --live`.** Both commands now include a section
+  showing which of four modes are live and what unlocks the
+  missing ones:
+    - *solo* — fish.md exists
+    - *ai_facing* — HTTP or converse server responding on
+      8900/8901/8902
+    - *growing* — crystals written within the last hour
+    - *federation* — MQTT creds + converse server up
+  Each mode reports *ready* / *partial* / *missing* with concrete
+  evidence and the specific command or env-var change that would
+  shift *missing* to *ready*. Same assessment powers both views
+  so the human at the shell and the AI reading the briefing see
+  the same picture. Addresses the gap where a cold `doctor`
+  output listed daemons but never said what the system was
+  actually ready to DO.
+
 ### Known limitations
 
 - **Multiple `FishEngine` instances on the same `state_dir` + `name`
@@ -124,13 +154,6 @@ the release is wrapped when the full plate is ready.**
   saw 3 crystals / 2 docs). The workaround is to keep one engine
   instance per `(state_dir, name)` pair. A proper in-process cache
   or engine-level mutex is slated for a later release.
-
-- **No `linafish --version` CLI flag yet.** The in-package
-  `linafish.__version__` attribute is authoritative and
-  `linafish doctor` prints the version line; an argparse-level
-  `--version` flag on the root parser is not wired. Users checking
-  their install at the shell will need `doctor` or
-  `python -c "import linafish; print(linafish.__version__)"`.
 
 ### Removed
 
