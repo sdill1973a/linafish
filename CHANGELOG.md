@@ -10,6 +10,24 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [1.1.6.1] — 2026-04-17
+
+**Patch release. Fixes a `datetime` import regression in
+`cmd_doctor` caught by THX on .147 in the first hour after 1.1.6
+shipped.**
+
+### Fixed
+
+- **`linafish doctor --name <fish>` no longer crashes with
+  `NameError: name 'datetime' is not defined`.** The fish-health
+  section in `cmd_doctor` uses `datetime.fromtimestamp(...)` to
+  format the crystal file mtime; the import was never added to
+  `__main__.py` when the doctor refactor landed. `linafish doctor`
+  without `--name` was unaffected. Added `from datetime import
+  datetime` at the module import block.
+
+---
+
 ## [1.1.6] — 2026-04-17
 
 **Persistence-safety release + v1 sunset. One engine, one cognition,
