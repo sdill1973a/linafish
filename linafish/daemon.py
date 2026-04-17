@@ -40,6 +40,7 @@ import os
 import time
 import signal
 import hashlib
+import traceback
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
@@ -84,10 +85,18 @@ class RoomListener:
         # git_autocommit=False because room listener fires on every MQTT
         # message and we don't want a git commit per room turn — the
         # crystals file is the durable record; git history is noise.
+        # dedupe=True because migration is safe to re-run: if a previous
+        # migration crashed partway, re-ingesting legacy texts will
+        # skip any already-crystallized content by text hash (plate
+        # item 12). The same dedupe also kills the narrow race where
+        # the MQTT-level content_hash set is lost but an identical
+        # message arrives twice; the engine catches it on the second
+        # pass.
         self.engine = FishEngine(
             state_dir=self.state_dir,
             name=fish_name,
             git_autocommit=False,
+            dedupe=True,
         )
 
         # Listener-side state lives in a sidecar separate from engine
@@ -174,24 +183,24 @@ class RoomListener:
     def _migrate_legacy_if_needed(self):
         """Re-feed v1 room.crystals.json texts into FishEngine on first boot.
 
-        Idempotent: legacy files get renamed with a .legacy suffix after
-        a successful migration, so re-running the listener doesn't
-        re-migrate (and the legacy files remain on disk for audit).
-
-        Only runs when:
-          1. Legacy {fish_name}.crystals.json exists in state_dir
-          2. The engine currently has 0 crystals (fresh v3 state)
+        Guarded by ``migration_done_at`` in the sidecar: once that field
+        is set, migration never re-runs. Before that field is set, a
+        legacy file on disk is treated as not-yet-migrated even if the
+        engine already has crystals (survives a crash mid-migration).
+        Repeat runs are safe because the engine is initialized with
+        ``dedupe=True`` — re-ingesting the same text returns the
+        already-crystallized entry instead of duplicating.
 
         Preserves content, not crystal identity — new v3 crystals get
-        fresh IDs but retain the same text + a legacy: source tag.
+        fresh IDs but retain the same text + a ``legacy:`` source tag.
         """
+        if self.stats.get("migration_done_at"):
+            return
         legacy_crystals = self.state_dir / f"{self.fish_name}.crystals.json"
         legacy_state = self.state_dir / f"{self.fish_name}.state.json"
         if not legacy_crystals.exists():
-            return
-        if len(self.engine.crystals) > 0:
-            # v3 already has content — don't double-ingest on a reboot
-            # of an already-migrated listener.
+            # No legacy content to migrate — mark done so we never revisit.
+            self.stats["migration_done_at"] = datetime.now().isoformat()
             return
 
         print(f"Migrating legacy room state: {legacy_crystals.name}")
@@ -202,15 +211,25 @@ class RoomListener:
             return
 
         migrated = 0
+        skipped_dup = 0
+        pre_count = len(self.engine.crystals)
         for cd in data.get("crystals", []):
             text = cd.get("text")
             if not isinstance(text, str) or len(text) < 30:
                 continue
             legacy_source = cd.get("source", "legacy")
-            self.engine.eat(text, source=f"legacy:{legacy_source}")
-            migrated += 1
+            result = self.engine.eat(text, source=f"legacy:{legacy_source}")
+            if isinstance(result, dict) and result.get("crystals_added") == 0:
+                skipped_dup += 1
+            else:
+                migrated += 1
+        post_count = len(self.engine.crystals)
 
-        print(f"  migrated {migrated} crystals into FishEngine")
+        print(
+            f"  migrated {migrated} crystals "
+            f"({skipped_dup} skipped as duplicates, "
+            f"engine grew from {pre_count} to {post_count})"
+        )
 
         # Pull dedup hashes forward if the legacy sidecar state had them.
         # This prevents an immediate re-eat of any live message whose
@@ -231,7 +250,9 @@ class RoomListener:
             except (OSError, json.JSONDecodeError, UnicodeDecodeError):
                 pass
 
-        # Archive legacy files so the next boot skips migration.
+        # Archive legacy files so the next boot skips the re-read entirely
+        # (the migration_done flag is the durable guard; rename is the
+        # "and we don't even need to open the file again" optimization).
         try:
             legacy_crystals.rename(
                 legacy_crystals.with_suffix(".json.legacy")
@@ -243,8 +264,12 @@ class RoomListener:
         except OSError as e:
             print(f"  WARNING: legacy archive failed ({e})")
 
-        # Persist the post-migration engine state immediately so a crash
-        # mid-first-run doesn't lose the migration work.
+        # Mark migration complete AFTER the ingest + archive — the flag
+        # is the single source of truth for "don't run migration again."
+        self.stats["migration_done_at"] = datetime.now().isoformat()
+
+        # Persist the post-migration engine state + sidecar immediately
+        # so a crash mid-first-run doesn't lose the flag or the crystals.
         self.engine._save_state()
         self._save_sidecar()
 
@@ -340,8 +365,15 @@ class RoomListener:
                 self.engine._save_state()
                 self._save_sidecar()
 
-        except Exception as e:
-            print(f"  [error] {e}")
+        except Exception:
+            # Print the full traceback so that a bug in message parsing
+            # or crystallization is debuggable — prior versions swallowed
+            # the exception with just `print(e)` which hid stack frames
+            # and silent-failed under real traffic. Returning (not
+            # raising) keeps the listener loop alive through individual
+            # bad messages; the daemon should only exit on shutdown or
+            # broker rejection.
+            traceback.print_exc()
 
     # -- main loop ------------------------------------------------------
 

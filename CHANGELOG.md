@@ -72,6 +72,41 @@ the release is wrapped when the full plate is ready.**
   `re_eat()` / load paths all populate formation memory consistently
   now.
 
+- **`RoomListener` (the `linafish room` command) rewritten on top
+  of `FishEngine`.** Previously maintained its own crystal list and
+  called the v1 `batch_ingest` / `couple_crystals` /
+  `extend_vocabulary` API directly. Now drives a single `FishEngine`
+  instance with `git_autocommit=False` (per-message git commits
+  would be pointless churn on the hot path). On first startup, if
+  the state_dir contains a legacy `{fish_name}.crystals.json` (v1
+  format) and the engine has no crystals loaded, content is re-fed
+  via `FishEngine.eat()` and the legacy files are renamed with a
+  `.legacy` suffix for audit. The `--vocab` CLI flag is preserved
+  but becomes a no-op (MIVectorizer learns its own vocabulary under
+  v3) and prints a warning instead of failing.
+
+- **FishEngine `taste()` output includes crystal source + ts inline.**
+  Each result line now formats as
+  `[score] src=<source> | ts=<iso> | keywords` instead of the bare
+  `[score] keywords`. Backward compatible with consumers that only
+  parse the `[score]` prefix. Enables downstream filtering by source
+  prefix / crystal age without a second round-trip.
+
+### Removed
+
+- **v1 crystallizer modules deleted: `linafish/codebook.py`,
+  `linafish/compress.py`, `linafish/eat.py`,
+  `linafish/crystallizer.py`** (1307 lines). These were internal
+  modules; no public API changes. Before delete: a full grep of the
+  linafish package for `from .(codebook|compress|eat|crystallizer)`
+  returned zero matches outside the v1 modules themselves. Only
+  `tests/archive/test_codebook_v1.py` still references them (archive
+  dir, already excluded from pytest collection). The fork sunset is
+  complete — one engine, one cognition, one persistence layer.
+
+- **`FishDaemon` class removed from `linafish/daemon.py`.** Defined
+  but never instantiated anywhere in the package. Dead code.
+
 ---
 
 ## [1.1.5] — 2026-04-13
