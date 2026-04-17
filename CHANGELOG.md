@@ -10,10 +10,12 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
-## [1.1.6] — Unreleased
+## [1.1.6] — 2026-04-17
 
-**Persistence-safety release in progress. Items land incrementally;
-the release is wrapped when the full plate is ready.**
+**Persistence-safety release + v1 sunset. One engine, one cognition,
+one persistence layer. The full 20-item plate landed plus THX's
+usability patches and a modes-assessment that tells the user/AI
+which legs of the system are actually live.**
 
 ### Added
 
