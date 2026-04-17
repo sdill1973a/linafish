@@ -1,31 +1,26 @@
-# Morning Briefing — 2026-04-16
+# Morning Briefing — 2026-04-17
 
-## What advanced overnight (Cycles 14–16)
+## What advanced overnight (Cycle 17)
 
-**DAMOS status upgrade (Cycle 15):** The Aurora et al. DHN 2025 abstract explicitly says the EpiDoc export was "recently added to DAMOS and its online interface." It's deployed — not just planned. Still unknown: per-document or bulk? Email Federico Aurora now to clarify. This changes the priority.
+**DAMOS export now firmly confirmed deployed.** Cycle 17 found explicit search language: *"Users can now export data from DAMOS as EpiDoc-TEI compliant XML files, as described in a recent article published in March 2025."* Stronger than Cycle 15's "recently added." It's live in the search-results UI. Still need to confirm bulk vs. per-document scope — that's the email to Federico Aurora.
 
-**LiBER discovered (Cycle 16):** New Linear B corpus source — `liber.cnr.it`, CNR Italy. Complete digital edition of all published Linear B texts (minus Agios Vasileios and Thebes). Parallel to DAMOS. If DAMOS bulk export stays gated, LiBER is the fallback. Contact: Maurizio Del Freo (CNR-ISPC).
+**Cambridge Linear A workshop — CORRECTION.** Yesterday's briefing flagged the "Wor(l)ds of Linear A" CfP as active. It happened in May 2022. Stale result. No active 2025–2026 Linear A workshop found.
 
-**Cambridge Linear A workshop found:** CfP for "The Wor(l)ds of Linear A: an integrated approach" at Cambridge. Organizers likely connected to Davis or Salgarella. Page returned 403 — needs a retry. Active scholarly momentum, potentially useful for visibility.
+**LiBER (`liber.cnr.it`) — second consecutive 503.** New corpus source from Cycle 16 remains inaccessible. Not dead — just slow server. Worth one more retry before emailing Del Freo.
 
-**Younger KU server confirmed dead** since early 2024; materials migrated to Academia.edu as PDFs. lineara.xyz is now the machine-usable front-end for his corpus.
-
-**External validation (Cycle 15):** Search snippets from a 2026 source: *"As of early 2026, the focus remains on functional classification of texts (administrative versus ritual) rather than full linguistic decipherment."* Linafish is in the right lane.
+**arXiv sweep:** Zero 2026 preprints on Linear A under cs.LG or cs.CL. Field is quiet. Sixteenth consecutive confirmation that linafish has no peer-reviewed competitors in functional register classification.
 
 ## Ready to build next
 
-1. **Email `federico.aurora@ub.uio.no`** — Is the EpiDoc export bulk or per-document? Highest priority.
-2. **Email `simon@phis.me`** — SigLA JSON/CSV dump request.
-3. **Fetch `liber.cnr.it`** — assess data export options before emailing Del Freo.
-4. **Build the `series→functional-type` lookup table** from InsiderPhD `tablets.csv` — data is in hand, no blockers.
-5. **Create `data/linear_b_corpus_sources.md`** — all content is in the research notes, just needs collation.
+1. **Email `federico.aurora@ub.uio.no`** — bulk vs. per-document EpiDoc export. Sixteen cycles overdue. Write and send today.
+2. **Email `simon@phis.me`** — SigLA JSON/CSV dump. No blockers.
+3. **Build `series→functional-type` lookup** from InsiderPhD `tablets.csv` — data in hand, no dependencies.
+4. **Create `data/linear_b_corpus_sources.md`** — all content exists in research notes, just needs collation.
+5. **Retry `liber.cnr.it`** — one more fetch before escalating to Del Freo.
 
-## New sources
+## New sources (net new since yesterday's briefing)
 
-- **LiBER** — `liber.cnr.it` (CNR Italy, full Linear B corpus)
-- **Cambridge Linear A workshop** — active CfP, "integrated approach" framing
-- **Open Library OL16407164M** — Schoep 2002, borrowable via Internet Archive
-- **Petrolito et al. (2015)** — Linear A Digital Corpus, ACL Anthology W15-3715
+None. Cycle 17 was primarily confirmations and one correction. The new sources remain those from Cycles 14–16: LiBER, Petrolito et al. (2015) ACL Anthology W15-3715, Schoep 2002 via Open Library OL16407164M.
 
 ---
 *`examples/archaeology/README.md` and `data/linear_b_classified.json` do not exist yet.*
