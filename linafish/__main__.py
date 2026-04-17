@@ -944,6 +944,149 @@ def _detect_install_mode():
     return False, None, str(pkg_dir)
 
 
+def _assess_modes(state_dir=None) -> dict:
+    """Tell the caller which 'legs' of the linafish system are live.
+
+    Four modes the software can be used in, in order of dependency:
+
+      - **solo**       — you can read your own fish (fish.md + crystals on disk)
+      - **ai_facing**  — an AI can query the fish (HTTP or converse server up)
+      - **growing**    — the fish is receiving live input (recent crystal writes)
+      - **federation** — cross-mind sync is wired (MQTT creds + converse running)
+
+    For each, returns ``{'status', 'has', 'needs'}``. ``status`` is one of
+    ``ready`` / ``partial`` / ``missing``; ``has`` is a short list of
+    observed evidence; ``needs`` is the concrete command or config change
+    that would unlock the missing pieces.
+
+    Consumed by both ``linafish doctor`` and ``linafish introduce --live``
+    so the user on the shell and the AI reading the briefing see the
+    same picture of what's available and what's one command away.
+    """
+    import os
+    import time
+    import urllib.request
+
+    sd = Path(state_dir) if state_dir else (Path.home() / ".linafish")
+    fish_files = sorted(sd.glob("*.fish.md")) if sd.exists() else []
+
+    # Leg 1: solo read
+    if fish_files:
+        solo_has = [f"{f.name} ({f.stat().st_size // 1024} KB)" for f in fish_files[:3]]
+        solo = {"status": "ready", "has": solo_has, "needs": []}
+    else:
+        solo = {
+            "status": "missing",
+            "has": [],
+            "needs": [
+                f"No fish.md in {sd}. Run `linafish go <folder>` or "
+                "`linafish eat <folder>` to build your first fish.",
+            ],
+        }
+
+    # Leg 2: AI-facing — probe local servers
+    servers = {}
+    for port in (8900, 8901, 8902):
+        try:
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/")
+            with urllib.request.urlopen(req, timeout=1.0) as resp:
+                body = resp.read().decode("utf-8", "replace")
+            try:
+                data = json.loads(body)
+                if isinstance(data, dict) and "service" in data:
+                    servers[port] = "converse"
+                    continue
+            except json.JSONDecodeError:
+                pass
+            if "LiNafish" in body:
+                servers[port] = "http"
+        except Exception:
+            continue
+
+    if servers:
+        ai_has = [f"{kind} on :{port}" for port, kind in sorted(servers.items())]
+        ai = {"status": "ready", "has": ai_has, "needs": []}
+    else:
+        ai = {
+            "status": "missing",
+            "has": [],
+            "needs": [
+                "No server on 8900/8901/8902. Run `linafish http -n <fish>` "
+                "(AI-facing) or `linafish converse --mind <name>` "
+                "(federation-facing).",
+            ],
+        }
+
+    # Leg 3: growing — has the fish been written to recently?
+    growing_signals = []
+    if fish_files:
+        crystal_files = list(sd.glob("*_crystals.jsonl"))
+        recent = [
+            f for f in crystal_files
+            if (time.time() - f.stat().st_mtime) < 3600
+        ]
+        if recent:
+            growing_signals.append(
+                f"{len(recent)} fish had new crystals in the last hour"
+            )
+    if growing_signals:
+        grow = {"status": "ready", "has": growing_signals, "needs": []}
+    elif fish_files:
+        grow = {
+            "status": "partial",
+            "has": ["fish exists but idle"],
+            "needs": [
+                "Fish is static right now. Hook it to live input via "
+                "`linafish watch <folder>`, `linafish listen stdin`, or a "
+                "Stop-hook that POSTs your turn outputs to /eat.",
+            ],
+        }
+    else:
+        grow = {
+            "status": "missing",
+            "has": [],
+            "needs": ["Build a fish first (see solo mode)."],
+        }
+
+    # Leg 4: federation — MQTT creds present AND a converse server up
+    mqtt_user = bool(os.environ.get("LINAFISH_MQTT_USER"))
+    mqtt_pass = bool(os.environ.get("LINAFISH_MQTT_PASS"))
+    mqtt_creds = mqtt_user and mqtt_pass
+    has_converse = any(kind == "converse" for kind in servers.values())
+
+    fed_has = []
+    fed_needs = []
+    if mqtt_creds:
+        fed_has.append("LINAFISH_MQTT_USER + LINAFISH_MQTT_PASS set")
+    else:
+        fed_needs.append(
+            "Set LINAFISH_MQTT_USER and LINAFISH_MQTT_PASS in the shell or "
+            "service manager (for authenticated brokers). Open brokers "
+            "accept anonymous."
+        )
+    if has_converse:
+        fed_has.append("converse server up — peers can GET/POST /crystals")
+    else:
+        fed_needs.append(
+            "Run `linafish converse --mind <name>` so other fish can sync "
+            "crystals with yours."
+        )
+
+    if mqtt_creds and has_converse:
+        fed = {"status": "ready", "has": fed_has, "needs": []}
+    elif mqtt_creds or has_converse:
+        fed = {"status": "partial", "has": fed_has, "needs": fed_needs}
+    else:
+        fed = {"status": "missing", "has": [], "needs": fed_needs}
+
+    return {
+        "solo": solo,
+        "ai_facing": ai,
+        "growing": grow,
+        "federation": fed,
+    }
+
+
 def _probe_port_for_introduce(port: int, timeout: float = 1.0):
     """Probe a port and identify the server type. Returns dict or None.
 
@@ -1046,6 +1189,27 @@ def _dynamic_introduce_text():
             for route in info["routes"]:
                 lines.append(f"    {route}")
             lines.append("")
+
+    # Modes assessment — what legs of the system are live, what's missing
+    modes = _assess_modes()
+    mode_labels = {
+        "solo": "Solo (read your own fish)",
+        "ai_facing": "AI-facing (an AI can query the fish)",
+        "growing": "Growing (fish learns from live input)",
+        "federation": "Federation (cross-mind crystal sync)",
+    }
+    status_icon = {"ready": "[ready]  ", "partial": "[partial]", "missing": "[missing]"}
+
+    lines.append("## Modes available right now")
+    lines.append("")
+    for key, label in mode_labels.items():
+        m = modes[key]
+        lines.append(f"  {status_icon[m['status']]} {label}")
+        for h in m["has"][:2]:
+            lines.append(f"     · {h}")
+        for n in m["needs"][:1]:
+            lines.append(f"     → {n}")
+    lines.append("")
 
     lines.extend([
         "## How to Use This",
@@ -1315,6 +1479,30 @@ def cmd_doctor(args):
             print(f"  (PyPI check failed: {e})")
         print()
 
+    # -- Modes available --
+    # Tells the user which 'legs' of the linafish system are currently
+    # usable and what concrete command would unlock a missing one. Same
+    # assessment powers `linafish introduce --live` so the AI reading
+    # the briefing and the human at the shell see the same picture.
+    state_dir_for_assess = Path(args.state_dir) if getattr(args, "state_dir", None) else None
+    modes = _assess_modes(state_dir=state_dir_for_assess)
+    mode_labels = {
+        "solo": "Solo — read your own fish",
+        "ai_facing": "AI-facing — an AI can query it",
+        "growing": "Growing — receives live input",
+        "federation": "Federation — cross-mind sync",
+    }
+    status_mark = {"ready": "[+]", "partial": "[~]", "missing": "[ ]"}
+    print("Modes available:")
+    for key, label in mode_labels.items():
+        m = modes[key]
+        print(f"  {status_mark[m['status']]} {label}")
+        for h in m["has"][:2]:
+            print(f"       · {h}")
+        for n in m["needs"][:1]:
+            print(f"       → {n}")
+    print()
+
     # -- Suggestions --
     print("Next commands:")
     print("  linafish capabilities          the full module + command map")
@@ -1514,6 +1702,12 @@ def main():
     except Exception:
         pass
 
+    try:
+        import linafish as _lf_for_version
+        _version_str = getattr(_lf_for_version, "__version__", None) or "unknown"
+    except Exception:
+        _version_str = "unknown"
+
     parser = argparse.ArgumentParser(
         prog="linafish",
         description=(
@@ -1526,6 +1720,12 @@ def main():
             "  linafish go <folder>   — the product: build a fish from your writing\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"linafish {_version_str}",
+        help="Print version and exit.",
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -1647,12 +1847,29 @@ def main():
                         help="Formation stability threshold for bedrock (default: 0.8)")
 
     # room — the supermind listener
-    room_p = sub.add_parser("room", help="Listen to the federation room, eat every exchange")
+    room_p = sub.add_parser(
+        "room",
+        help="Listen to the federation room, eat every exchange",
+        description=(
+            "Listen to the federation room on MQTT. Crystallize every exchange.\n"
+            "\n"
+            "Authenticated brokers require credentials in the environment:\n"
+            "  LINAFISH_MQTT_USER  — broker username\n"
+            "  LINAFISH_MQTT_PASS  — broker password\n"
+            "\n"
+            "Without them the client connects anonymously; open brokers accept,\n"
+            "authenticated brokers reject with CONNACK rc=5 and the listener\n"
+            "exits loudly instead of sitting silent. Set via systemd\n"
+            "Environment= / NSSM AppEnvironmentExtra / shell profile — never\n"
+            "hardcoded, as linafish ships to PyPI."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     room_p.add_argument("--broker", default="localhost", help="MQTT broker")
     room_p.add_argument("--port", type=int, default=1883, help="MQTT port")
     room_p.add_argument("-n", "--name", default="room", help="Fish name")
     room_p.add_argument("--state-dir", type=_user_path, help="State directory")
-    room_p.add_argument("--vocab", type=_user_path, help="Path to domain vocabulary JSON")
+    room_p.add_argument("--vocab", type=_user_path, help="Path to domain vocabulary JSON (no-op under v3 MIVectorizer)")
 
     # listen — ambient cognition
     listen_p = sub.add_parser("listen", help="The fish sits in the stream. Ambient cognition.")
