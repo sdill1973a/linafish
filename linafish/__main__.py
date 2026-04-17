@@ -944,6 +944,140 @@ def _detect_install_mode():
     return False, None, str(pkg_dir)
 
 
+def _probe_port_for_introduce(port: int, timeout: float = 1.0):
+    """Probe a port and identify the server type. Returns dict or None.
+
+    Used by the `linafish introduce --live` path to generate a briefing
+    that matches what's actually running instead of what might
+    theoretically exist. Adapted from THX's standalone
+    `dynamic_introduce.py` patch.
+    """
+    import urllib.request
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+            # Converse returns JSON with "service" key
+            try:
+                data = json.loads(body)
+                if isinstance(data, dict) and "service" in data:
+                    return {
+                        "type": "converse",
+                        "port": port,
+                        "mind": data.get("mind", "unknown"),
+                        "fish": data.get("fish", "unknown"),
+                        "crystals": data.get("crystals", 0),
+                        "formations": data.get("formations", 0),
+                        "routes": [
+                            "GET  /crystals  — pull crystals (for other fish)",
+                            "GET  /minds     — list source minds",
+                            "GET  /pfc       — formations codebook",
+                            "GET  /health    — engine stats",
+                            "POST /eat       — deposit text",
+                            "POST /taste     — semantic query",
+                        ],
+                    }
+            except json.JSONDecodeError:
+                pass
+            # HTTP server returns a text blurb containing "LiNafish"
+            if "LiNafish" in body:
+                return {
+                    "type": "http",
+                    "port": port,
+                    "routes": [
+                        "GET  /boot      — warm boot (primer + fish)",
+                        "GET  /pfc       — formations codebook",
+                        "GET  /health    — engine stats (JSON)",
+                        "GET  /fish      — raw fish.md",
+                        "POST /eat       — deposit text",
+                        "POST /taste     — semantic query",
+                        "POST /match     — tight recall",
+                    ],
+                }
+    except Exception:
+        return None
+    return None
+
+
+def _dynamic_introduce_text():
+    """Generate a live briefing based on which servers respond on 8900-8902.
+
+    THX's insight: `linafish introduce` prints AGENTS.md which documents
+    routes that may not exist on whichever server the AI is actually
+    talking to. The static text mixes HTTP and converse routes in one
+    doc. Live-probing the common ports and emitting a briefing keyed to
+    what responds fixes the mismatch at read-time.
+    """
+    servers = {}
+    for port in (8900, 8901, 8902):
+        info = _probe_port_for_introduce(port)
+        if info:
+            servers[port] = info
+
+    lines = [
+        "# LiNafish — What's Live Right Now",
+        "",
+        "You are an AI. Your user has linafish installed. This tells you",
+        "what endpoints are actually running and how to use them.",
+        "",
+    ]
+
+    if not servers:
+        lines.extend([
+            "**No servers detected.** The fish exists but isn't serving.",
+            "The user may have a fish.md file you can read directly.",
+            "Ask them to run `linafish http -n <name>` to start a server.",
+            "",
+        ])
+    else:
+        lines.append(f"**{len(servers)} server(s) detected:**")
+        lines.append("")
+        for port, info in sorted(servers.items()):
+            stype = info["type"].upper()
+            lines.append(f"## {stype} Server (:{port})")
+            if info["type"] == "converse":
+                lines.append(f"  Mind: {info['mind']}")
+                lines.append(
+                    f"  Fish: {info['fish']} "
+                    f"({info['crystals']} crystals, "
+                    f"{info['formations']} formations)"
+                )
+            lines.append("  Routes:")
+            for route in info["routes"]:
+                lines.append(f"    {route}")
+            lines.append("")
+
+    lines.extend([
+        "## How to Use This",
+        "",
+        "1. **READ /pfc first.** It returns the Primary Formation Codebook —",
+        "   cognitive patterns, not topic tags. Absorb the shape.",
+        "",
+        "2. **QUERY /taste** when you want to ground a response in the user's",
+        "   actual thinking instead of your own priors.",
+        "",
+        "3. **DEPOSIT /eat** only for substantive moments — corrections,",
+        "   insights, surprises. Not every turn. The fish has recency bias",
+        "   if you flood it.",
+        "",
+        "4. **Don't** treat formations as personality labels. They're verb",
+        "   states (KO=know, TE=test, SF=structure, CR=relate, IC=want,",
+        "   DE=specialize, EW=act, AI=reflect). Use them to calibrate your",
+        "   response shape, not to categorize the human.",
+        "",
+        "## If No Servers Are Running",
+        "",
+        "Check for a fish.md file in ~/.linafish/ or ask the user to paste it.",
+        "The fish.md IS the cognitive overlay — it works even without a server.",
+        "Run `linafish doctor` for full health check.",
+        "",
+        "---",
+        "*LiNafish. Named for Caroline Marie Dill (2001-2023).*",
+    ])
+
+    return "\n".join(lines)
+
+
 def cmd_introduce(args):
     """Print AGENTS.md — the AI-facing introduction to linafish.
 
@@ -951,11 +1085,22 @@ def cmd_introduce(args):
     need to understand what linafish is, what endpoints are live, and how
     to use it. Run `linafish introduce` and feed the output to the AI.
 
-    Resolution order (first hit wins):
+    With ``--live`` the static AGENTS.md is replaced by a dynamic probe
+    of ports 8900-8902 that generates a briefing matching whichever
+    server(s) are actually responding. Addresses THX's observation that
+    a bare `linafish introduce` documents converse routes (/minds,
+    /crystals) that don't exist on the HTTP server an AI may actually
+    be talking to.
+
+    Resolution order (first hit wins) for the default static path:
       1. importlib.resources — package-data, works in wheels AND editable
       2. repo root AGENTS.md (editable install fallback)
       3. inline minimal briefing (last-resort safety net)
     """
+    if getattr(args, "live", False):
+        print(_dynamic_introduce_text())
+        return
+
     # Primary path: importlib.resources reads the file bundled as package data.
     # This works for both wheel installs AND editable installs because the
     # editable install's package-data include rule picks up the same file.
@@ -1584,6 +1729,8 @@ def main():
     # introduce — AI-facing briefing (AGENTS.md contents)
     intro_p = sub.add_parser("introduce",
         help="Print AGENTS.md — the AI-facing briefing. Paste into an AI assistant.")
+    intro_p.add_argument("--live", action="store_true",
+        help="Probe running servers (8900-8902) and print a briefing matching what's actually responding.")
 
     # doctor — health check for install + fish + live daemons
     doctor_p = sub.add_parser("doctor",
