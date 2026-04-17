@@ -71,7 +71,13 @@ class RoomListener:
         self.fish_name = fish_name
         self.running = False
 
-        self.state_dir = Path(state_dir) if state_dir else Path(".")
+        # Resolve state_dir to an absolute path before anything else
+        # touches it — FishEngine's crystallizer expects its
+        # crystal_log_path to have a non-empty directory component, which
+        # fails when state_dir is a bare "." relative path on Windows.
+        # Resolving defensively here means callers that pass a relative
+        # state_dir still get correct behavior.
+        self.state_dir = (Path(state_dir) if state_dir else Path(".")).resolve()
         self.state_dir.mkdir(parents=True, exist_ok=True)
 
         # FishEngine owns crystallization + coupling + vocab + fish.md.

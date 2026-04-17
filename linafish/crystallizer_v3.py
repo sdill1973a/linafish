@@ -1048,7 +1048,14 @@ class UniversalFish:
     def _persist_crystal(self, crystal: Crystal):
         """Write crystal to JSONL log."""
         import json
-        os.makedirs(os.path.dirname(self.crystal_log_path), exist_ok=True)
+        # When crystal_log_path is a bare filename (relative, no
+        # directory component), os.path.dirname returns "" and
+        # os.makedirs("") raises FileNotFoundError on Windows. Guard
+        # the makedirs — the file's directory is cwd, which already
+        # exists.
+        crystal_dir = os.path.dirname(self.crystal_log_path)
+        if crystal_dir:
+            os.makedirs(crystal_dir, exist_ok=True)
         with open(self.crystal_log_path, 'a') as f:
             f.write(json.dumps(crystal.to_dict(), default=str) + '\n')
 
