@@ -1,5 +1,11 @@
 # LiNafish
 
+[![tests](https://github.com/sdill1973a/linafish/actions/workflows/test.yml/badge.svg)](https://github.com/sdill1973a/linafish/actions/workflows/test.yml)
+[![PyPI version](https://img.shields.io/pypi/v/linafish.svg)](https://pypi.org/project/linafish/)
+[![Python versions](https://img.shields.io/pypi/pyversions/linafish.svg)](https://pypi.org/project/linafish/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18477225.svg)](https://doi.org/10.5281/zenodo.18477225)
+
 **Your mind. Versioned. Everywhere.**
 
 A cognitive overlay for any AI. The fish learns how you think — not what you said, how your mind works. Sessions are branches. Merges are deposits. Git log is autobiography. Your AI's bestie. Sorry.
