@@ -104,6 +104,9 @@ all = [
     "requests",
     "paho-mqtt>=1.6",
 ]
+dev = [
+    "pytest>=7.0",
+]
 
 [project.scripts]
 linafish = "linafish.__main__:main"
