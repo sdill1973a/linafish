@@ -1077,3 +1077,74 @@ Direct arXiv search returns zero 2026 preprints on Linear A under cs.LG, cs.CL, 
 4. Create `data/linear_b_corpus_sources.md` — collate from existing notes
 
 ---
+
+## 2026-04-19 — Cycle 18
+
+**Prerequisite file check:**
+- `data/linear_b_corpus_sources.md` — still does not exist. Sixteen cycles overdue.
+- `data/functional_decipherment_research.md` — still does not exist.
+
+---
+
+### 1. InsiderPhD Linear B Dataset — Raw CSV Access Verified
+
+GitHub repo `InsiderPhD/Linear-B-Dataset` confirmed public. Raw CSV directly accessible at:
+`https://raw.githubusercontent.com/InsiderPhD/Linear-B-Dataset/master/tablet-sets/tablets.csv`
+
+Schema re-confirmed by direct fetch: semicolon-delimited, 5 columns: `identifier, location, series, inscription, original`. Several hundred rows. Sample entries include `KH Ar 4` (Khania) and `KN Ag 87` (Knossos). Numerical annotations (`VIR`, `MUL`, `GRA`) and fractional signs visible in inscription field — consistent with administrative register markers. No functional-type column; `series` code remains the proxy. Download entirely unblocked.
+
+**No change from prior cycles. Action still required: download the ZIP.**
+
+---
+
+### 2. DAMOS — No Status Change From Cycle 17
+
+Front page confirms: CC BY-NC-SA 4.0 / GPL-3.0, navigation is Home / How to search / About / News only, no export button visible. EpiDoc-TEI XML export confirmed deployed (March 2025, per Cycle 17 and this cycle's search snippets). Export accessed from within the search results UI, not the front page. Per-document vs. bulk scope still unresolved.
+
+**Contact: `federico.aurora@ub.uio.no`. Sixteen cycles overdue. No agent research can substitute.**
+
+---
+
+### 3. "The Wor(l)ds of Linear A" — 2026 Athens Publication (Potentially New)
+
+Search this cycle surfaces: "The Wor(l)ds of Linear A: Interdisciplinary Approaches to Documents and Inscriptions of a Cretan Bronze Age Script" published in **Athens University Review of Archaeology** (2026).
+
+**Context:** Cycle 16–17 flagged a Cambridge conference with the same title (held May 2022, organized by Ester Salgarella). The 2026 Athens publication is likely the **conference proceedings** of that 2022 event, now in press. This would be the first 2026 peer-reviewed Linear A publication documented in these notes — though its content dates to 2022 research.
+
+**Relevance:** "Integrated approach to Linear A documents and script" implies multi-register scope. Volume may contain chapters on administrative vs. ritual differentiation directly relevant to linafish.
+
+**Action:** Confirm peer-reviewed status. Search Athens University Review of Archaeology for the volume and Salgarella as editor.
+
+---
+
+### 4. ACL Anthology 2020 — Linear B Sequence Dataset (New Source, Not Previously Noted)
+
+"A Dataset of Mycenaean Linear B Sequences" (LREC 2020): `aclanthology.org/2020.lrec-1.311/`
+
+Used for missing-symbol infilling experiments on Linear B tablets. Format: word sequences with ideograms following Mycenaean conventions. No direct download URL on landing page; PDF at `aclanthology.org/2020.lrec-1.311.pdf` — contact authors for dataset. Potentially more NLP-structured than InsiderPhD. Worth comparing against InsiderPhD schema.
+
+---
+
+### 5. No New 2026 Peer-Reviewed Computational Papers — Seventeenth Confirmation
+
+All searches return the same 2024–2025 set (Nepal MDPI 2024, Craiova 2025, WSEAS 2025). No peer-reviewed 2026 computational or functional-analysis papers. The dominant framing in 2026 search snippets: "researchers have shifted expectations from full decipherment toward partial, contextual understanding" — validating linafish as the realistic computational contribution. Linafish approach remains unoccupied territory.
+
+---
+
+### Standing Action Items (Human Operator Required)
+
+1. **Email `federico.aurora@ub.uio.no`** — DAMOS EpiDoc export bulk vs. per-document. Sixteen cycles overdue.
+2. **Email `simon@phis.me`** — SigLA JSON/CSV data dump.
+3. **Create `data/linear_b_corpus_sources.md`** — sixteen cycles overdue; all content exists in these notes.
+4. **Download InsiderPhD ZIP** — `github.com/InsiderPhD/Linear-B-Dataset` — unblocked now.
+5. **Confirm "Wor(l)ds of Linear A" 2026 peer-review status** — search Salgarella as editor.
+
+---
+
+### Next cycle priorities
+1. Search "Athens University Review of Archaeology" 2026 + Salgarella to confirm proceedings
+2. Fetch LREC 2020 Linear B dataset paper PDF for schema details
+3. Retry `liber.cnr.it` for LiBER data access
+4. Retry `damos.hf.uio.no` search page to locate EpiDoc export UI entry point
+
+---
