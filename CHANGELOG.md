@@ -10,6 +10,45 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [1.1.7] — 2026-04-20
+
+**Patch release. Two real Windows-reproduced bugs caught by running the
+full fleet on .140 — `linafish diff` crashing on non-ASCII fish content,
+and converse servers silently stalling under concurrent client load.**
+
+### Fixed
+
+- **`_git_run` no longer crashes on non-ASCII git output on Windows
+  (#2).** Windows default encoding is cp1252, which raises
+  `UnicodeDecodeError` on any git diff output containing crystal text
+  outside that codepage — which is effectively every modern fish.
+  Forced `encoding="utf-8", errors="replace"` in the `subprocess.run`
+  call, and guarded against `None` stdout/stderr to prevent a
+  secondary `AttributeError: 'NoneType' object has no attribute
+  'strip'`. `linafish diff --name <fish>` is now usable again on
+  Windows.
+
+- **HTTP servers switched to `ThreadingHTTPServer` (#9).** Single-
+  threaded `HTTPServer` blocks on the active handler while later
+  connections queue in the listen backlog. Under real load — per-turn
+  hooks, agent-dispatched reads, MCP pollers — one slow handler
+  silently stalls all subsequent GETs. The server stays LISTENING but
+  `curl` returns empty. Applied to all three HTTP entry points:
+  `converse.py`, `http_server.py`, `quickstart.py`. Drop-in stdlib
+  replacement, same API.
+
+### Added
+
+- **Regression tests for both fixes.** `tests/test_git_run_encoding.py`
+  creates a real git repo with non-ASCII fish content and verifies
+  `_git_run("diff")` returns cleanly. `tests/test_http_threaded.py`
+  fires 5 concurrent 300ms-handler requests and asserts total elapsed
+  is well under the serial floor — proves actual threading, not just
+  import — plus a parametrized static guard that each of the three
+  HTTP entry points references `ThreadingHTTPServer`.
+
+---
+
 ## [1.1.6.1] — 2026-04-17
 
 **Patch release. Fixes a `datetime` import regression in
