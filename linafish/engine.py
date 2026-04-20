@@ -546,13 +546,22 @@ class FishEngine:
             pass
 
     def _git_run(self, *args, **kwargs):
-        """Run a git command in the state directory. Returns (returncode, stdout, stderr)."""
+        """Run a git command in the state directory. Returns (returncode, stdout, stderr).
+
+        Forces utf-8 decoding with errors='replace' — Windows default is cp1252,
+        which crashes on git output containing bytes outside that codepage (common
+        in fish.md crystal text). Also guards against None stdout/stderr.
+        """
         try:
             r = subprocess.run(
                 ["git"] + list(args), cwd=str(self.state_dir),
-                capture_output=True, text=True, timeout=kwargs.get("timeout", 10),
+                capture_output=True, text=True,
+                encoding="utf-8", errors="replace",
+                timeout=kwargs.get("timeout", 10),
             )
-            return r.returncode, r.stdout.strip(), r.stderr.strip()
+            out = r.stdout.strip() if r.stdout else ""
+            err = r.stderr.strip() if r.stderr else ""
+            return r.returncode, out, err
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return -1, "", "git not available"
 
