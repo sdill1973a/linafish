@@ -26,7 +26,7 @@ import json
 import socket
 import sys
 from datetime import datetime, timezone
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse, parse_qs
@@ -258,7 +258,7 @@ def serve_converse(
     ConverseHandler.mind_name = mind
     ConverseHandler.auth_token = token
 
-    server = HTTPServer((host, port), ConverseHandler)
+    server = ThreadingHTTPServer((host, port), ConverseHandler)
 
     print(f"  LiNafish Converse", file=sys.stderr)
     print(f"  Mind: {mind}", file=sys.stderr)

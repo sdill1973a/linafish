@@ -18,7 +18,7 @@ Usage:
 
 import json
 import sys
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Optional
 
@@ -163,7 +163,7 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
     if bind == "wan" and not host:
         print("Warning: WAN bind exposes the fish to the internet.", file=sys.stderr)
 
-    server = HTTPServer((resolved_host, port), FishHandler)
+    server = ThreadingHTTPServer((resolved_host, port), FishHandler)
     print(f"LiNafish HTTP: http://localhost:{port}", file=sys.stderr)
     print(f"  {len(engine.crystals)} crystals, {len(engine.formations)} formations", file=sys.stderr)
     print(f"  Fish: {engine.fish_file}", file=sys.stderr)
