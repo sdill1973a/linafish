@@ -199,6 +199,84 @@ def cmd_status(args):
     print(f"Formations: ~{formations}")
 
 
+def cmd_lifecycle(args):
+    """Glyph lifecycle report — is the grimoire fading as designed?"""
+    engine = _resolve_engine(args)
+    stats = engine.glyph_lifecycle_stats(bins=args.bins)
+
+    if args.json:
+        print(json.dumps(stats, indent=2))
+        return
+
+    n = stats["overall"].get("crystals", 0)
+    if n == 0:
+        print(f"  Fish {engine.name}: no crystals yet. Feed it first.")
+        return
+
+    trend = stats.get("trend", "unknown")
+    overall = stats["overall"]
+    print(f"  Fish: {engine.name}  ({n} crystals, {stats.get('canonical_set_size',0)}-term canonical set)")
+    print(f"  Overall canonical density: {overall['canonical_density_mean']:.4f}  "
+          f"(keyword ratio {overall['keyword_canonical_ratio_mean']:.4f})")
+    print(f"  Trend across {len(stats['bins'])} bins: {trend.upper()}")
+    print()
+    print(f"  {'bin':>3}  {'crystals':>9}  {'range':>12}  {'density':>10}  {'kw_ratio':>10}")
+    for b in stats["bins"]:
+        rng = f"{b['range'][0]}-{b['range'][1]}"
+        print(f"  {b['index']:>3}  {b['crystals']:>9}  {rng:>12}  "
+              f"{b['canonical_density_mean']:>10.5f}  "
+              f"{b['keyword_canonical_ratio_mean']:>10.5f}")
+    print()
+    if stats["bins"]:
+        first = stats["bins"][0]["canonical_density_mean"]
+        last = stats["bins"][-1]["canonical_density_mean"]
+        delta = last - first
+        direction = "▼ fading" if delta < -1e-4 else ("▲ rising" if delta > 1e-4 else "→ steady")
+        print(f"  First → Last density: {first:.5f} → {last:.5f}  ({direction})")
+        if trend == "fading":
+            print("  The grimoire is doing what it's supposed to do: burning off as R(n) grows.")
+        elif trend == "rising":
+            print("  Canonical usage is increasing — corpus is re-leaning on seed terms.")
+        elif trend == "steady":
+            print("  Canonical usage is stable — no burn-off detected in this window.")
+
+
+def cmd_conservation(args):
+    """Conservation check — is Σache bounded across the corpus?"""
+    engine = _resolve_engine(args)
+    stats = engine.conservation_stats(bins=args.bins)
+
+    if args.json:
+        print(json.dumps(stats, indent=2))
+        return
+
+    n = stats.get("n", 0)
+    if n == 0:
+        print(f"  Fish {engine.name}: no crystals yet.")
+        return
+
+    verdict = stats.get("verdict", "?")
+    drift = stats.get("drift_pct_across_bins", 0.0)
+    print(f"  Fish: {engine.name}  ({n} crystals)")
+    print(f"  Σache total:     {stats['ache_total']:.4f}")
+    print(f"  Mean per-crystal: {stats['ache_mean_global']:.4f}")
+    print(f"  Drift across {len(stats['bins'])} bins: {drift:.2f}%  →  verdict: {verdict.upper()}")
+    print(f"  Thresholds: strict < {stats['thresholds']['strict']}%, loose < {stats['thresholds']['loose']}%")
+    print()
+    print(f"  {'bin':>3}  {'crystals':>9}  {'range':>12}  {'mean':>10}  {'std':>10}  {'sum':>12}")
+    for b in stats["bins"]:
+        rng = f"{b['range'][0]}-{b['range'][1]}"
+        print(f"  {b['index']:>3}  {b['crystals']:>9}  {rng:>12}  "
+              f"{b['ache_mean']:>10.4f}  {b['ache_std']:>10.4f}  {b['ache_sum']:>12.4f}")
+    print()
+    if verdict == "strict_pass":
+        print("  Mean ache is bounded across bins. Σache=K holds on this corpus.")
+    elif verdict == "loose_pass":
+        print("  Mean ache drifts but stays within a bounded envelope.")
+    else:
+        print("  Mean ache drifts substantially — conservation claim does NOT hold on this corpus.")
+
+
 def cmd_serve(args):
     """Serve a fish as an MCP server (Claude Code)."""
     from .server import serve_fish
@@ -1798,6 +1876,30 @@ def main():
     status_p = sub.add_parser("status", help="Show fish stats")
     status_p.add_argument("fish", type=_user_path, help="Path to .fish.md")
 
+    # lifecycle — grimoire burn-off observability
+    lifecycle_p = sub.add_parser(
+        "lifecycle",
+        help="Glyph lifecycle: is the canonical grimoire fading as R(n) grows?",
+    )
+    lifecycle_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    lifecycle_p.add_argument("--state-dir", type=_user_path, help="State directory")
+    lifecycle_p.add_argument("--bins", type=int, default=10,
+                             help="Number of buckets across crystal order (default 10)")
+    lifecycle_p.add_argument("--json", action="store_true",
+                             help="Emit raw JSON instead of human summary")
+
+    # conservation — Σache=K verifier
+    conservation_p = sub.add_parser(
+        "conservation",
+        help="Conservation check: is per-crystal ache bounded across the corpus?",
+    )
+    conservation_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    conservation_p.add_argument("--state-dir", type=_user_path, help="State directory")
+    conservation_p.add_argument("--bins", type=int, default=10,
+                                help="Number of buckets across crystal order (default 10)")
+    conservation_p.add_argument("--json", action="store_true",
+                                help="Emit raw JSON instead of human summary")
+
     # serve
     serve_p = sub.add_parser("serve", help="Serve fish as MCP server (stdio)")
     serve_p.add_argument("--feed", type=_user_path, help="Directory or file to ingest on startup")
@@ -2005,6 +2107,8 @@ def main():
         "taste": cmd_taste,
         "recall": cmd_recall,
         "status": cmd_status,
+        "lifecycle": cmd_lifecycle,
+        "conservation": cmd_conservation,
         "serve": cmd_serve,
         "http": cmd_http,
         "demo": cmd_demo,

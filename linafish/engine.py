@@ -1547,6 +1547,210 @@ class FishEngine:
 
         return json.dumps(health_data, indent=2)
 
+    # -------------------------------------------------------------------
+    # INSTRUMENTS — observe the fish without touching it
+    # -------------------------------------------------------------------
+    #
+    # Added 2026-04-20 on build/fish-instruments. These methods read
+    # crystals and report patterns. They never mutate state, never
+    # commit to git, never change vocabulary. Safe to call from any
+    # context.
+
+    def glyph_lifecycle_stats(self, bins: int = 10) -> dict:
+        """Measure canonical-grammar (grimoire) usage across crystal order.
+
+        The design intent of the canonical 80 seed terms (8 dims × 10
+        terms) is that they fade as the relationship deepens. This
+        method quantifies that fade.
+
+        For each crystal:
+          - canonical_hits = count of canonical seed terms in the text
+            (lowercased, word-boundary matched).
+          - keyword_canonical = count of canonical seed terms that made
+            it into the crystal's top MI keywords.
+          - per-dim hits for KO, TE, SF, CR, IC, DE, EW, AI.
+
+        Crystals are split into `bins` equal-size buckets by insertion
+        order. The method returns per-bin mean density plus a global
+        summary. If the grimoire is burning off, canonical_density
+        decreases across bins.
+
+        Returns a dict with:
+          - bins: list of {index, crystals, canonical_density_mean,
+            keyword_canonical_ratio_mean, per_dim}.
+          - overall: aggregate stats.
+          - trend: "fading" | "steady" | "rising" | "insufficient_data".
+        """
+        import re
+        from .crystallizer_v3 import CANONICAL_SEED
+
+        # Reverse lookup: term -> dimension (KO, TE, SF, CR, IC, DE, EW, AI)
+        term_to_dim = {}
+        for dim, terms in CANONICAL_SEED.items():
+            for t in terms:
+                term_to_dim[t.lower()] = dim
+
+        canonical_set = set(term_to_dim.keys())
+        dims = list(CANONICAL_SEED.keys())
+
+        crystals = list(self.fish.crystals)
+        n = len(crystals)
+        if n == 0:
+            return {
+                "bins": [],
+                "overall": {"crystals": 0},
+                "trend": "insufficient_data",
+                "canonical_set_size": len(canonical_set),
+            }
+
+        # Per-crystal measurement
+        per_crystal = []
+        for c in crystals:
+            text = (getattr(c, "text", "") or "").lower()
+            tokens = re.findall(r"[a-zA-Z_]+", text)
+            n_tokens = len(tokens) or 1
+            hit_terms = [t for t in tokens if t in canonical_set]
+            per_dim = {d: 0 for d in dims}
+            for t in hit_terms:
+                per_dim[term_to_dim[t]] += 1
+
+            keywords = [k.lower() for k in (getattr(c, "keywords", []) or [])]
+            n_keywords = len(keywords) or 1
+            kw_canonical = sum(1 for k in keywords if k in canonical_set)
+
+            per_crystal.append({
+                "canonical_hits": len(hit_terms),
+                "tokens": n_tokens,
+                "density": len(hit_terms) / n_tokens,
+                "keyword_canonical_ratio": kw_canonical / n_keywords,
+                "per_dim": per_dim,
+            })
+
+        # Bucket into bins
+        bins = max(1, min(bins, n))
+        bucket_size = n / bins
+        buckets = []
+        for b in range(bins):
+            lo = int(round(b * bucket_size))
+            hi = int(round((b + 1) * bucket_size))
+            group = per_crystal[lo:hi] if hi > lo else per_crystal[lo:lo + 1]
+            if not group:
+                continue
+            dens = sum(x["density"] for x in group) / len(group)
+            kw_ratio = sum(x["keyword_canonical_ratio"] for x in group) / len(group)
+            per_dim_mean = {}
+            for d in dims:
+                per_dim_mean[d] = sum(x["per_dim"][d] for x in group) / len(group)
+            buckets.append({
+                "index": b,
+                "range": [lo, hi],
+                "crystals": len(group),
+                "canonical_density_mean": round(dens, 6),
+                "keyword_canonical_ratio_mean": round(kw_ratio, 6),
+                "per_dim_hits_mean": {d: round(v, 4) for d, v in per_dim_mean.items()},
+            })
+
+        # Trend: compare first bucket to last bucket density
+        trend = "insufficient_data"
+        if len(buckets) >= 2:
+            first = buckets[0]["canonical_density_mean"]
+            last = buckets[-1]["canonical_density_mean"]
+            if first == 0 and last == 0:
+                trend = "steady"
+            else:
+                rel = (last - first) / max(first, 1e-9)
+                if rel < -0.1:
+                    trend = "fading"
+                elif rel > 0.1:
+                    trend = "rising"
+                else:
+                    trend = "steady"
+
+        overall_density = sum(x["density"] for x in per_crystal) / n
+        overall_kw = sum(x["keyword_canonical_ratio"] for x in per_crystal) / n
+        return {
+            "bins": buckets,
+            "overall": {
+                "crystals": n,
+                "canonical_density_mean": round(overall_density, 6),
+                "keyword_canonical_ratio_mean": round(overall_kw, 6),
+            },
+            "trend": trend,
+            "canonical_set_size": len(canonical_set),
+            "dimensions": dims,
+        }
+
+    def conservation_stats(self, bins: int = 10) -> dict:
+        """Check the Σache ≈ K conservation claim across crystal order.
+
+        Mathematical-skeleton Gap 3: the conservation claim is stated
+        as axiom but has never been empirically verified on production
+        data. This method runs it.
+
+        For each crystal: pull `ache`. Bucket by insertion order.
+        Compute per-bucket sum + mean ache, plus a running cumulative
+        total. Report drift as (max_bucket_sum − min_bucket_sum) /
+        mean_bucket_sum. If conservation holds strictly, drift is near
+        zero; in practice we expect bounded drift.
+
+        Note on interpretation: Σache=K is about per-crystal ache
+        staying bounded as the corpus grows, not the cumulative sum
+        being literally constant (cumulative always grows with n).
+        What we test: is the mean-per-crystal-ache stable across bins?
+
+        Returns a dict with per-bin stats, drift %, and a pass/fail
+        verdict at two drift thresholds (strict: 10%, loose: 30%).
+        """
+        crystals = list(self.fish.crystals)
+        n = len(crystals)
+        if n == 0:
+            return {"bins": [], "verdict": "insufficient_data", "n": 0}
+
+        aches = [float(getattr(c, "ache", 0.0) or 0.0) for c in crystals]
+
+        bins = max(1, min(bins, n))
+        bucket_size = n / bins
+        buckets = []
+        for b in range(bins):
+            lo = int(round(b * bucket_size))
+            hi = int(round((b + 1) * bucket_size))
+            group = aches[lo:hi] if hi > lo else aches[lo:lo + 1]
+            if not group:
+                continue
+            s = sum(group)
+            m = s / len(group)
+            variance = sum((a - m) ** 2 for a in group) / len(group)
+            buckets.append({
+                "index": b,
+                "range": [lo, hi],
+                "crystals": len(group),
+                "ache_sum": round(s, 6),
+                "ache_mean": round(m, 6),
+                "ache_std": round(variance ** 0.5, 6),
+            })
+
+        means = [b["ache_mean"] for b in buckets]
+        mean_of_means = sum(means) / len(means) if means else 0.0
+        drift_abs = (max(means) - min(means)) if means else 0.0
+        drift_pct = (drift_abs / mean_of_means * 100) if mean_of_means > 1e-9 else 0.0
+
+        if drift_pct < 10:
+            verdict = "strict_pass"
+        elif drift_pct < 30:
+            verdict = "loose_pass"
+        else:
+            verdict = "fail"
+
+        return {
+            "bins": buckets,
+            "n": n,
+            "ache_total": round(sum(aches), 6),
+            "ache_mean_global": round(sum(aches) / n, 6),
+            "drift_pct_across_bins": round(drift_pct, 3),
+            "verdict": verdict,
+            "thresholds": {"strict": 10.0, "loose": 30.0},
+        }
+
     def assessment_summary(self) -> str:
         """Return a human-readable summary of the assessment history.
 
