@@ -1792,10 +1792,10 @@ def go(
         try:
             sys.stderr = _Quiet(_real_stderr)
             from .http_server import FishHandler
-            from http.server import HTTPServer
+            from http.server import ThreadingHTTPServer
 
             FishHandler.engine = engine
-            server = HTTPServer(("127.0.0.1", actual_port), FishHandler)
+            server = ThreadingHTTPServer(("127.0.0.1", actual_port), FishHandler)
 
             # Restore stderr for Ctrl+C message
             sys.stderr = _real_stderr
