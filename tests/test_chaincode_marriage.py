@@ -30,12 +30,15 @@ from linafish.crystallizer_v3 import (
 from linafish.engine import FishEngine
 
 
-def _crystal(cid, vec, chain_seq=None, chain_created_at=None):
+def _crystal(cid, vec, chain_seq=None, chain_created_at=None,
+             chain_id=None, chain_prev_hash=None):
     return Crystal(
         id=cid, ts="", text="", source="",
         mi_vector=vec, resonance=[], keywords=[],
         chain_seq=chain_seq,
         chain_created_at=chain_created_at,
+        chain_id=chain_id,
+        chain_prev_hash=chain_prev_hash,
     )
 
 
@@ -569,3 +572,102 @@ def test_phase4_shuffled_chain_seq_nullifies_temporal_effect():
         f"than ordered ({ordered_edges}) — the rescue path is doing "
         f"something inverse to its design"
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: chain_prev_hash + parent-child link detection
+# ---------------------------------------------------------------------------
+#
+# Per the 2026-04-26 morning revision notes Implication 2: prev_hash is
+# available in the chaincode schema, and two crystals that share a
+# parent-child link (a.chain_id == b.chain_prev_hash) couple even tighter
+# than chain_seq distance suggests — chain_seq distance can include
+# interleaved writes from unrelated sessions, while prev_hash is the
+# literal narrative link.
+
+def test_phase5_chain_prev_hash_round_trips_through_persistence():
+    """chain_prev_hash survives /eat -> Crystal -> JSONL -> reload."""
+    with tempfile.TemporaryDirectory(prefix="marriage_phase5_") as sandbox:
+        e = FishEngine(state_dir=Path(sandbox), name="phase5_test")
+        e.eat(
+            "child crystal that follows the parent thought directly",
+            source="test",
+            chain_id="child_hash",
+            chain_seq=11,
+            chain_prev_hash="parent_hash",
+        )
+        e2 = FishEngine(state_dir=Path(sandbox), name="phase5_test")
+        c = next(iter(e2.fish.crystals))
+        assert c.chain_id == "child_hash"
+        assert c.chain_prev_hash == "parent_hash"
+
+
+def test_phase5_parent_child_link_gives_max_temporal_proximity():
+    """When a is b's direct parent in the chain, g_temporal hits 1.0
+    via the chain_link signal — the strongest temporal proximity
+    available, beating ordinal distance 1 (which gives 0.5)."""
+    parent = _crystal("p", [1.0, 0.5], chain_id="parent_hash", chain_seq=10)
+    child = _crystal("c", [0.9, 0.5], chain_id="child_hash",
+                      chain_seq=11, chain_prev_hash="parent_hash")
+    g = gamma(parent.mi_vector, child.mi_vector)
+    cs = coupling_strength(parent, child)
+    # ordinal proximity at distance 1 = 0.5; chain-link proximity = 1.0
+    # MAX picks chain-link — the literal narrative successor edge.
+    expected = SEMANTIC_WEIGHT * g + TEMPORAL_WEIGHT * 1.0
+    assert abs(cs - expected) < 1e-9
+
+
+def test_phase5_chain_link_works_in_either_direction():
+    """The parent-child detection must work whether the parent is
+    crystal a or crystal b. coupling_strength is symmetric."""
+    parent = _crystal("p", [1.0, 0.5], chain_id="P_hash")
+    child = _crystal("c", [0.9, 0.5], chain_prev_hash="P_hash")
+    cs_pc = coupling_strength(parent, child)
+    cs_cp = coupling_strength(child, parent)
+    assert abs(cs_pc - cs_cp) < 1e-9
+    g = gamma(parent.mi_vector, child.mi_vector)
+    expected = SEMANTIC_WEIGHT * g + TEMPORAL_WEIGHT * 1.0
+    assert abs(cs_pc - expected) < 1e-9
+
+
+def test_phase5_chain_link_beats_distant_ordinal():
+    """The point of prev_hash: chain_seq distance can include
+    interleaved writes from unrelated sessions (chain_seq 10 -> 100
+    might LOOK distant but actually be parent-child if the chain ran
+    through 89 other writes between them in the same session). When
+    chain_link is present, it overrides the deceptive ordinal distance."""
+    parent = _crystal("p", [1.0, 0.5], chain_id="P_hash", chain_seq=10)
+    child = _crystal("c", [0.9, 0.5], chain_seq=100,
+                      chain_prev_hash="P_hash")  # ordinal looks distant
+    cs = coupling_strength(parent, child)
+    g = gamma(parent.mi_vector, child.mi_vector)
+    # ordinal proximity at distance 90 ≈ 0.011; chain-link = 1.0
+    expected = SEMANTIC_WEIGHT * g + TEMPORAL_WEIGHT * 1.0
+    assert abs(cs - expected) < 1e-9
+
+
+def test_phase5_no_match_means_no_chain_link_bonus():
+    """If chain_id and chain_prev_hash don't match, no chain-link
+    bonus. Other temporal signals still work (ordinal/time)."""
+    a = _crystal("a", [1.0, 0.5], chain_id="A_hash",
+                 chain_prev_hash="X_hash", chain_seq=10)
+    b = _crystal("b", [0.9, 0.5], chain_id="B_hash",
+                 chain_prev_hash="Y_hash", chain_seq=11)
+    cs = coupling_strength(a, b)
+    g = gamma(a.mi_vector, b.mi_vector)
+    # No chain-link match (X != B and Y != A); ordinal distance 1 = 0.5
+    expected = SEMANTIC_WEIGHT * g + TEMPORAL_WEIGHT * 0.5
+    assert abs(cs - expected) < 1e-9
+
+
+def test_phase5_staleness_gate_zeros_chain_link_too():
+    """The staleness gate must zero ALL temporal signals when gamma
+    is below SEMANTIC_FLOOR — including the chain-link bonus. A
+    parent-child link without semantic similarity is sequential
+    noise, regardless of how strong the chain edge looks."""
+    parent = _crystal("p", [1.0, 0.0], chain_id="P_hash")
+    child = _crystal("c", [0.0, 1.0], chain_prev_hash="P_hash")
+    g = gamma(parent.mi_vector, child.mi_vector)
+    assert g < SEMANTIC_FLOOR
+    cs = coupling_strength(parent, child)
+    assert abs(cs - SEMANTIC_WEIGHT * g) < 1e-9

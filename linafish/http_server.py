@@ -167,12 +167,19 @@ class FishHandler(BaseHTTPRequestHandler):
             # enables coupling_strength's time-decay term alongside the
             # ordinal chain_seq decay.
             chain_created_at = body.get("chain_created_at") or None
+            # chain_prev_hash — Phase 5. Parent's chain hash from
+            # chains.prev_hash. Detects direct parent-child links in
+            # the chaincode chain (the literal "this thought followed
+            # that thought" relationship), strictly stronger than
+            # ordinal distance 1.
+            chain_prev_hash = body.get("chain_prev_hash") or None
             if not text:
                 self._respond(400, "Missing 'text' field")
                 return
             result = self.engine.eat(text, source=source,
                                      chain_id=chain_id, chain_seq=chain_seq,
-                                     chain_created_at=chain_created_at)
+                                     chain_created_at=chain_created_at,
+                                     chain_prev_hash=chain_prev_hash)
             self._respond(200, json.dumps(result), content_type="application/json")
 
         elif self.path == "/taste":

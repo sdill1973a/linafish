@@ -74,9 +74,18 @@ class Crystal:
     #                     closeness; parallel sessions on different
     #                     topics have time closeness without ordinal
     #                     closeness.
+    # chain_prev_hash   — parent's chain hash (chains.prev_hash). Phase 5.
+    #                     If a.chain_id == b.chain_prev_hash, then a is
+    #                     b's direct parent in the chain — a strictly
+    #                     stronger signal than ordinal distance 1, which
+    #                     can include interleaved writes from unrelated
+    #                     sessions. Parent-child is the literal narrative
+    #                     link: this exact thought followed that exact
+    #                     thought.
     chain_id: Optional[str] = None
     chain_seq: Optional[int] = None
     chain_created_at: Optional[str] = None
+    chain_prev_hash: Optional[str] = None
 
     def to_dict(self):
         return asdict(self)
@@ -709,22 +718,31 @@ def coupling_strength(a: 'Crystal', b: 'Crystal') -> float:
     (the staleness filter — chain adjacency without semantic signal is
     not coupling, it's just sequential noise).
 
-    Temporal proximity is the MAX of two signals when both available:
+    Temporal proximity is the MAX of three signals when available:
 
+      chain_link        = 1.0 if a is b's direct parent in the chaincode
+                          chain (a.chain_id == b.chain_prev_hash) or
+                          vice versa; 0.0 otherwise. The literal "this
+                          thought followed that thought" relationship.
       ordinal_proximity = 1 / (1 + |chain_seq_a - chain_seq_b|)
       time_proximity    = TIME_DECAY_SECONDS / (TIME_DECAY_SECONDS + |t_a - t_b|)
 
-    Per the 2026-04-26 morning revision notes, chain_seq captures
-    "in the same conversation/burst" while chain_created_at captures
-    "happened close in real time" — different signals. A long debug
-    session has ordinal closeness without time closeness; parallel
-    sessions on different topics have time closeness without ordinal
-    closeness. Taking the MAX means either signal counts.
+    Per the 2026-04-26 morning revision notes, the three signals
+    capture different shapes of "narrative adjacent":
+      - chain_link is the strictest — it's the direct chaincode-link,
+        ignores interleaved writes from unrelated sessions, and is
+        binary (you either are the parent or you aren't). Phase 5.
+      - chain_seq captures "in the same conversation/burst," tolerating
+        gaps from interleaved writes
+      - chain_created_at captures "happened close in real time"
+    A long debug session has ordinal closeness without time closeness;
+    parallel sessions on different topics have time closeness without
+    ordinal closeness; a direct chaincode parent-child has chain_link.
+    Taking the MAX means any signal counts.
 
     Crystals without chain metadata get g_temporal = 0 and the function
-    reduces to SEMANTIC_WEIGHT * gamma. Crystals with chain_seq but no
-    timestamp use ordinal-only. Crystals with both use both. Backward
-    compatible across the entire matrix of presence/absence.
+    reduces to SEMANTIC_WEIGHT * gamma. Backward compatible across the
+    entire matrix of which fields are present.
 
     Spec: data/chaincode_fish_marriage_spec.md (2026-03-25) +
     data/chaincode_fish_marriage_spec_REVISION_NOTES_2026-04-26.md.
@@ -732,6 +750,14 @@ def coupling_strength(a: 'Crystal', b: 'Crystal') -> float:
     g_semantic = gamma(a.mi_vector, b.mi_vector)
 
     g_temporal = 0.0
+
+    # Phase 5: chain-link proximity — the literal parent-child
+    # relationship via chains.prev_hash. Strictly stronger than
+    # ordinal distance 1, which can include interleaved writes
+    # from unrelated sessions.
+    if (a.chain_id and b.chain_prev_hash and a.chain_id == b.chain_prev_hash) or \
+       (b.chain_id and a.chain_prev_hash and b.chain_id == a.chain_prev_hash):
+        g_temporal = max(g_temporal, 1.0)
 
     # Ordinal proximity (chain_seq distance)
     if a.chain_seq is not None and b.chain_seq is not None:
@@ -787,7 +813,8 @@ def crystallize(text: str, vectorizer: MIVectorizer,
                 parser=None,
                 chain_id: Optional[str] = None,
                 chain_seq: Optional[int] = None,
-                chain_created_at: Optional[str] = None) -> Crystal:
+                chain_created_at: Optional[str] = None,
+                chain_prev_hash: Optional[str] = None) -> Crystal:
     """Create a crystal from text using MI × ache vectorization + cognitive parse.
 
     This is the v3 replacement for v1's keyword-based crystallize().
@@ -860,6 +887,7 @@ def crystallize(text: str, vectorizer: MIVectorizer,
         chain_id=chain_id,
         chain_seq=chain_seq,
         chain_created_at=chain_created_at,
+        chain_prev_hash=chain_prev_hash,
     )
 
 
@@ -1034,6 +1062,7 @@ class UniversalFish:
                             chain_id=d.get('chain_id'),
                             chain_seq=d.get('chain_seq'),
                             chain_created_at=d.get('chain_created_at'),
+                            chain_prev_hash=d.get('chain_prev_hash'),
                         )
                         disk_crystals.append(c)
                         loaded += 1
@@ -1132,7 +1161,8 @@ class UniversalFish:
     def crystallize_text(self, text: str, source: str = "unknown",
                          chain_id: Optional[str] = None,
                          chain_seq: Optional[int] = None,
-                         chain_created_at: Optional[str] = None) -> Optional[Crystal]:
+                         chain_created_at: Optional[str] = None,
+                         chain_prev_hash: Optional[str] = None) -> Optional[Crystal]:
         """Crystallize a single text against frozen statistics.
 
         If not frozen, queues to pending instead.
@@ -1179,6 +1209,8 @@ class UniversalFish:
                 pending_record['chain_seq'] = chain_seq
             if chain_created_at is not None:
                 pending_record['chain_created_at'] = chain_created_at
+            if chain_prev_hash is not None:
+                pending_record['chain_prev_hash'] = chain_prev_hash
             self.pending.append(pending_record)
             self._flush_pending()
             # Persistence committed — NOW it's safe to record the
@@ -1192,7 +1224,8 @@ class UniversalFish:
         crystal = crystallize(text, self.vectorizer, source=source,
                              vocab=self.vocab, parser=self.parser,
                              chain_id=chain_id, chain_seq=chain_seq,
-                             chain_created_at=chain_created_at)
+                             chain_created_at=chain_created_at,
+                             chain_prev_hash=chain_prev_hash)
         crystal.resonance = crystal.mi_vector  # formation compat
 
         # v0.4: Metabolic digestion — enrich the crystal
@@ -1422,7 +1455,8 @@ class UniversalFish:
     def ingest(self, text: str, source: str = "unknown",
                chain_id: Optional[str] = None,
                chain_seq: Optional[int] = None,
-               chain_created_at: Optional[str] = None) -> Optional[Crystal]:
+               chain_created_at: Optional[str] = None,
+               chain_prev_hash: Optional[str] = None) -> Optional[Crystal]:
         """The live API. Drop-in for v1 crystallize().
 
         If frozen: crystallize against current stats.
@@ -1443,6 +1477,8 @@ class UniversalFish:
             pending_record['chain_seq'] = chain_seq
         if chain_created_at is not None:
             pending_record['chain_created_at'] = chain_created_at
+        if chain_prev_hash is not None:
+            pending_record['chain_prev_hash'] = chain_prev_hash
         self.pending.append(pending_record)
 
         # If frozen, also crystallize now
@@ -1451,7 +1487,8 @@ class UniversalFish:
             crystal = crystallize(text, self.vectorizer, source=source,
                                  vocab=self.vocab, parser=self.parser,
                                  chain_id=chain_id, chain_seq=chain_seq,
-                                 chain_created_at=chain_created_at)
+                                 chain_created_at=chain_created_at,
+                                 chain_prev_hash=chain_prev_hash)
             crystal.resonance = crystal.mi_vector
             self.crystals.append(crystal)
             self._persist_crystal(crystal)

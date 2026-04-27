@@ -935,7 +935,8 @@ class FishEngine:
     def eat(self, text: str, source: str = "session",
             chain_id: Optional[str] = None,
             chain_seq: Optional[int] = None,
-            chain_created_at: Optional[str] = None) -> dict:
+            chain_created_at: Optional[str] = None,
+            chain_prev_hash: Optional[str] = None) -> dict:
         """Feed text to the fish. Two-phase: learn then crystallize.
 
         If this is the first eat and assessment is available, runs
@@ -975,7 +976,8 @@ class FishEngine:
         crystal = self.fish.crystallize_text(text, source=source,
                                              chain_id=chain_id,
                                              chain_seq=chain_seq,
-                                             chain_created_at=chain_created_at)
+                                             chain_created_at=chain_created_at,
+                                             chain_prev_hash=chain_prev_hash)
         if not crystal:
             return {"crystals_added": 0, "total_crystals": len(self.fish.crystals)}
 
