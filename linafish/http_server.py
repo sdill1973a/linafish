@@ -9,7 +9,12 @@ a URL can read the fish. Serves the same engine as the MCP server.
     GET  /emerge             — emergence metrics (ν, μ, ρ, Ψ, phase)
     GET  /growth             — R(n) curve, coupling density, dimension entropy
     GET  /fish               — raw fish.md contents
-    POST /eat                — feed text (JSON: {"text": "...", "source": "..."})
+    POST /eat                — feed text (JSON: {"text": "...", "source": "...",
+                                                 "chain_id": "...", "chain_seq": 123})
+                               chain_id/chain_seq are optional — chaincode marriage
+                               spec 2026-03-25. When present, the crystal records
+                               its position in the chaincode chain for temporal
+                               coupling.
     POST /taste              — cross-corpus match (JSON: {"text": "...", "top": 5})
     POST /match              — tight recall (JSON: {"text": "...", "top": 3})
     POST /re-eat             — maintenance cycle (gardener + assessment + growth)
@@ -187,10 +192,14 @@ class FishHandler(BaseHTTPRequestHandler):
         if self.path == "/eat":
             text = body.get("text", "")
             source = body.get("source", "session")
+            chain_id = body.get("chain_id")  # optional, chaincode marriage 2026-03-25
+            chain_seq_raw = body.get("chain_seq")
+            chain_seq = int(chain_seq_raw) if chain_seq_raw is not None else None
             if not text:
                 self._respond(400, "Missing 'text' field")
                 return
-            result = self.engine.eat(text, source=source)
+            result = self.engine.eat(text, source=source,
+                                     chain_id=chain_id, chain_seq=chain_seq)
             self._respond(200, json.dumps(result), content_type="application/json")
 
         elif self.path == "/taste":
