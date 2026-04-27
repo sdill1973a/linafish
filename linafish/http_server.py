@@ -162,11 +162,17 @@ class FishHandler(BaseHTTPRequestHandler):
             chain_id = body.get("chain_id")  # optional, chaincode marriage 2026-03-25
             chain_seq_raw = body.get("chain_seq")
             chain_seq = int(chain_seq_raw) if chain_seq_raw not in (None, "") else None
+            # chain_created_at — Phase 4 per 2026-04-26 morning revision
+            # notes. Optional ISO-8601 timestamp from chaincode.created_at;
+            # enables coupling_strength's time-decay term alongside the
+            # ordinal chain_seq decay.
+            chain_created_at = body.get("chain_created_at") or None
             if not text:
                 self._respond(400, "Missing 'text' field")
                 return
             result = self.engine.eat(text, source=source,
-                                     chain_id=chain_id, chain_seq=chain_seq)
+                                     chain_id=chain_id, chain_seq=chain_seq,
+                                     chain_created_at=chain_created_at)
             self._respond(200, json.dumps(result), content_type="application/json")
 
         elif self.path == "/taste":
