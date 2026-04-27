@@ -2,14 +2,17 @@
 
 Spec: data/chaincode_fish_marriage_spec.md (2026-03-25, Captain approved).
 
-Phase 1 of the build: Crystal carries chain_id/chain_seq, coupling_strength
-blends semantic gamma with temporal proximity under a staleness filter,
-and the metadata round-trips through ingest -> persist -> reload.
+Phase 1 (commit 406169e): Crystal carries chain_id/chain_seq,
+coupling_strength blends semantic gamma with temporal proximity under
+a staleness filter, and the metadata round-trips through ingest ->
+persist -> reload. _compute_couplings stayed unchanged.
 
-Phase 2 (separate, not yet integrated) will wire coupling_strength into
-_compute_couplings. Until then, _compute_couplings is unchanged and these
-tests pin the coupling_strength contract so the integration step has a
-known-good reference.
+Phase 2 (this file's later tests): _compute_couplings gets a temporal
+rescue path that mirrors the existing chain_rescue + metabolic_rescue
+patterns. Borderline-gamma pairs with chain_seq metadata get a
+coupling_strength check; if the blended score clears min_gamma, they
+couple. Backward compatible — pairs without chain_seq fall through
+the rescue block entirely.
 """
 import json
 import tempfile
@@ -164,3 +167,126 @@ def test_pending_record_carries_chain_metadata_pre_freeze():
         rec = lines[0]
         assert rec["chain_id"] == "def456"
         assert rec["chain_seq"] == 99
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: temporal-rescue integration in _compute_couplings
+# ---------------------------------------------------------------------------
+#
+# These tests exercise the rescue path directly. We construct a tiny
+# UniversalFish, hand it a curated crystal list, and call
+# _compute_couplings with a fixed min_gamma so the rescue conditions
+# are deterministic. The crystals are built with hand-picked mi_vectors
+# whose gamma values are exact.
+
+def _fish_with_crystals(crystals):
+    """Build a sandboxed UniversalFish wrapping a curated crystal list."""
+    from linafish.crystallizer_v3 import UniversalFish
+    sandbox = tempfile.mkdtemp(prefix="marriage_phase2_")
+    fish = UniversalFish(state_dir=sandbox, autoload=False)
+    fish.crystals = list(crystals)
+    return fish
+
+
+def test_phase2_temporal_rescue_lifts_borderline_chain_adjacent_pair():
+    """A pair just below the gamma threshold but chain-adjacent and
+    semantically passable should be rescued. The blended score must
+    still clear min_gamma — the rescue doesn't lower the bar, it gives
+    chain-narrative arcs a shot at the same bar."""
+    # gamma = sum(min)/sum(max). [1.0, 1.0] vs [0.4, 0.4] → 0.8/2.0 = 0.4.
+    # blended = 0.7 * 0.4 + 0.3 * 0.5 (distance=1) = 0.28 + 0.15 = 0.43
+    a = Crystal(id="A", ts="", text="a", source="t",
+                mi_vector=[1.0, 1.0], resonance=[], keywords=[],
+                chain_seq=100)
+    b = Crystal(id="B", ts="", text="b", source="t",
+                mi_vector=[0.4, 0.4], resonance=[], keywords=[],
+                chain_seq=101)
+
+    fish = _fish_with_crystals([a, b])
+    # Threshold above gamma=0.4 but below blended=0.43 — only the
+    # rescue path can produce a coupling here.
+    fish._compute_couplings(fish.crystals, window=2, min_gamma=0.42)
+
+    assert a.couplings, "rescue should have coupled A to B"
+    assert any(cid == "B" for cid, _ in a.couplings)
+
+
+def test_phase2_staleness_blocks_rescue_when_semantic_below_floor():
+    """Two crystals chain-adjacent but semantically dissimilar (gamma
+    below SEMANTIC_FLOOR) must not couple. The staleness filter inside
+    coupling_strength zeroes the temporal term, so the blended score
+    falls back to SEMANTIC_WEIGHT * gamma — which is below the floor
+    by construction, well below any reasonable threshold."""
+    # gamma = 0/2 = 0.0, far below SEMANTIC_FLOOR (0.2)
+    a = Crystal(id="A", ts="", text="a", source="t",
+                mi_vector=[1.0, 0.0], resonance=[], keywords=[],
+                chain_seq=100)
+    b = Crystal(id="B", ts="", text="b", source="t",
+                mi_vector=[0.0, 1.0], resonance=[], keywords=[],
+                chain_seq=101)
+
+    fish = _fish_with_crystals([a, b])
+    fish._compute_couplings(fish.crystals, window=2, min_gamma=0.2)
+
+    assert not a.couplings, (
+        "staleness filter must block rescue when gamma < SEMANTIC_FLOOR"
+    )
+    assert not b.couplings
+
+
+def test_phase2_legacy_crystals_without_chain_seq_unchanged():
+    """The rescue block is gated on chain_seq being present on BOTH
+    crystals. Legacy data with no chain metadata must traverse the
+    same path as before Phase 2 — pair couples iff gamma >= min_gamma,
+    period. No accidental coupling, no accidental decoupling."""
+    a = Crystal(id="A", ts="", text="a", source="t",
+                mi_vector=[1.0, 1.0], resonance=[], keywords=[])
+    b = Crystal(id="B", ts="", text="b", source="t",
+                mi_vector=[0.4, 0.4], resonance=[], keywords=[])
+
+    fish = _fish_with_crystals([a, b])
+    fish._compute_couplings(fish.crystals, window=2, min_gamma=0.42)
+
+    assert not a.couplings, (
+        "legacy pair below gamma threshold must NOT couple — "
+        "rescue block must skip when chain_seq is None on either side"
+    )
+
+
+def test_phase2_one_sided_chain_seq_does_not_trigger_rescue():
+    """If only one crystal in the pair carries chain_seq, the pair
+    has no temporal proximity to measure. Rescue block must skip."""
+    a = Crystal(id="A", ts="", text="a", source="t",
+                mi_vector=[1.0, 1.0], resonance=[], keywords=[],
+                chain_seq=100)
+    b = Crystal(id="B", ts="", text="b", source="t",
+                mi_vector=[0.4, 0.4], resonance=[], keywords=[],
+                chain_seq=None)
+
+    fish = _fish_with_crystals([a, b])
+    fish._compute_couplings(fish.crystals, window=2, min_gamma=0.42)
+
+    assert not a.couplings
+
+
+def test_phase2_high_gamma_couples_via_primary_path_not_rescue():
+    """When gamma alone clears the threshold, the primary path
+    couples and the rescue path is never entered. Verifies temporal
+    didn't somehow shadow the legacy semantics for the easy case."""
+    # gamma=1.0, way above any reasonable threshold
+    a = Crystal(id="A", ts="", text="a", source="t",
+                mi_vector=[1.0, 1.0], resonance=[], keywords=[],
+                chain_seq=100)
+    b = Crystal(id="B", ts="", text="b", source="t",
+                mi_vector=[1.0, 1.0], resonance=[], keywords=[],
+                chain_seq=10000)  # chain-distant, temporal contribution tiny
+
+    fish = _fish_with_crystals([a, b])
+    fish._compute_couplings(fish.crystals, window=2, min_gamma=0.5)
+
+    assert a.couplings, "high-gamma pair must couple via primary path"
+    # Stored gamma should be the raw gamma, not the blended score
+    coupling_value = dict(a.couplings)["B"]
+    assert abs(coupling_value - 1.0) < 1e-3, (
+        f"primary-path coupling should record raw gamma, got {coupling_value}"
+    )

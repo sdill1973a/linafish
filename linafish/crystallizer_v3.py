@@ -1271,6 +1271,7 @@ class UniversalFish:
         coupled = 0
         chain_rescued = 0
         metabolic_rescued = 0
+        temporal_rescued = 0
         for i in range(len(crystals)):
             a = crystals[i]
             if not a.mi_vector:
@@ -1300,6 +1301,25 @@ class UniversalFish:
                             should_couple = True
                             metabolic_rescued += 1
 
+                # Phase 2 of chaincode-fish marriage (spec 2026-03-25):
+                # temporal rescue. Pairs that don't quite cross the gamma
+                # threshold but are chain-adjacent in the chaincode chain
+                # AND carry enough semantic signal (staleness gate at
+                # SEMANTIC_FLOOR) get a temporal proximity bonus. The
+                # blended score from coupling_strength must clear the
+                # same min_gamma threshold to actually couple — we don't
+                # lower the bar, we just give chain-adjacent narrative
+                # arcs a shot at clearing it.
+                #
+                # Backward compatible: pairs without chain_seq on both
+                # sides skip this block entirely. Legacy fish behavior is
+                # unchanged when no crystal carries chain metadata.
+                if not should_couple and a.chain_seq is not None and b.chain_seq is not None:
+                    cs_score = coupling_strength(a, b)
+                    if cs_score >= min_gamma:
+                        should_couple = True
+                        temporal_rescued += 1
+
                 if should_couple:
                     angle = coupling_angle(a.mi_vector, b.mi_vector)
                     wn = wrapping_number(angle)
@@ -1313,6 +1333,8 @@ class UniversalFish:
             msg += f" ({chain_rescued} rescued by chain similarity)"
         if metabolic_rescued:
             msg += f" ({metabolic_rescued} rescued by metabolic coupling)"
+        if temporal_rescued:
+            msg += f" ({temporal_rescued} rescued by temporal proximity)"
         _logging.getLogger(__name__).debug(msg)
 
     # --- Incremental: queue + re-eat ---
