@@ -1239,7 +1239,7 @@ class FishEngine:
         4. Re-freezes with adjusted parameters (new instruction level)
         5. Tracks R(n) delta (progress monitoring)
 
-        The re-eat cycle triggered when pending > 10% of corpus.
+        The re-eat cycle is triggered when pending > 10% of corpus.
         The assessment is not a gate or a separate step. It is the
         re-eat viewed through the measurement lens.
 
@@ -1263,8 +1263,11 @@ class FishEngine:
             return {"re_eat": False, "reason": "nothing_pending"}
 
         pending_pct = len(pending_texts) / max(self.fish.vectorizer.doc_count, 1) * 100
-        import logging as _log; _log.getLogger(__name__).debug(f"  Re-eating {len(pending_texts)} pending texts "
-              f"({pending_pct:.0f}% of corpus)...", file=sys.stderr)
+        import logging as _log
+        _log.getLogger(__name__).debug(
+            f"  Re-eating {len(pending_texts)} pending texts "
+            f"({pending_pct:.0f}% of corpus)..."
+        )
 
         # Snapshot formations BEFORE re-eat for survival tracking
         pre_formations = {f.name for f in self.formations}
