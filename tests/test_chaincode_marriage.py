@@ -269,6 +269,48 @@ def test_phase2_one_sided_chain_seq_does_not_trigger_rescue():
     assert not a.couplings
 
 
+def test_phase3_eat_accepts_form_encoded_body_with_chain_metadata():
+    """Phase 3 deploy compat. The pre-1.x feeders in
+    SovereignCore_Runtime/scripts (feed_the_whole_man, feed_our_words,
+    feed_noods_fish) post ``application/x-www-form-urlencoded`` data
+    with a ``name`` field instead of ``source``. linafish 1.x docs
+    say JSON, but breaking these feeders on the .67 upgrade is a
+    worse tradeoff than accepting both shapes. This test pins both
+    paths through to Engine.eat with chain metadata intact."""
+    from linafish.http_server import _parse_request_body
+
+    # JSON path with chain metadata
+    body = _parse_request_body(
+        "application/json",
+        b'{"text": "hello", "source": "test", "chain_id": "h1", "chain_seq": 42}',
+    )
+    assert body == {"text": "hello", "source": "test",
+                    "chain_id": "h1", "chain_seq": 42}
+
+    # Form-encoded path with chain metadata. The 'name' field is the
+    # pre-1.x synonym for 'source' that the legacy feeders use.
+    body = _parse_request_body(
+        "application/x-www-form-urlencoded",
+        b"text=hello&name=test&chain_id=h1&chain_seq=42",
+    )
+    assert body["text"] == "hello"
+    assert body["name"] == "test"
+    assert body["chain_id"] == "h1"
+    # Form values are strings; Phase 3 do_POST handles the int coercion.
+    assert body["chain_seq"] == "42"
+
+
+def test_phase3_form_garbage_returns_none_not_partial_dict():
+    """Defensive: garbage bodies must NOT mask as single-key form
+    payloads. Without the '=' gate, parse_qs would happily return
+    ``{'random garbage': ''}`` and the handler would proceed with a
+    bogus payload. The gate forces a real failure response."""
+    from linafish.http_server import _parse_request_body
+    assert _parse_request_body("", b"random garbage") is None
+    assert _parse_request_body("application/x-www-form-urlencoded",
+                                b"no equals here") is None
+
+
 def test_phase2_high_gamma_couples_via_primary_path_not_rescue():
     """When gamma alone clears the threshold, the primary path
     couples and the rescue path is never entered. Verifies temporal

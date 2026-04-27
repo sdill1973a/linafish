@@ -6,12 +6,15 @@ a URL can read the fish. Serves the same engine as the MCP server.
 
     GET  /pfc     — formations (the metacognitive overlay)
     GET  /health  — engine stats
-    POST /eat     — feed text (JSON body: {"text": "...", "source": "...",
-                    "chain_id": "...", "chain_seq": 123})
+    POST /eat     — feed text. Accepts JSON body or form-encoded data:
+                    {"text": "...", "source": "...",
+                     "chain_id": "...", "chain_seq": 123}
                     chain_id/chain_seq are optional — chaincode marriage spec
                     2026-03-25. When present, the crystal records its position
-                    in the chaincode chain for temporal coupling.
-    POST /taste   — cross-corpus match (JSON body: {"text": "...", "top": 5})
+                    in the chaincode chain for temporal coupling. The form-
+                    encoded path also accepts ``name`` as a synonym for
+                    ``source`` (legacy field — pre-1.x feeders use it).
+    POST /taste   — cross-corpus match (JSON body or form: {"text": "...", "top": 5})
     POST /match   — tight recall (JSON body: {"text": "...", "top": 3})
     GET  /fish    — raw fish.md contents
 
@@ -35,6 +38,61 @@ def _load_primer() -> str:
     if primer_path.exists():
         return primer_path.read_text(encoding="utf-8", errors="replace")
     return ""
+
+
+def _parse_request_body(content_type: str, raw: bytes):
+    """Parse a POST body as JSON or x-www-form-urlencoded.
+
+    Returns a dict on success, ``None`` on parse failure. Empty bodies
+    return ``{}``. The fish accepts both shapes because SovereignCore_
+    Runtime feeders predate the 1.x JSON contract — breaking them on
+    deploy is worse than accepting two encodings on the wire.
+
+    Explicit Content-Type is respected: ``application/json`` only tries
+    JSON, ``application/x-www-form-urlencoded`` only tries form. With
+    no/unknown Content-Type we try JSON first (1.x contract), then form
+    if-and-only-if it parses to a non-trivial dict (any key with no '='
+    in the raw bytes wouldn't have produced a dict from form-encoding,
+    so this gate keeps random garbage from looking like a single-key
+    form payload).
+    """
+    if not raw:
+        return {}
+
+    ctype = (content_type or "").split(";", 1)[0].strip().lower()
+
+    def _form_parse():
+        try:
+            from urllib.parse import parse_qs
+            text = raw.decode("utf-8", errors="replace")
+        except Exception:
+            return None
+        # Require at least one '=' before treating the body as form-
+        # encoded. parse_qs is otherwise happy to return {raw: ''} for
+        # any non-empty bytes, which would mask malformed payloads.
+        if "=" not in text:
+            return None
+        qs = parse_qs(text, keep_blank_values=True)
+        if not qs:
+            return None
+        return {k: (v[-1] if v else "") for k, v in qs.items()}
+
+    def _json_parse():
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    if ctype == "application/x-www-form-urlencoded":
+        return _form_parse()  # respect explicit Content-Type
+
+    if ctype == "application/json":
+        return _json_parse()  # respect explicit Content-Type
+
+    # No / unknown Content-Type: try JSON first (the 1.x contract),
+    # fall back to form. Returns None if both fail.
+    return _json_parse() or _form_parse()
 
 
 _PRIMER = ""  # loaded at server start
@@ -80,17 +138,30 @@ class FishHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             length = int(self.headers.get("Content-Length", 0))
-            body = json.loads(self.rfile.read(length)) if length else {}
-        except (json.JSONDecodeError, ValueError):
-            self._respond(400, "Invalid JSON")
+            raw = self.rfile.read(length) if length else b""
+        except (OSError, ValueError):
+            self._respond(400, "Failed to read request body")
+            return
+
+        # Accept JSON body or x-www-form-urlencoded. The pre-1.x feeders
+        # (feed_the_whole_man, feed_our_words, feed_noods_fish in
+        # SovereignCore_Runtime/scripts/) post form-encoded data with a
+        # 'name' field. linafish 1.x docs say JSON, but breaking the
+        # pre-1.x feeders the moment we deploy 1.x to .67 is a worse
+        # tradeoff than accepting both shapes here.
+        body = _parse_request_body(self.headers.get("Content-Type", ""), raw)
+        if body is None:
+            self._respond(400, "Could not parse request body as JSON or form")
             return
 
         if self.path == "/eat":
             text = body.get("text", "")
-            source = body.get("source", "session")
+            # 'source' is the canonical field; 'name' is the pre-1.x
+            # feeder synonym still in use across SovereignCore_Runtime.
+            source = body.get("source") or body.get("name") or "session"
             chain_id = body.get("chain_id")  # optional, chaincode marriage 2026-03-25
             chain_seq_raw = body.get("chain_seq")
-            chain_seq = int(chain_seq_raw) if chain_seq_raw is not None else None
+            chain_seq = int(chain_seq_raw) if chain_seq_raw not in (None, "") else None
             if not text:
                 self._respond(400, "Missing 'text' field")
                 return
