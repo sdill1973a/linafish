@@ -57,6 +57,35 @@ class Crystal:
     cognitive_vector: List[float] = field(default_factory=list)  # 8-dim QLP parse [KO,TE,SF,CR,IC,DE,EW,AI]
     chains: List[Tuple[str, ...]] = field(default_factory=list)  # thought chains e.g. [("IC","EW"), ("KO","CR")]
     modifiers: Dict[str, float] = field(default_factory=dict)    # ^depth +scope *focus ~flex !urgent
+    # Chaincode marriage. Backward compatible — None for crystals
+    # predating the marriage. When present, these let coupling_strength
+    # compute a temporal proximity bonus alongside semantic gamma.
+    #
+    # chain_id          — chaincode hash, traceback to the source chain
+    # chain_seq         — autoincrement position in the chain (ordinal
+    #                     proximity)
+    # chain_created_at  — ISO-8601 timestamp from chaincode.created_at.
+    #                     Per the 2026-04-26 morning revision notes:
+    #                     ordinal proximity captures "in the same
+    #                     conversation/burst" while time proximity
+    #                     captures "happened close in real time."
+    #                     They give different signals — a long debug
+    #                     session has ordinal closeness without time
+    #                     closeness; parallel sessions on different
+    #                     topics have time closeness without ordinal
+    #                     closeness.
+    # chain_prev_hash   — parent's chain hash (chains.prev_hash). Phase 5.
+    #                     If a.chain_id == b.chain_prev_hash, then a is
+    #                     b's direct parent in the chain — a strictly
+    #                     stronger signal than ordinal distance 1, which
+    #                     can include interleaved writes from unrelated
+    #                     sessions. Parent-child is the literal narrative
+    #                     link: this exact thought followed that exact
+    #                     thought.
+    chain_id: Optional[str] = None
+    chain_seq: Optional[int] = None
+    chain_created_at: Optional[str] = None
+    chain_prev_hash: Optional[str] = None
 
     def to_dict(self):
         return asdict(self)
@@ -621,6 +650,136 @@ def gamma(a: List[float], b: List[float]) -> float:
     return num / den if den > 0 else 0.0
 
 
+# ---------------------------------------------------------------------------
+# CHAINCODE MARRIAGE — coupling_strength with temporal proximity
+# ---------------------------------------------------------------------------
+# Spec: data/chaincode_fish_marriage_spec.md (2026-03-25, Captain approved).
+#
+# The v3 fish couples by semantic proximity (gamma). It has no sense of
+# time — two crystals from the same conversation couple the same as two
+# crystals from three months apart. The chaincode service has 168K+
+# entries with provenance and timestamps but no formation logic.
+#
+# coupling_strength gives the fish temporal coupling. When both crystals
+# carry chaincode position, distance in the chain contributes a temporal
+# bonus on top of semantic similarity. Narrative arcs become formations,
+# not just semantic clusters.
+#
+# Olorina's staleness filter: temporal proximity ONLY counts if there's
+# also semantic signal. Two identical sensor readings at T and T+1
+# would otherwise mega-couple by pure chain adjacency. The semantic
+# floor gates the temporal bonus.
+#
+# Backward compatible: crystals without chain_seq fall through to pure
+# gamma * SEMANTIC_WEIGHT. Pre-marriage crystals lose nothing.
+#
+# Phase 1 of the build (this commit) adds the function. _compute_couplings
+# stays unchanged. Phase 2 (separate, after sandbox tests pass) integrates
+# it into the live coupling pipeline.
+
+TEMPORAL_WEIGHT = 0.3
+SEMANTIC_WEIGHT = 0.7
+SEMANTIC_FLOOR = 0.2  # Olorina's staleness gate
+
+# Time-decay scale (seconds). Phase 4 — per 2026-04-26 morning revision
+# notes. Pairs within TIME_DECAY_SECONDS of each other get ~0.5 time
+# proximity; pairs an hour apart get ~0.016. The default 60s (one minute)
+# treats "burst" co-occurrence as the strong signal and longer gaps as
+# rapidly fading. Tunable; the A/B harness sweeps it.
+TIME_DECAY_SECONDS = 60.0
+
+
+def _parse_chain_ts(ts: Optional[str]) -> Optional[float]:
+    """Parse an ISO-8601 chaincode timestamp to a unix-epoch float.
+
+    Returns None on any parse failure — the caller falls back to
+    ordinal-only coupling without crashing. The chaincode service
+    writes ``datetime.now().isoformat()`` (no timezone in 0.x, with
+    timezone in some entries), and Python 3.11+ handles both via
+    ``datetime.fromisoformat``. We treat all timestamps as UTC for
+    distance arithmetic — close enough for time-decay purposes since
+    we only care about relative seconds.
+    """
+    if not ts:
+        return None
+    try:
+        from datetime import datetime
+        dt = datetime.fromisoformat(ts)
+        return dt.timestamp()
+    except (ValueError, TypeError):
+        return None
+
+
+def coupling_strength(a: 'Crystal', b: 'Crystal') -> float:
+    """Blended semantic + temporal coupling between two crystals.
+
+    Returns SEMANTIC_WEIGHT * gamma + TEMPORAL_WEIGHT * temporal_proximity,
+    with the temporal term zeroed unless gamma exceeds SEMANTIC_FLOOR
+    (the staleness filter — chain adjacency without semantic signal is
+    not coupling, it's just sequential noise).
+
+    Temporal proximity is the MAX of three signals when available:
+
+      chain_link        = 1.0 if a is b's direct parent in the chaincode
+                          chain (a.chain_id == b.chain_prev_hash) or
+                          vice versa; 0.0 otherwise. The literal "this
+                          thought followed that thought" relationship.
+      ordinal_proximity = 1 / (1 + |chain_seq_a - chain_seq_b|)
+      time_proximity    = TIME_DECAY_SECONDS / (TIME_DECAY_SECONDS + |t_a - t_b|)
+
+    Per the 2026-04-26 morning revision notes, the three signals
+    capture different shapes of "narrative adjacent":
+      - chain_link is the strictest — it's the direct chaincode-link,
+        ignores interleaved writes from unrelated sessions, and is
+        binary (you either are the parent or you aren't). Phase 5.
+      - chain_seq captures "in the same conversation/burst," tolerating
+        gaps from interleaved writes
+      - chain_created_at captures "happened close in real time"
+    A long debug session has ordinal closeness without time closeness;
+    parallel sessions on different topics have time closeness without
+    ordinal closeness; a direct chaincode parent-child has chain_link.
+    Taking the MAX means any signal counts.
+
+    Crystals without chain metadata get g_temporal = 0 and the function
+    reduces to SEMANTIC_WEIGHT * gamma. Backward compatible across the
+    entire matrix of which fields are present.
+
+    Spec: data/chaincode_fish_marriage_spec.md (2026-03-25) +
+    data/chaincode_fish_marriage_spec_REVISION_NOTES_2026-04-26.md.
+    """
+    g_semantic = gamma(a.mi_vector, b.mi_vector)
+
+    g_temporal = 0.0
+
+    # Phase 5: chain-link proximity — the literal parent-child
+    # relationship via chains.prev_hash. Strictly stronger than
+    # ordinal distance 1, which can include interleaved writes
+    # from unrelated sessions.
+    if (a.chain_id and b.chain_prev_hash and a.chain_id == b.chain_prev_hash) or \
+       (b.chain_id and a.chain_prev_hash and b.chain_id == a.chain_prev_hash):
+        g_temporal = max(g_temporal, 1.0)
+
+    # Ordinal proximity (chain_seq distance)
+    if a.chain_seq is not None and b.chain_seq is not None:
+        distance = abs(a.chain_seq - b.chain_seq)
+        if distance > 0:
+            g_temporal = max(g_temporal, 1.0 / (1.0 + distance))
+
+    # Time proximity (chain_created_at distance, in seconds)
+    t_a = _parse_chain_ts(a.chain_created_at)
+    t_b = _parse_chain_ts(b.chain_created_at)
+    if t_a is not None and t_b is not None:
+        seconds_distance = abs(t_a - t_b)
+        if seconds_distance > 0:
+            g_temporal = max(g_temporal,
+                             TIME_DECAY_SECONDS / (TIME_DECAY_SECONDS + seconds_distance))
+
+    if g_semantic < SEMANTIC_FLOOR:
+        g_temporal = 0.0
+
+    return SEMANTIC_WEIGHT * g_semantic + TEMPORAL_WEIGHT * g_temporal
+
+
 def wrapping_number(angle: float) -> int:
     """Estimate wrapping number from coupling angle.
 
@@ -651,12 +810,30 @@ def topological_ache(n_expected: int, n_measured: int) -> int:
 
 def crystallize(text: str, vectorizer: MIVectorizer,
                 source: str = "unknown", vocab: List[str] = None,
-                parser=None) -> Crystal:
+                parser=None,
+                chain_id: Optional[str] = None,
+                chain_seq: Optional[int] = None,
+                chain_created_at: Optional[str] = None,
+                chain_prev_hash: Optional[str] = None) -> Crystal:
     """Create a crystal from text using MI × ache vectorization + cognitive parse.
 
     This is the v3 replacement for v1's keyword-based crystallize().
     The parser (if provided) adds cognitive dimension vector, thought chains,
     and modifier scores. This is the grammar thinking, not just counting.
+
+    chain_id / chain_seq / chain_created_at (chaincode marriage):
+        Optional chaincode position. If supplied, the crystal records
+        where it lives in the chaincode chain so coupling_strength()
+        can compute temporal proximity. All default to None for
+        backward compatibility — pre-marriage crystals just have no
+        temporal coordinate.
+
+        chain_created_at (ISO-8601) is added per the 2026-04-26 morning
+        revision notes. It enables a true time-decay alongside the
+        ordinal chain_seq decay — a long-running conversation has
+        ordinal closeness without time closeness, and parallel
+        sessions on different topics have time closeness without
+        ordinal closeness. Both signals matter.
     """
     # Vectorize
     mi_vec = vectorizer.mi_ache_vector(text, vocab)
@@ -707,6 +884,10 @@ def crystallize(text: str, vectorizer: MIVectorizer,
         cognitive_vector=cognitive_vector,
         chains=chains,
         modifiers=modifiers,
+        chain_id=chain_id,
+        chain_seq=chain_seq,
+        chain_created_at=chain_created_at,
+        chain_prev_hash=chain_prev_hash,
     )
 
 
@@ -878,6 +1059,10 @@ class UniversalFish:
                             cognitive_vector=d.get('cognitive_vector', []) or [],
                             chains=[tuple(ch) for ch in (d.get('chains', []) or [])],
                             modifiers=d.get('modifiers', {}) or {},
+                            chain_id=d.get('chain_id'),
+                            chain_seq=d.get('chain_seq'),
+                            chain_created_at=d.get('chain_created_at'),
+                            chain_prev_hash=d.get('chain_prev_hash'),
                         )
                         disk_crystals.append(c)
                         loaded += 1
@@ -973,7 +1158,11 @@ class UniversalFish:
               f"{self.vectorizer.doc_count} docs. size={size} d={d}. "
               f"Vocab: {self.vocab[:10]}...", flush=True)
 
-    def crystallize_text(self, text: str, source: str = "unknown") -> Optional[Crystal]:
+    def crystallize_text(self, text: str, source: str = "unknown",
+                         chain_id: Optional[str] = None,
+                         chain_seq: Optional[int] = None,
+                         chain_created_at: Optional[str] = None,
+                         chain_prev_hash: Optional[str] = None) -> Optional[Crystal]:
         """Crystallize a single text against frozen statistics.
 
         If not frozen, queues to pending instead.
@@ -989,6 +1178,12 @@ class UniversalFish:
         the crystal with 8-pathway residues, metabolic chain, and ache
         distribution. The MI vector stays — co-occurrence is still how
         the fish learns vocabulary. The metabolism adds the cognitive layer.
+
+        chaincode marriage (spec 2026-03-25): chain_id / chain_seq
+        carry the chaincode position with the deposit. If queued to
+        pending (pre-freeze), the metadata is stored with the pending
+        record so it survives the re-eat. If crystallized immediately,
+        it's recorded on the Crystal directly.
         """
         if not text or len(text.strip()) < 10:
             return None
@@ -1007,7 +1202,16 @@ class UniversalFish:
 
         if not self.frozen:
             # Queue for next epoch
-            self.pending.append({'text': text, 'source': source})
+            pending_record = {'text': text, 'source': source}
+            if chain_id is not None:
+                pending_record['chain_id'] = chain_id
+            if chain_seq is not None:
+                pending_record['chain_seq'] = chain_seq
+            if chain_created_at is not None:
+                pending_record['chain_created_at'] = chain_created_at
+            if chain_prev_hash is not None:
+                pending_record['chain_prev_hash'] = chain_prev_hash
+            self.pending.append(pending_record)
             self._flush_pending()
             # Persistence committed — NOW it's safe to record the
             # hash so pre-freeze repeats are caught on subsequent
@@ -1018,7 +1222,10 @@ class UniversalFish:
             return None
 
         crystal = crystallize(text, self.vectorizer, source=source,
-                             vocab=self.vocab, parser=self.parser)
+                             vocab=self.vocab, parser=self.parser,
+                             chain_id=chain_id, chain_seq=chain_seq,
+                             chain_created_at=chain_created_at,
+                             chain_prev_hash=chain_prev_hash)
         crystal.resonance = crystal.mi_vector  # formation compat
 
         # v0.4: Metabolic digestion — enrich the crystal
@@ -1177,6 +1384,7 @@ class UniversalFish:
         coupled = 0
         chain_rescued = 0
         metabolic_rescued = 0
+        temporal_rescued = 0
         for i in range(len(crystals)):
             a = crystals[i]
             if not a.mi_vector:
@@ -1206,6 +1414,25 @@ class UniversalFish:
                             should_couple = True
                             metabolic_rescued += 1
 
+                # Phase 2 of chaincode-fish marriage (spec 2026-03-25):
+                # temporal rescue. Pairs that don't quite cross the gamma
+                # threshold but are chain-adjacent in the chaincode chain
+                # AND carry enough semantic signal (staleness gate at
+                # SEMANTIC_FLOOR) get a temporal proximity bonus. The
+                # blended score from coupling_strength must clear the
+                # same min_gamma threshold to actually couple — we don't
+                # lower the bar, we just give chain-adjacent narrative
+                # arcs a shot at clearing it.
+                #
+                # Backward compatible: pairs without chain_seq on both
+                # sides skip this block entirely. Legacy fish behavior is
+                # unchanged when no crystal carries chain metadata.
+                if not should_couple and a.chain_seq is not None and b.chain_seq is not None:
+                    cs_score = coupling_strength(a, b)
+                    if cs_score >= min_gamma:
+                        should_couple = True
+                        temporal_rescued += 1
+
                 if should_couple:
                     angle = coupling_angle(a.mi_vector, b.mi_vector)
                     wn = wrapping_number(angle)
@@ -1219,27 +1446,49 @@ class UniversalFish:
             msg += f" ({chain_rescued} rescued by chain similarity)"
         if metabolic_rescued:
             msg += f" ({metabolic_rescued} rescued by metabolic coupling)"
+        if temporal_rescued:
+            msg += f" ({temporal_rescued} rescued by temporal proximity)"
         _logging.getLogger(__name__).debug(msg)
 
     # --- Incremental: queue + re-eat ---
 
-    def ingest(self, text: str, source: str = "unknown") -> Optional[Crystal]:
+    def ingest(self, text: str, source: str = "unknown",
+               chain_id: Optional[str] = None,
+               chain_seq: Optional[int] = None,
+               chain_created_at: Optional[str] = None,
+               chain_prev_hash: Optional[str] = None) -> Optional[Crystal]:
         """The live API. Drop-in for v1 crystallize().
 
         If frozen: crystallize against current stats.
         Also queues the text for the next re-eat.
+
+        chaincode marriage: chain_id / chain_seq / chain_created_at
+        carry the chaincode position with the deposit. Persisted on the
+        crystal when frozen; persisted in the pending record otherwise.
         """
         if not text or len(text.strip()) < 10:
             return None
 
         # Always queue for next epoch's learning
-        self.pending.append({'text': text, 'source': source})
+        pending_record = {'text': text, 'source': source}
+        if chain_id is not None:
+            pending_record['chain_id'] = chain_id
+        if chain_seq is not None:
+            pending_record['chain_seq'] = chain_seq
+        if chain_created_at is not None:
+            pending_record['chain_created_at'] = chain_created_at
+        if chain_prev_hash is not None:
+            pending_record['chain_prev_hash'] = chain_prev_hash
+        self.pending.append(pending_record)
 
         # If frozen, also crystallize now
         crystal = None
         if self.frozen:
             crystal = crystallize(text, self.vectorizer, source=source,
-                                 vocab=self.vocab, parser=self.parser)
+                                 vocab=self.vocab, parser=self.parser,
+                                 chain_id=chain_id, chain_seq=chain_seq,
+                                 chain_created_at=chain_created_at,
+                                 chain_prev_hash=chain_prev_hash)
             crystal.resonance = crystal.mi_vector
             self.crystals.append(crystal)
             self._persist_crystal(crystal)

@@ -932,13 +932,24 @@ class FishEngine:
     # EAT — single document
     # -------------------------------------------------------------------
 
-    def eat(self, text: str, source: str = "session") -> dict:
+    def eat(self, text: str, source: str = "session",
+            chain_id: Optional[str] = None,
+            chain_seq: Optional[int] = None,
+            chain_created_at: Optional[str] = None,
+            chain_prev_hash: Optional[str] = None) -> dict:
         """Feed text to the fish. Two-phase: learn then crystallize.
 
         If this is the first eat and assessment is available, runs
         pre-assessment on the single text to set initial parameters.
         Single-text pre-assessment is coarse — eat_path with a batch
         gives the assessment much more to work with.
+
+        chaincode marriage (spec 2026-03-25): chain_id / chain_seq
+        carry the chaincode position with the deposit. The ingest
+        pipeline on .140 looks up chain position by content_hash from
+        the chaincode DB before calling this method, so each crystal
+        knows where it lives in the chain. Pure-fish callers can leave
+        these as None — backward compatible.
         """
         if not text or len(text.strip()) < 10:
             return {"crystals_added": 0, "total_crystals": len(self.fish.crystals)}
@@ -962,7 +973,11 @@ class FishEngine:
             self.fish.epoch += 1
 
         prev_count = len(self.fish.crystals)
-        crystal = self.fish.crystallize_text(text, source=source)
+        crystal = self.fish.crystallize_text(text, source=source,
+                                             chain_id=chain_id,
+                                             chain_seq=chain_seq,
+                                             chain_created_at=chain_created_at,
+                                             chain_prev_hash=chain_prev_hash)
         if not crystal:
             return {"crystals_added": 0, "total_crystals": len(self.fish.crystals)}
 
