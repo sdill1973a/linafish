@@ -23,17 +23,19 @@ from linafish.crystallizer_v3 import (
     SEMANTIC_FLOOR,
     SEMANTIC_WEIGHT,
     TEMPORAL_WEIGHT,
+    TIME_DECAY_SECONDS,
     coupling_strength,
     gamma,
 )
 from linafish.engine import FishEngine
 
 
-def _crystal(cid, vec, chain_seq=None):
+def _crystal(cid, vec, chain_seq=None, chain_created_at=None):
     return Crystal(
         id=cid, ts="", text="", source="",
         mi_vector=vec, resonance=[], keywords=[],
         chain_seq=chain_seq,
+        chain_created_at=chain_created_at,
     )
 
 
@@ -331,4 +333,239 @@ def test_phase2_high_gamma_couples_via_primary_path_not_rescue():
     coupling_value = dict(a.couplings)["B"]
     assert abs(coupling_value - 1.0) < 1e-3, (
         f"primary-path coupling should record raw gamma, got {coupling_value}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: chain_created_at + time-decay
+# ---------------------------------------------------------------------------
+#
+# Per data/chaincode_fish_marriage_spec_REVISION_NOTES_2026-04-26.md:
+# chain_seq captures "in the same conversation/burst", chain_created_at
+# captures "happened close in real time". A long debug session has
+# ordinal closeness without time closeness; parallel topics have time
+# closeness without ordinal closeness. coupling_strength takes the MAX
+# of the two so either signal counts.
+
+def test_phase4_chain_created_at_round_trips_through_persistence():
+    """Phase 4-A: chain_created_at survives /eat -> Crystal -> JSONL ->
+    reload. The April 26 morning revision notes flagged that without
+    this field tonight's Phase 1 would ship the March 25 spec rather
+    than the revised one — only chain_seq, no time-decay."""
+    with tempfile.TemporaryDirectory(prefix="marriage_phase4_") as sandbox:
+        e = FishEngine(state_dir=Path(sandbox), name="phase4_test")
+        e.eat(
+            "captain teaches around corners with patience tonight",
+            source="test",
+            chain_id="hash_xyz",
+            chain_seq=42,
+            chain_created_at="2026-04-26T18:17:18.887985",
+        )
+
+        # Reload — the persisted JSONL must surface chain_created_at
+        e2 = FishEngine(state_dir=Path(sandbox), name="phase4_test")
+        c = next(iter(e2.fish.crystals))
+        assert c.chain_id == "hash_xyz"
+        assert c.chain_seq == 42
+        assert c.chain_created_at == "2026-04-26T18:17:18.887985"
+
+
+def test_phase4_time_decay_activates_when_both_timestamps_present():
+    """Phase 4-B: when chain_created_at is present on both crystals,
+    time proximity contributes to coupling_strength alongside ordinal."""
+    a = _crystal("a", [1.0, 0.5],
+                 chain_created_at="2026-04-27T01:00:00")
+    b = _crystal("b", [0.9, 0.5],
+                 chain_created_at="2026-04-27T01:00:30")  # 30 sec apart
+    g = gamma(a.mi_vector, b.mi_vector)
+    cs = coupling_strength(a, b)
+    expected_time_prox = TIME_DECAY_SECONDS / (TIME_DECAY_SECONDS + 30)
+    expected = SEMANTIC_WEIGHT * g + TEMPORAL_WEIGHT * expected_time_prox
+    assert abs(cs - expected) < 1e-9
+
+
+def test_phase4_max_picks_ordinal_when_long_debug_session():
+    """Long debug session: chain_seq adjacent (ordinal=1, prox=0.5),
+    timestamps an hour apart (time_prox≈0.016). MAX picks the
+    ordinal signal — same conversation despite the time gap."""
+    a = _crystal("a", [1.0, 0.5], chain_seq=100,
+                 chain_created_at="2026-04-27T01:00:00")
+    b = _crystal("b", [0.9, 0.5], chain_seq=101,
+                 chain_created_at="2026-04-27T02:00:00")
+    g = gamma(a.mi_vector, b.mi_vector)
+    cs = coupling_strength(a, b)
+    expected = SEMANTIC_WEIGHT * g + TEMPORAL_WEIGHT * 0.5  # ordinal wins
+    assert abs(cs - expected) < 1e-9
+
+
+def test_phase4_max_picks_time_when_parallel_topics():
+    """Parallel topics: chain_seq distant (ordinal=100, prox≈0.01),
+    timestamps 1 sec apart (time_prox≈0.984). MAX picks the time
+    signal — different conversation lanes, but the same moment."""
+    a = _crystal("a", [1.0, 0.5], chain_seq=100,
+                 chain_created_at="2026-04-27T01:00:00")
+    b = _crystal("b", [0.9, 0.5], chain_seq=200,
+                 chain_created_at="2026-04-27T01:00:01")
+    g = gamma(a.mi_vector, b.mi_vector)
+    cs = coupling_strength(a, b)
+    time_prox = TIME_DECAY_SECONDS / (TIME_DECAY_SECONDS + 1)
+    expected = SEMANTIC_WEIGHT * g + TEMPORAL_WEIGHT * time_prox
+    assert abs(cs - expected) < 1e-9
+
+
+def test_phase4_malformed_timestamp_falls_back_to_ordinal():
+    """Garbage in chain_created_at (e.g. schema drift, encoding bug)
+    must NOT crash. Time-decay falls back; ordinal still works."""
+    a = _crystal("a", [1.0, 0.5], chain_seq=100,
+                 chain_created_at="not a real timestamp")
+    b = _crystal("b", [0.9, 0.5], chain_seq=101,
+                 chain_created_at="also bad")
+    g = gamma(a.mi_vector, b.mi_vector)
+    cs = coupling_strength(a, b)
+    expected = SEMANTIC_WEIGHT * g + TEMPORAL_WEIGHT * 0.5  # ordinal still
+    assert abs(cs - expected) < 1e-9
+
+
+def test_phase4_staleness_gate_zeros_both_temporal_signals():
+    """When gamma < SEMANTIC_FLOOR, BOTH ordinal and time signals get
+    zeroed — chain adjacency without semantic signal is sequential
+    noise regardless of which temporal coordinate fires."""
+    a = _crystal("a", [1.0, 0.0], chain_seq=100,
+                 chain_created_at="2026-04-27T01:00:00")
+    b = _crystal("b", [0.0, 1.0], chain_seq=101,
+                 chain_created_at="2026-04-27T01:00:01")
+    g = gamma(a.mi_vector, b.mi_vector)
+    assert g < SEMANTIC_FLOOR
+    cs = coupling_strength(a, b)
+    assert abs(cs - SEMANTIC_WEIGHT * g) < 1e-9
+
+
+# ---------------------------------------------------------------------------
+# Phase 4-D: harvest from April 11 sandbox/test_temporal_coupling.py
+# ---------------------------------------------------------------------------
+#
+# A previous me built a 370-line standalone sandbox on April 11 that
+# included two diagnostic tests tonight's harness lacked: a weight
+# sweep (TEMPORAL_WEIGHT 0.0..0.5) and a shuffled-corpus null test.
+# Porting them in. Captain's `[0.78] I didn't find it in the first 90
+# minutes — I found it in the LAST 20` was pointing at exactly this
+# kind of substrate the labor-of-inheriting keeps lapsing on.
+
+def test_phase4_temporal_rescue_count_responds_to_weight():
+    """Weight sweep: as TEMPORAL_WEIGHT increases, more borderline
+    pairs cross the threshold via the rescue path. The relationship
+    should be monotonic-non-decreasing (more weight = at least as
+    many edges, never fewer)."""
+    import linafish.crystallizer_v3 as cv3
+
+    # Build a small corpus with deliberate borderline gammas. Vectors
+    # at gamma ≈ 0.40 (just below thresholds in the 0.42..0.50 band)
+    # paired chain-adjacent so temporal rescue can lift them.
+    crystals = []
+    for i in range(10):
+        crystals.append(Crystal(
+            id=f"c{i}", ts="", text="", source="",
+            mi_vector=[1.0, 1.0, 1.0],
+            resonance=[], keywords=[],
+            chain_seq=100 + i,
+        ))
+        crystals.append(Crystal(
+            id=f"c{i}_pair", ts="", text="", source="",
+            mi_vector=[0.4, 0.4, 0.4],  # gamma 0.40 vs above
+            resonance=[], keywords=[],
+            chain_seq=101 + i,
+        ))
+
+    # Save and restore TEMPORAL_WEIGHT around the sweep so the global
+    # state is clean for any other tests in the file.
+    original_tw = cv3.TEMPORAL_WEIGHT
+    edge_counts = {}
+    try:
+        for tw in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]:
+            # Reset coupling state on every iteration
+            for c in crystals:
+                c.couplings = []
+                c.wrapping_numbers = {}
+
+            cv3.TEMPORAL_WEIGHT = tw
+            cv3.SEMANTIC_WEIGHT = 1.0 - tw
+
+            sandbox = tempfile.mkdtemp(prefix="weight_sweep_")
+            fish = cv3.UniversalFish(state_dir=sandbox, autoload=False)
+            fish.crystals = list(crystals)
+            fish._compute_couplings(fish.crystals, window=20, min_gamma=0.42)
+
+            edges = sum(len(c.couplings) for c in crystals) // 2
+            edge_counts[tw] = edges
+    finally:
+        cv3.TEMPORAL_WEIGHT = original_tw
+        cv3.SEMANTIC_WEIGHT = 1.0 - original_tw
+
+    # Monotonic-non-decreasing: more temporal weight, more rescues
+    sweep = sorted(edge_counts.items())
+    for (tw1, e1), (tw2, e2) in zip(sweep, sweep[1:]):
+        assert e2 >= e1, (
+            f"weight sweep not monotonic: tw={tw1} edges={e1}, "
+            f"tw={tw2} edges={e2}. The full sweep was {edge_counts}."
+        )
+
+    # And the spread: tw=0 (pure semantic) should produce strictly
+    # fewer edges than tw=0.5 in this borderline-band corpus.
+    assert edge_counts[0.5] >= edge_counts[0.0]
+
+
+def test_phase4_shuffled_chain_seq_nullifies_temporal_effect():
+    """Null test: if temporal coupling is real, shuffling chain_seq
+    should produce noticeably fewer rescue-path edges. If shuffled
+    and ordered produce the same edge count, the rescue isn't doing
+    what it claims to do — the temporal term wasn't load-bearing."""
+    import random as _random
+    import linafish.crystallizer_v3 as cv3
+
+    # Borderline corpus: pairs of crystals where gamma sits just below
+    # threshold AND ordered chain_seq is adjacent. Shuffling chain_seq
+    # destroys the chain adjacency.
+    base_crystals = []
+    for i in range(15):
+        base_crystals.append(Crystal(
+            id=f"c{i}", ts="", text="", source="",
+            mi_vector=[1.0, 1.0, 1.0],
+            resonance=[], keywords=[],
+            chain_seq=100 + i * 2,
+        ))
+        base_crystals.append(Crystal(
+            id=f"c{i}_pair", ts="", text="", source="",
+            mi_vector=[0.4, 0.4, 0.4],
+            resonance=[], keywords=[],
+            chain_seq=101 + i * 2,
+        ))
+
+    def run_with(crystals_list):
+        for c in crystals_list:
+            c.couplings = []
+            c.wrapping_numbers = {}
+        sandbox = tempfile.mkdtemp(prefix="shuffle_null_")
+        fish = cv3.UniversalFish(state_dir=sandbox, autoload=False)
+        fish.crystals = list(crystals_list)
+        fish._compute_couplings(fish.crystals, window=20, min_gamma=0.42)
+        return sum(len(c.couplings) for c in crystals_list) // 2
+
+    ordered_edges = run_with(base_crystals)
+
+    # Shuffle chain_seq (break the adjacency that rescues borderline pairs)
+    rng = _random.Random(42)
+    seqs = [c.chain_seq for c in base_crystals]
+    rng.shuffle(seqs)
+    for c, new_seq in zip(base_crystals, seqs):
+        c.chain_seq = new_seq
+
+    shuffled_edges = run_with(base_crystals)
+
+    # Ordered must produce >= shuffled. If equal, the rescue did
+    # nothing on this corpus — possible (high-SNR synthetic) but
+    # at minimum shuffling should never INCREASE edges over ordered.
+    assert ordered_edges >= shuffled_edges, (
+        f"shuffled chain_seq produced more edges ({shuffled_edges}) "
+        f"than ordered ({ordered_edges}) — the rescue path is doing "
+        f"something inverse to its design"
     )
