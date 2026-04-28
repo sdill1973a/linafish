@@ -290,7 +290,7 @@ class FusionResult:
         # The iron — final-level formations
         lines.append("  --- Iron (Irreducible Formations) ---")
         for f in sorted(self.irreducible_formations,
-                        key=lambda x: getattr(x, "compression_score", 0.0), reverse=True):
+                        key=lambda x: (getattr(x, "compression_score", 0.0), x.crystal_count, x.id), reverse=True):
             kw = ", ".join(f.keywords[:5]) if f.keywords else ""
             lines.append(f"  {f.name} ({f.crystal_count}c) [{kw}]")
         lines.append("")

@@ -46,6 +46,7 @@ from typing import Optional
 from datetime import datetime
 
 from .engine import FishEngine
+from ._dedup_helpers import normalize_for_dedup
 
 
 class RoomListener:
@@ -330,18 +331,29 @@ class RoomListener:
             if len(str(text)) < 30:
                 return
 
-            # Listener plate-dedup. Hash NORMALIZED first 500 chars so MQTT
-            # broadcasts that vary only by per-arrival timestamp prefix
-            # collapse to one bucket. Without normalization (the v1.1.7
-            # behavior) the prefix line "[2026-04-21T17:14:08.037Z
-            # anchor/conv/lab from=unknown]\n" varied per-message and every
-            # broadcast hashed uniquely, bypassing dedup. Empirical against
-            # me-fish 2026-04-28: 10,135 ALL MINDS announcements that
-            # produced 10,135 distinct raw hashes collapse to 23 distinct
-            # normalized hashes (440x compression). Engine-side
-            # `_content_hash` uses the same helper.
-            from ._dedup_helpers import normalize_for_dedup
-            normalized = normalize_for_dedup(str(text))[:500]
+            # Listener plate-dedup. The listener's stated intent (per
+            # `dedupe=True` on the FishEngine init at line 99 and the
+            # docstring "skip any already-crystallized content by text
+            # hash") is to rate-limit MQTT bridge near-duplicates.
+            # The pre-fix behavior `MD5(text[:500])` hashed raw text
+            # including the per-message timestamp prefix line
+            # "[2026-04-21T17:14:08.037Z anchor/conv/lab from=unknown]\n"
+            # which varied on every arrival, so byte-equivalence dedup
+            # bypassed completely. Empirical against me-fish 2026-04-28:
+            # 10,135 ALL MINDS broadcasts produced 10,135 distinct raw
+            # hashes that collapse to 23 normalized hashes (440x
+            # compression at the dedup layer).
+            #
+            # Truncation order: cap [:500] FIRST, normalize SECOND. This
+            # preserves the original cap semantics (don't hash huge
+            # payloads) while the normalization handles the timestamp-
+            # variant bypass. The leading "[timestamp source]\n" line
+            # is always within the first 500 chars in practice.
+            #
+            # The engine-side ``_content_hash`` is intentionally NOT
+            # normalized — that's a different layer with different
+            # opt-in semantics. See crystallizer_v3.py:_content_hash.
+            normalized = normalize_for_dedup(str(text)[:500])
             content_hash = hashlib.md5(
                 normalized.encode("utf-8", errors="replace")
             ).hexdigest()

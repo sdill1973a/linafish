@@ -678,13 +678,18 @@ def formations_to_codebook_text(
     # equivalence). Empirical 4133x ratio between top substantive and ALL
     # MINDS dominator on me-fish 2026-04-28. crystal_count still rendered
     # in the formation header so repetition-as-signal stays visible.
-    # Fall back to crystal_count for older Formation objects that
-    # predate the v7 enrichment (e.g. loaded from cached fish.md).
+    #
+    # Tuple key gives deterministic tie-break across runs:
+    #   1. compression_score (primary — float; getattr default 0.0
+    #      handles legacy Formation objects without v7 fields)
+    #   2. crystal_count (secondary — bigger formation wins on tie)
+    #   3. id (tertiary — stable integer for absolute determinism)
     def _rank_key(formation):
-        score = getattr(formation, 'compression_score', 0.0) or 0.0
-        if score > 0:
-            return score
-        return formation.crystal_count
+        return (
+            getattr(formation, 'compression_score', 0.0) or 0.0,
+            formation.crystal_count,
+            formation.id,
+        )
     for f in sorted(formations, key=_rank_key, reverse=True):
         cats = dict(zip(CATEGORIES, f.centroid))
         top_cats = sorted(cats.items(), key=lambda x: -x[1])[:3]
