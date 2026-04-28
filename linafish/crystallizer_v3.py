@@ -181,11 +181,22 @@ def _content_hash(text: str) -> str:
     """Return a stable short hash of ``text`` for content-dedup lookups.
 
     md5 is used for speed, not cryptographic strength — this is a
-    dedup key, not a security boundary. Text is encoded utf-8 before
-    hashing so the hash is stable across platforms.
+    dedup key, not a security boundary. Text is normalized (timestamp
+    prefix stripped, lowercased, whitespace collapsed) via
+    ``normalize_for_dedup`` BEFORE encoding so dedup is robust to
+    MQTT-bridged messages that vary only by per-arrival timestamp
+    prefix. Text is then encoded utf-8 so the hash is stable across
+    platforms.
+
+    Empirical: against the me-fish corpus (2026-04-28), 10,135 ALL
+    MINDS announcement crystals that produced 10,135 distinct raw
+    hashes collapse to 23 distinct normalized hashes — the 23 are
+    legitimately distinct TRIAGE rephrasings, the actual ALL MINDS
+    body normalizes to one bucket of 10,113.
     """
     import hashlib
-    return hashlib.md5(text.encode("utf-8")).hexdigest()
+    from ._dedup_helpers import normalize_for_dedup
+    return hashlib.md5(normalize_for_dedup(text).encode("utf-8")).hexdigest()
 
 
 def _release_lock(lock_path: str) -> None:

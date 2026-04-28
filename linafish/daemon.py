@@ -330,8 +330,20 @@ class RoomListener:
             if len(str(text)) < 30:
                 return
 
+            # Listener plate-dedup. Hash NORMALIZED first 500 chars so MQTT
+            # broadcasts that vary only by per-arrival timestamp prefix
+            # collapse to one bucket. Without normalization (the v1.1.7
+            # behavior) the prefix line "[2026-04-21T17:14:08.037Z
+            # anchor/conv/lab from=unknown]\n" varied per-message and every
+            # broadcast hashed uniquely, bypassing dedup. Empirical against
+            # me-fish 2026-04-28: 10,135 ALL MINDS announcements that
+            # produced 10,135 distinct raw hashes collapse to 23 distinct
+            # normalized hashes (440x compression). Engine-side
+            # `_content_hash` uses the same helper.
+            from ._dedup_helpers import normalize_for_dedup
+            normalized = normalize_for_dedup(str(text))[:500]
             content_hash = hashlib.md5(
-                str(text)[:500].encode("utf-8", errors="replace")
+                normalized.encode("utf-8", errors="replace")
             ).hexdigest()
             if content_hash in self.content_hashes:
                 return
