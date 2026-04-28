@@ -49,6 +49,24 @@ from .engine import FishEngine
 from ._dedup_helpers import normalize_for_dedup
 
 
+def _listener_content_hash(text: str) -> str:
+    """Compute the listener plate-dedup hash for a given text.
+
+    Truncates to first 500 chars, then normalizes (strips
+    `[timestamp source]\\n` prefix line, lowercases, collapses
+    whitespace), then MD5-hashes. This is the canonical listener-
+    side dedup key — exposed so tests can assert behavior without
+    reimplementing the logic.
+
+    Used by ``RoomListener._on_message`` for inbound MQTT message
+    rate-limiting. NOT a storage-layer dedup; see ``_dedup_helpers``
+    docstring for the layered-architecture rationale.
+    """
+    return hashlib.md5(
+        normalize_for_dedup(str(text)[:500]).encode("utf-8", errors="replace")
+    ).hexdigest()
+
+
 class RoomListener:
     """Listen to the federation room on MQTT. Crystallize every exchange.
 
@@ -335,28 +353,15 @@ class RoomListener:
             # `dedupe=True` on the FishEngine init at line 99 and the
             # docstring "skip any already-crystallized content by text
             # hash") is to rate-limit MQTT bridge near-duplicates.
-            # The pre-fix behavior `MD5(text[:500])` hashed raw text
-            # including the per-message timestamp prefix line
-            # "[2026-04-21T17:14:08.037Z anchor/conv/lab from=unknown]\n"
-            # which varied on every arrival, so byte-equivalence dedup
-            # bypassed completely. Empirical against me-fish 2026-04-28:
-            # 10,135 ALL MINDS broadcasts produced 10,135 distinct raw
-            # hashes that collapse to 23 normalized hashes (440x
-            # compression at the dedup layer).
-            #
-            # Truncation order: cap [:500] FIRST, normalize SECOND. This
-            # preserves the original cap semantics (don't hash huge
-            # payloads) while the normalization handles the timestamp-
-            # variant bypass. The leading "[timestamp source]\n" line
-            # is always within the first 500 chars in practice.
-            #
-            # The engine-side ``_content_hash`` is intentionally NOT
-            # normalized — that's a different layer with different
-            # opt-in semantics. See crystallizer_v3.py:_content_hash.
-            normalized = normalize_for_dedup(str(text)[:500])
-            content_hash = hashlib.md5(
-                normalized.encode("utf-8", errors="replace")
-            ).hexdigest()
+            # Pre-fix behavior hashed raw text including the per-message
+            # timestamp prefix; broadcasts hashed uniquely and bypassed
+            # dedup. Empirical against me-fish 2026-04-28: 10,135 ALL
+            # MINDS broadcasts → 23 normalized hashes (440x compression).
+            # Engine-side ``_content_hash`` stays byte-exact; that's a
+            # different layer with different opt-in semantics. See
+            # ``_listener_content_hash`` (above) for the canonical
+            # implementation; tests share it to avoid drift.
+            content_hash = _listener_content_hash(text)
             if content_hash in self.content_hashes:
                 return
             self.content_hashes.add(content_hash)

@@ -169,17 +169,52 @@ class TestEngineListenerDivergence(unittest.TestCase):
         self.assertEqual(_content_hash(a), _content_hash(a))
 
     def test_listener_normalizes(self):
-        # Listener-style hash mirrors daemon.py:333 logic.
-        import hashlib
-        def listener_hash(t):
-            return hashlib.md5(
-                normalize_for_dedup(str(t)[:500]).encode("utf-8", errors="replace")
-            ).hexdigest()
+        # GPT-5.5 round 5 caught: tests reimplementing the listener
+        # hash logic risk drifting from daemon. Use the canonical
+        # _listener_content_hash helper exported from daemon.py so
+        # any change to the listener dedup key shows up in tests.
+        from linafish.daemon import _listener_content_hash
         a = "[2026-04-21T17:14:08.037Z anchor/conv/lab from=unknown]\nSAME BODY"
         b = "[2026-04-22T03:14:09.111Z anchor/conv/lab from=unknown]\nSAME BODY"
         # Listener MUST collapse timestamp variants — that's its
         # docstring-declared rate-limit intent.
-        self.assertEqual(listener_hash(a), listener_hash(b))
+        self.assertEqual(
+            _listener_content_hash(a), _listener_content_hash(b)
+        )
+
+
+class TestStorageLayerImportGuard(unittest.TestCase):
+    """GPT-5.5 round 6 explicitly asked: a regression test ensuring
+    ``crystallizer_v3.py`` never imports ``_dedup_helpers``. The engine
+    layer must remain byte-exact at the storage boundary; importing
+    the normalization helper there would mean someone is about to
+    re-couple the layers and re-violate VALVE OPEN at the storage
+    layer.
+
+    Static check on the file source — fails loudly if a future
+    maintainer adds the import.
+    """
+
+    def test_crystallizer_does_not_import_dedup_helpers(self):
+        import linafish.crystallizer_v3
+        source = open(
+            linafish.crystallizer_v3.__file__, encoding='utf-8'
+        ).read()
+        self.assertNotIn(
+            'from ._dedup_helpers',
+            source,
+            "crystallizer_v3.py must NOT import from _dedup_helpers. "
+            "Engine _content_hash must stay byte-exact (VALVE OPEN at "
+            "storage layer). If you need normalized-equivalence at the "
+            "engine, make a separate explicitly-named function — do not "
+            "re-couple this helper. See TestEngineListenerDivergence."
+        )
+        self.assertNotIn(
+            'normalize_for_dedup',
+            source,
+            "crystallizer_v3.py must NOT call normalize_for_dedup. "
+            "Same rationale as above.",
+        )
 
 
 class TestColdStartRanking(unittest.TestCase):
