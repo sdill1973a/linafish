@@ -994,7 +994,7 @@ def _build_portrait_prompt(formations, total_docs: int, crystal_map: dict = None
         formation_section = f"\nTheir {len(formations)} formations (recurring cognitive habits):\n"
         formation_section += chr(10).join(
             f"  {f.name} ({f.crystal_count} crystals)"
-            for f in sorted(formations, key=lambda x: (-getattr(x, "compression_score", 0.0), -x.crystal_count, x.id))[:5]
+            for f in sorted(formations, key=lambda x: (getattr(x, "compression_score", 0.0), x.crystal_count, x.id), reverse=True)[:5]
         )
     else:
         formation_section = (
