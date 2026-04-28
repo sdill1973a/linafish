@@ -10,11 +10,11 @@ LiNafish CLI
   linafish demo <path>          — eat + taste + test in one command
 """
 
-from .formations import formation_rank_key
-
 import sys
 import json
 import argparse
+
+from .formations import formation_rank_key
 from datetime import datetime
 from pathlib import Path
 

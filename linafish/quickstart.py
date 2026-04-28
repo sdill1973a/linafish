@@ -12,13 +12,14 @@ Named for Caroline Marie Dill (2001-2023).
 She saw deeply and loved fiercely.
 """
 
-from .formations import formation_rank_key
 import os
 import socket
 import sys
 from collections import Counter
 from pathlib import Path
 from typing import Optional, List, Dict
+
+from .formations import formation_rank_key
 
 
 # ---------------------------------------------------------------------------

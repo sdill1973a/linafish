@@ -127,11 +127,10 @@ def formation_rank_key(formation):
         via ``or 0.0`` so ``sorted`` doesn't crash on
         ``None < float`` comparison
 
-    Used at all 11 surface ranking call sites. Do NOT inline a tuple
-    key — keeping a single helper means a future formula change
-    happens in one place. (The 11 sites still inline for performance
-    in the lambda hot path; this helper is the canonical reference
-    and is used by ``formations_to_codebook_text``.)
+    Used at all 11 surface ranking call sites (post-v7.1 round-4 fold —
+    they now call ``formation_rank_key`` directly rather than inlining
+    a tuple, so a None ``compression_score`` is handled uniformly).
+    Future formula changes happen in this one helper.
     """
     score = getattr(formation, 'compression_score', 0.0) or 0.0
     return (score, formation.crystal_count, formation.id)

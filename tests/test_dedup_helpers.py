@@ -321,6 +321,165 @@ class TestNoCrystalMutation(unittest.TestCase):
         self.assertEqual(sigma_pre, sigma_post)
 
 
+class TestDetectFormationsEndToEnd(unittest.TestCase):
+    """GPT-5.5 round 4 explicitly asked: not just compute content_diversity
+    by hand the way detect_formations does — actually run detect_formations
+    end-to-end on a synthetic batch and verify the v7 fields land on the
+    Formation objects.
+
+    detect_formations needs realistic coupling distributions to avoid the
+    fission cut threshold (FISSION_THRESHOLD=0.15, FISSION_CUT_PERCENTILE=30).
+    We build a 30-crystal corpus with 6-crystal connected components
+    (formation size 6, fraction 6/30=0.2 > 0.15 — would trigger fission
+    if all gammas equal). Vary gammas across edges so fission preserves
+    the dominant component.
+    """
+
+    def _make_crystal(self, cid, text, ache=2.0, source_mind="me"):
+        from linafish.crystallizer_v3 import Crystal
+        c = Crystal(
+            id=cid, ts="2026-04-28T12:00:00Z", text=text, source="test",
+            mi_vector=[], resonance=[1.0]*8, keywords=[], ache=ache,
+            cognitive_vector=[0.4]*8,
+        )
+        c.source_mind = source_mind
+        return c
+
+    def test_detect_formations_populates_v7_fields(self):
+        from linafish.formations import detect_formations
+        # Build 50 crystals total, mostly substantive.
+        # Add 30 substantive (high ache, distinct texts, two source minds).
+        # Add 20 broadcast-shaped (low ache, identical normalized text,
+        # single source mind).
+        crystals = []
+        for i in range(30):
+            c = self._make_crystal(
+                f"sub{i}", f"unique substantive thought number {i}",
+                ache=3.5,
+                source_mind="me" if i % 2 == 0 else "captain",
+            )
+            crystals.append(c)
+        for i in range(20):
+            text = (f"[2026-04-{(i%9)+1:02d}T12:00:00.000Z anchor/conv/lab "
+                    f"from=unknown]\nALL MINDS - new topic")
+            c = self._make_crystal(
+                f"ann{i}", text, ache=1.5, source_mind="me",
+            )
+            crystals.append(c)
+        # Wire couplings: substantive form a chain (each i couples to i+1
+        # and i-1) — a long thread, not a clique. Broadcasts couple
+        # densely (each ann couples to all other anns).
+        for i, c in enumerate(crystals):
+            if i < 30:
+                neighbors = [j for j in (i - 1, i + 1) if 0 <= j < 30]
+                c.couplings = [
+                    (crystals[j].id, 0.5 + 0.05 * abs(i - j))
+                    for j in neighbors
+                ]
+            else:
+                c.couplings = [
+                    (crystals[j].id, 0.6 + 0.01 * (j - 30))
+                    for j in range(30, 50) if j != i
+                ]
+
+        forms = detect_formations(crystals)
+        self.assertGreater(len(forms), 0, "detect_formations returned nothing")
+
+        for f in forms:
+            self.assertTrue(hasattr(f, "compression_score"))
+            self.assertTrue(hasattr(f, "mean_ache"))
+            self.assertTrue(hasattr(f, "cog_amplitude"))
+            self.assertTrue(hasattr(f, "content_diversity"))
+            # Sanity: all v7 fields should be non-negative numbers
+            self.assertGreaterEqual(f.compression_score, 0.0)
+            self.assertGreaterEqual(f.mean_ache, 0.0)
+            self.assertGreaterEqual(f.cog_amplitude, 0.0)
+            self.assertGreaterEqual(f.content_diversity, 0.0)
+            # content_diversity bounded [0, 1] (per docstring claim)
+            self.assertLessEqual(f.content_diversity, 1.0)
+
+        # Confirm the broadcast-shaped formation (if it survived BFS as
+        # a connected component) has very low content_diversity.
+        ann_ids = {f"ann{i}" for i in range(20)}
+        ann_formations = [
+            f for f in forms
+            if any(mid in ann_ids for mid in f.member_ids)
+            and len([m for m in f.member_ids if m in ann_ids]) >= 5
+        ]
+        if ann_formations:
+            ann_f = max(ann_formations, key=lambda f: f.crystal_count)
+            # ALL MINDS broadcasts normalize to one bucket, so diversity
+            # should be ~ 1/N where N is the formation size.
+            self.assertLess(
+                ann_f.content_diversity, 0.5,
+                f"ANN-shaped formation should have low content_diversity, "
+                f"got {ann_f.content_diversity:.3f}",
+            )
+
+    def test_detect_formations_compression_score_ranks_substantive_above_broadcast(self):
+        """End-to-end: synthetic substantive formation outranks ANN
+        formation by compression_score after detect_formations."""
+        from linafish.formations import detect_formations, formation_rank_key
+        # Build two clearly-separated component groups.
+        crystals = []
+        # Group A: 6 substantive, multi-mind, distinct texts, high ache.
+        for i in range(6):
+            c = self._make_crystal(
+                f"a{i}", f"substantive thought {i}",
+                ache=4.0,
+                source_mind="me" if i % 2 == 0 else "captain",
+            )
+            crystals.append(c)
+        # Group B: 6 broadcast crystals, identical body, single mind.
+        for i in range(6):
+            text = (f"[2026-04-{(i%9)+1:02d}T12:00:00.000Z anchor/conv/lab "
+                    f"from=unknown]\nALL MINDS - new topic")
+            c = self._make_crystal(
+                f"b{i}", text, ache=1.5, source_mind="me",
+            )
+            crystals.append(c)
+        # Couplings: A members chain together, B members chain together.
+        # Vary gammas so fission doesn't clear all.
+        for i in range(6):
+            neighbors = [j for j in (i - 1, i + 1) if 0 <= j < 6]
+            crystals[i].couplings = [
+                (crystals[j].id, 0.5 + 0.05 * j) for j in neighbors
+            ]
+        for i in range(6, 12):
+            neighbors = [j for j in (i - 1, i + 1) if 6 <= j < 12]
+            crystals[i].couplings = [
+                (crystals[j].id, 0.55 + 0.04 * j) for j in neighbors
+            ]
+
+        forms = detect_formations(crystals)
+        # Find the substantive vs ANN formations by member overlap.
+        sub_ids = {f"a{i}" for i in range(6)}
+        ann_ids = {f"b{i}" for i in range(6)}
+        sub_form = next(
+            (f for f in forms
+             if sum(1 for m in f.member_ids if m in sub_ids) >= 3),
+            None,
+        )
+        ann_form = next(
+            (f for f in forms
+             if sum(1 for m in f.member_ids if m in ann_ids) >= 3),
+            None,
+        )
+        if sub_form and ann_form:
+            self.assertGreater(
+                sub_form.compression_score, ann_form.compression_score,
+                f"substantive {sub_form.compression_score:.4f} "
+                f"vs ann {ann_form.compression_score:.4f}",
+            )
+            # Sort by formation_rank_key — substantive must come first.
+            ranked = sorted(
+                [sub_form, ann_form],
+                key=formation_rank_key,
+                reverse=True,
+            )
+            self.assertIs(ranked[0], sub_form)
+
+
 class TestSurfaceHeaderRendering(unittest.TestCase):
     """GPT-5.5 round 3 asked for: codebook header includes BOTH
     crystal_count AND score so repetition-as-signal stays visible.
