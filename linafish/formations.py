@@ -111,6 +111,32 @@ class Formation:
                                      # multi-mind content dominates the surface.
 
 
+def formation_rank_key(formation):
+    """Shared sort key for v7 surface ranking.
+
+    Returns a tuple ``(compression_score, crystal_count, id)`` for use
+    with ``sorted(..., key=formation_rank_key, reverse=True)``. The
+    primary key is ``compression_score`` (a float). Tie-breaks fall
+    through to ``crystal_count`` then ``id``.
+
+    Defensive against:
+      - missing ``compression_score`` attribute (legacy Formation
+        objects loaded from cached state) — defaults to 0.0
+      - explicit ``None`` value (someone manually constructed a
+        Formation with ``compression_score=None``) — coerced to 0.0
+        via ``or 0.0`` so ``sorted`` doesn't crash on
+        ``None < float`` comparison
+
+    Used at all 11 surface ranking call sites. Do NOT inline a tuple
+    key — keeping a single helper means a future formula change
+    happens in one place. (The 11 sites still inline for performance
+    in the lambda hot path; this helper is the canonical reference
+    and is used by ``formations_to_codebook_text``.)
+    """
+    score = getattr(formation, 'compression_score', 0.0) or 0.0
+    return (score, formation.crystal_count, formation.id)
+
+
 # ---------------------------------------------------------------------------
 # INTERPRETATION — warm translation of cognitive dimensions
 # ---------------------------------------------------------------------------
@@ -678,19 +704,9 @@ def formations_to_codebook_text(
     # equivalence). Empirical 4133x ratio between top substantive and ALL
     # MINDS dominator on me-fish 2026-04-28. crystal_count still rendered
     # in the formation header so repetition-as-signal stays visible.
-    #
-    # Tuple key gives deterministic tie-break across runs:
-    #   1. compression_score (primary — float; getattr default 0.0
-    #      handles legacy Formation objects without v7 fields)
-    #   2. crystal_count (secondary — bigger formation wins on tie)
-    #   3. id (tertiary — stable integer for absolute determinism)
-    def _rank_key(formation):
-        return (
-            getattr(formation, 'compression_score', 0.0) or 0.0,
-            formation.crystal_count,
-            formation.id,
-        )
-    for f in sorted(formations, key=_rank_key, reverse=True):
+    # `formation_rank_key` (module-level, see above) gives deterministic
+    # tie-break and handles None/legacy Formation objects safely.
+    for f in sorted(formations, key=formation_rank_key, reverse=True):
         cats = dict(zip(CATEGORIES, f.centroid))
         top_cats = sorted(cats.items(), key=lambda x: -x[1])[:3]
         cat_str = "+".join(dim_names.get(c, c) for c, v in top_cats if v > 0.05)

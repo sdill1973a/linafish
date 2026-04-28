@@ -21,19 +21,27 @@ raw hashes collapse to 23 normalized hashes (compression ratio ~440×).
 The 23 buckets correctly preserve the legitimately-different TRIAGE
 rephrasings as separate entries.
 
-**Used ONLY by the listener (``daemon.py``).** The engine ``_content_hash``
-in ``crystallizer_v3.py`` is intentionally byte-exact and does NOT import
-this helper. Engine-side dedupe is opt-in via ``dedupe=True`` and means
-"caller promised the same byte-equivalent text won't be ingested twice."
-Normalizing at the engine layer would expand what counts as duplicate
-to include timestamp variants, which is a STORAGE-policy change beyond
-what the engine's ``dedupe=True`` declared. The listener has its own
-layer with its own stated intent — that's the right place for the
-normalization fix.
+**Allowed callers** (non-storage layers only):
+  - ``daemon.py`` listener plate-dedup — rate-limits MQTT bridge near-duplicates.
+  - ``formations.py`` ``content_diversity`` computation — surface-ranking
+    signal: ``unique_normalized_hashes / crystal_count``. NOT a storage
+    operation; never modifies a crystal.
 
-If future code needs to add an engine-side normalized-equivalence
-operation, do it as a separate, explicitly-named function — don't
-re-couple this helper to ``_content_hash``.
+**FORBIDDEN caller**: the engine ``_content_hash`` in ``crystallizer_v3.py``.
+That function is intentionally byte-exact and does NOT import this helper.
+Engine-side dedupe is opt-in via ``dedupe=True`` and means "caller promised
+the same byte-equivalent text won't be ingested twice." Normalizing at the
+engine layer would expand what counts as duplicate to include timestamp
+variants — a STORAGE-policy change beyond what ``dedupe=True`` declared.
+``tests/test_dedup_helpers.py::TestEngineListenerDivergence`` asserts this
+divergence as a regression guard. **Do not re-couple this helper to
+``_content_hash``.** If future code needs an engine-side normalized-
+equivalence operation, build a separate, explicitly-named function.
+
+**IMPORTANT**: do NOT add ``re.MULTILINE`` to the ``_TIMESTAMP_PREFIX``
+compile flag. The ``^`` anchor MUST match string-start only — adding
+MULTILINE would strip prefixes mid-body, eating user-quoted content
+that happens to look like a timestamp line.
 """
 from __future__ import annotations
 
