@@ -191,11 +191,12 @@ def _content_hash(text: str) -> str:
     include timestamp-variant duplicates — that's a STORAGE-policy
     change beyond what dedupe=True declared. The listener has its
     own plate-dedup that DOES normalize (see daemon.py
-    ``_on_message``) because the listener's stated intent is to
-    rate-limit MQTT bridge near-duplicates; that's the right layer
-    for the normalization fix. The engine layer stays byte-exact.
+    ``_listener_content_hash``) because the listener's stated intent
+    is to rate-limit MQTT bridge near-duplicates; that's the right
+    layer for the normalization fix. The engine layer stays
+    byte-exact. ``tests/test_dedup_helpers.py::TestStorageLayerImportGuard``
+    asserts this divergence as a regression guard.
     """
-    import hashlib
     return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 
