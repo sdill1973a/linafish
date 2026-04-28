@@ -398,34 +398,44 @@ class TestDetectFormationsEndToEnd(unittest.TestCase):
             # content_diversity bounded [0, 1] (per docstring claim)
             self.assertLessEqual(f.content_diversity, 1.0)
 
-        # Confirm the broadcast-shaped formation (if it survived BFS as
-        # a connected component) has very low content_diversity.
+        # Confirm the broadcast-shaped formation has very low
+        # content_diversity. Fail loudly if BFS didn't surface it
+        # (would mean the test scaffold is broken, not v7).
         ann_ids = {f"ann{i}" for i in range(20)}
         ann_formations = [
             f for f in forms
             if any(mid in ann_ids for mid in f.member_ids)
             and len([m for m in f.member_ids if m in ann_ids]) >= 5
         ]
-        if ann_formations:
-            ann_f = max(ann_formations, key=lambda f: f.crystal_count)
-            # ALL MINDS broadcasts normalize to one bucket, so diversity
-            # should be ~ 1/N where N is the formation size.
-            self.assertLess(
-                ann_f.content_diversity, 0.5,
-                f"ANN-shaped formation should have low content_diversity, "
-                f"got {ann_f.content_diversity:.3f}",
-            )
+        self.assertGreater(
+            len(ann_formations), 0,
+            "ANN-shape formation not detected — test scaffold broken",
+        )
+        ann_f = max(ann_formations, key=lambda f: f.crystal_count)
+        # ALL MINDS broadcasts normalize to one bucket, so diversity
+        # should be ~ 1/N where N is the formation size.
+        self.assertLess(
+            ann_f.content_diversity, 0.5,
+            f"ANN-shaped formation should have low content_diversity, "
+            f"got {ann_f.content_diversity:.3f}",
+        )
 
     def test_detect_formations_compression_score_ranks_substantive_above_broadcast(self):
         """End-to-end: synthetic substantive formation outranks ANN
-        formation by compression_score after detect_formations."""
+        formation by compression_score after detect_formations.
+
+        Fixture uses cliques (each crystal couples to all others in
+        its group) with VARIED gammas so the fission cut at p30
+        trims weakest edges but leaves the formation connected. A
+        thin chain wouldn't survive fission on small corpora; a
+        clique with varied gammas does.
+        """
         from linafish.formations import detect_formations, formation_rank_key
-        # Build two clearly-separated component groups.
         crystals = []
         # Group A: 6 substantive, multi-mind, distinct texts, high ache.
         for i in range(6):
             c = self._make_crystal(
-                f"a{i}", f"substantive thought {i}",
+                f"a{i}", f"substantive thought number {i} with content",
                 ache=4.0,
                 source_mind="me" if i % 2 == 0 else "captain",
             )
@@ -438,17 +448,19 @@ class TestDetectFormationsEndToEnd(unittest.TestCase):
                 f"b{i}", text, ache=1.5, source_mind="me",
             )
             crystals.append(c)
-        # Couplings: A members chain together, B members chain together.
-        # Vary gammas so fission doesn't clear all.
+
+        # Group A clique: each couples to all 5 others, with gammas
+        # varying so fission cuts the weakest but keeps connectivity.
         for i in range(6):
-            neighbors = [j for j in (i - 1, i + 1) if 0 <= j < 6]
             crystals[i].couplings = [
-                (crystals[j].id, 0.5 + 0.05 * j) for j in neighbors
+                (crystals[j].id, 0.55 + 0.03 * abs(i - j))
+                for j in range(6) if j != i
             ]
+        # Group B clique: same shape, different gamma range for variety.
         for i in range(6, 12):
-            neighbors = [j for j in (i - 1, i + 1) if 6 <= j < 12]
             crystals[i].couplings = [
-                (crystals[j].id, 0.55 + 0.04 * j) for j in neighbors
+                (crystals[j].id, 0.6 + 0.02 * abs(i - j))
+                for j in range(6, 12) if j != i
             ]
 
         forms = detect_formations(crystals)
@@ -465,19 +477,27 @@ class TestDetectFormationsEndToEnd(unittest.TestCase):
              if sum(1 for m in f.member_ids if m in ann_ids) >= 3),
             None,
         )
-        if sub_form and ann_form:
-            self.assertGreater(
-                sub_form.compression_score, ann_form.compression_score,
-                f"substantive {sub_form.compression_score:.4f} "
-                f"vs ann {ann_form.compression_score:.4f}",
-            )
-            # Sort by formation_rank_key — substantive must come first.
-            ranked = sorted(
-                [sub_form, ann_form],
-                key=formation_rank_key,
-                reverse=True,
-            )
-            self.assertIs(ranked[0], sub_form)
+        # Fail LOUDLY if detection didn't produce both formations —
+        # GPT-5.5 round 5 caught the prior `if both: assert ...` shape
+        # which would silently pass on detection failure.
+        self.assertIsNotNone(
+            sub_form, "substantive formation not detected — test invalid"
+        )
+        self.assertIsNotNone(
+            ann_form, "ann formation not detected — test invalid"
+        )
+        self.assertGreater(
+            sub_form.compression_score, ann_form.compression_score,
+            f"substantive {sub_form.compression_score:.4f} "
+            f"vs ann {ann_form.compression_score:.4f}",
+        )
+        # Sort by formation_rank_key — substantive must come first.
+        ranked = sorted(
+            [sub_form, ann_form],
+            key=formation_rank_key,
+            reverse=True,
+        )
+        self.assertIs(ranked[0], sub_form)
 
 
 class TestSurfaceHeaderRendering(unittest.TestCase):
