@@ -10,6 +10,8 @@ LiNafish CLI
   linafish demo <path>          — eat + taste + test in one command
 """
 
+from .formations import formation_rank_key
+
 import sys
 import json
 import argparse
@@ -667,7 +669,7 @@ def cmd_whisper(args):
     from .formations import interpret_formation
     import random
 
-    formations = sorted(engine.formations, key=lambda f: (getattr(f, "compression_score", 0.0), f.crystal_count, f.id), reverse=True)
+    formations = sorted(engine.formations, key=formation_rank_key, reverse=True)
 
     # Pick something interesting — not the biggest (obvious) but the second or third
     if len(formations) >= 3:
@@ -739,7 +741,7 @@ def cmd_check(args):
     # Show top patterns with interpretations — no jargon
     if formations > 0:
         from .formations import interpret_formation
-        top = sorted(engine.formations, key=lambda f: (getattr(f, "compression_score", 0.0), f.crystal_count, f.id), reverse=True)[:3]
+        top = sorted(engine.formations, key=formation_rank_key, reverse=True)[:3]
         print("  Your strongest patterns:")
         print()
         for f in top:
