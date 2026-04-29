@@ -1233,6 +1233,122 @@ class UniversalFish:
             msg += f" ({metabolic_rescued} rescued by metabolic coupling)"
         _logging.getLogger(__name__).debug(msg)
 
+    def _couple_appended_crystals(self, crystals: List[Crystal],
+                                   start_idx: int, window: int = 20,
+                                   min_gamma: float = None):
+        """Compute couplings for crystals appended at indices [start_idx:].
+
+        The full-corpus pass in ``_compute_couplings`` walks every crystal
+        and pairs it with the next ``window`` neighbors, costing
+        O(N × window). When N is 387K, that's production-fatal at ~60s
+        per call.
+
+        This incremental path costs O((N - start_idx) × window) and does
+        NOT touch ``crystals[:start_idx].couplings`` — preserving every
+        edge already established. Each new crystal at index ``j`` looks
+        BACKWARD at indices ``[max(0, j - window + 1), j - 1]`` and pairs
+        only there. A pair (i, j) where j is new and i is in that backward
+        window is mathematically identical to the same pair under the
+        forward sliding-window pass — so coverage is exact, not heuristic.
+
+        Falls back to: NOT supported when ``subtract_centroid`` is needed
+        (caller must run the full path in that case — centroid subtraction
+        mutates every crystal's ``mi_vector`` and can't compose
+        incrementally without re-doing the whole corpus). NOT supported
+        when ``crystals[:start_idx]`` contains uncoupled crystals (caller
+        must detect "mixed state" and fall back).
+
+        Added 2026-04-29 §RECOUPLE.IN.PLACE — fixes the eat() perf cliff
+        introduced by the 04-08 "recouple all when uncoupled crystals
+        exist" patch (commit 97a4859), which was correct but bought
+        correctness at the cost of O(N × W) per single eat.
+        """
+        n = len(crystals)
+        if start_idx >= n:
+            return
+
+        try:
+            from .parser import chain_similarity
+            has_chain_sim = True
+        except ImportError:
+            has_chain_sim = False
+
+        has_metabolic = self._has_metabolism
+        if has_metabolic:
+            from .metabolism import metabolic_coupling
+
+        # Adaptive gamma — sample across ALL crystals (existing + new).
+        # Threshold tracks the corpus's actual coupling distribution,
+        # consistent with what the full pass would compute.
+        if min_gamma is None:
+            import random
+            sample_gammas = []
+            sample_pairs = min(500, len(crystals) * 3)
+            for _ in range(sample_pairs):
+                i = random.randint(0, len(crystals) - 1)
+                j = random.randint(0, len(crystals) - 1)
+                if i == j or not crystals[i].mi_vector or not crystals[j].mi_vector:
+                    continue
+                g = gamma(crystals[i].mi_vector, crystals[j].mi_vector)
+                sample_gammas.append(g)
+            if sample_gammas:
+                sample_gammas.sort()
+                p75 = sample_gammas[int(len(sample_gammas) * 0.75)]
+                min_gamma = max(BASIN_COS, p75)
+            else:
+                min_gamma = BASIN_COS
+
+        import logging as _logging
+        coupled = 0
+        chain_rescued = 0
+        metabolic_rescued = 0
+        for j in range(start_idx, n):
+            b = crystals[j]
+            if not b.mi_vector:
+                continue
+            i_start = max(0, j - window + 1)
+            for i in range(i_start, j):
+                a = crystals[i]
+                if not a.mi_vector:
+                    continue
+                g = gamma(a.mi_vector, b.mi_vector)
+                should_couple = g >= min_gamma
+
+                if not should_couple and has_chain_sim and a.chains and b.chains:
+                    if g >= min_gamma * 0.8:
+                        cs = chain_similarity(a.chains, b.chains)
+                        if cs >= 0.4:
+                            should_couple = True
+                            chain_rescued += 1
+
+                if not should_couple and has_metabolic:
+                    a_meta = getattr(a, '_metabolic', None)
+                    b_meta = getattr(b, '_metabolic', None)
+                    if a_meta and b_meta:
+                        mc = metabolic_coupling(a_meta, b_meta)
+                        if mc >= 0.4:
+                            should_couple = True
+                            metabolic_rescued += 1
+
+                if should_couple:
+                    angle = coupling_angle(a.mi_vector, b.mi_vector)
+                    wn = wrapping_number(angle)
+                    a.couplings.append((b.id, round(g, 4)))
+                    b.couplings.append((a.id, round(g, 4)))
+                    a.wrapping_numbers[b.id] = wn
+                    b.wrapping_numbers[a.id] = wn
+                    coupled += 1
+
+        msg = (
+            f"appended {n - start_idx} crystals: {coupled} new coupling edges "
+            f"(window={window}, gamma>={min_gamma:.3f})"
+        )
+        if chain_rescued:
+            msg += f" ({chain_rescued} chain-rescued)"
+        if metabolic_rescued:
+            msg += f" ({metabolic_rescued} metabolic-rescued)"
+        _logging.getLogger(__name__).debug(msg)
+
     # --- Incremental: queue + re-eat ---
 
     def ingest(self, text: str, source: str = "unknown") -> Optional[Crystal]:

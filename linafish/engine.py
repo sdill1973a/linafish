@@ -695,21 +695,91 @@ class FishEngine:
             if not c.resonance and c.mi_vector:
                 c.resonance = c.mi_vector
 
-        # Use v1 formation detection on v3 crystals (same coupling math)
-        # Recouple if ANY crystals lack edges — the all-or-nothing gate
-        # was a bug: incremental eat() left new crystals uncoupled because
-        # the first 2 crystals having edges made has_couplings=True.
-        # Fixed 2026-04-08: recouple all when uncoupled crystals exist.
-        uncoupled = [c for c in crystals if not c.couplings]
-        if uncoupled:
+        # Use v1 formation detection on v3 crystals (same coupling math).
+        #
+        # History: the original gate was "if first crystal has couplings,
+        # skip" — incremental eat() left new crystals uncoupled because
+        # crystals[0]'s couplings made has_couplings=True. Fixed 2026-04-08
+        # (commit 97a4859) by switching to "recouple all when ANY
+        # uncoupled crystal exists." Correct, but bought correctness at
+        # O(N × window) per single eat — production-fatal at 387K crystals
+        # (~60s per eat, caught 2026-04-29 during .67 v7 cut-over rollback).
+        #
+        # 2026-04-29 §RECOUPLE.IN.PLACE — incremental path for the common
+        # case. The eat / eat_many / eat_path paths all APPEND new crystals
+        # to the end of the list; nothing in the public API mutates
+        # existing couplings or shuffles crystal order. So the typical
+        # uncoupled-crystals state is a contiguous suffix at the end —
+        # detect that pattern and couple ONLY the new tail, preserving
+        # every edge already established. Cost drops from O(N × W) to
+        # O((N - prev) × W) per eat; for single-doc eat that's O(W).
+        #
+        # Detection: find the start of the contiguous-uncoupled SUFFIX by
+        # scanning backward from the end. Crystals interior to the corpus
+        # may legitimately have empty couplings (didn't meet the gamma
+        # threshold against any of their window neighbors — "lonely" but
+        # not pending). Those interior empties are NOT new — they were
+        # processed by an earlier full pass and decided not to couple.
+        # Don't let them trigger a full clear+recouple.
+        #
+        # Fall back to full clear+recouple when:
+        #   - All crystals are uncoupled (initial freeze, batch load)
+        #   - subtract_centroid is on (mutates all mi_vectors; can't
+        #     compose incrementally without re-running the full pass)
+        suffix_start = len(crystals)
+        for i in range(len(crystals) - 1, -1, -1):
+            if crystals[i].couplings:
+                suffix_start = i + 1
+                break
+        else:
+            # Loop completed without finding any coupled crystal —
+            # every crystal is uncoupled (initial freeze or batch load).
+            suffix_start = 0
+
+        if suffix_start >= len(crystals):
+            # Every crystal already has couplings — nothing to do.
+            pass
+        elif suffix_start == 0 or self.subtract_centroid:
+            # Full recouple — initial freeze, fully-empty, or centroid mode.
             for c in crystals:
                 c.couplings = []
-            self.fish._compute_couplings(crystals, min_gamma=self.min_gamma,
-                                        subtract_centroid=self.subtract_centroid)
+            self.fish._compute_couplings(
+                crystals,
+                min_gamma=self.min_gamma,
+                subtract_centroid=self.subtract_centroid,
+            )
+        else:
+            # Incremental: couple only crystals[suffix_start:] against
+            # their backward sliding-window neighbors. Leaves all other
+            # couplings (including interior "lonely" empties) untouched.
+            self.fish._couple_appended_crystals(
+                crystals, suffix_start,
+                min_gamma=self.min_gamma,
+            )
+
+        # detect_formations / hierarchical_merge invoke _fission, which
+        # mutates c.couplings in-place to cut weak edges (the algorithm
+        # uses BFS over the modified adjacency to split oversized
+        # formations). On master that destruction was hidden because
+        # every eat ran a full clear+recouple immediately before
+        # detect_formations, so fission's cuts were re-derivable each
+        # cycle and never accumulated.
+        #
+        # Under §RECOUPLE.IN.PLACE most eats DON'T re-derive existing
+        # couplings — fission's cuts would persist into the corpus and
+        # accumulate across eats, degrading the coupling graph over
+        # time. Snapshot couplings before formation detection and
+        # restore after, keeping fission strictly ephemeral as it was
+        # in master's behavior. This preserves the formation algorithm
+        # exactly while keeping the corpus's edge graph stable.
+        couplings_snapshot = [list(c.couplings) for c in crystals]
 
         self.formations = detect_formations(crystals)
         if len(self.formations) > 60:
             self.formations = hierarchical_merge(self.formations, target=50)
+
+        for c, snap in zip(crystals, couplings_snapshot):
+            c.couplings = snap
 
         # Level 4 learning loop: formations teach the metabolic engine what
         # each cognitive dimension looks like in this corpus. Before this,
