@@ -195,6 +195,145 @@ class Formation:
                                      # normalized-hash collapse) compresses to ~0; substantive
                                      # multi-mind content dominates the surface.
 
+    # ---------- §RECOUPLE.IN.PLACE — addressed-formations bookkeeping ----------
+    # These fields support the addressed-formations path (FishEngine
+    # constructed with addressed_formations=True). They maintain the
+    # running aggregates incrementally so update_with() is O(1) per
+    # crystal — no global re-scan needed.
+    #
+    # Default-empty containers mean Formation objects produced by the
+    # legacy detect_formations path don't carry any extra state. The
+    # addressed path uses Formation.update_with() to fold each new
+    # crystal in; the resulting aggregates match what detect_formations
+    # would compute over the same member set, within floating-point
+    # tolerance.
+    _ache_count: int = 0
+    _seen_hashes: set = field(default_factory=set)
+    _best_coupling_sum: float = 0.0  # tracks representative_text via "highest coupling sum so far"
+    _keyword_counter: Counter = field(default_factory=Counter)
+    _chain_counter: Counter = field(default_factory=Counter)
+    _mind_set: set = field(default_factory=set)
+    _self_ref_count: int = 0
+
+    def update_with(self, crystal: "Crystal") -> None:
+        """Fold a single crystal into running aggregates. Constant time.
+
+        Mirrors the post-loop math in detect_formations() but applies it
+        incrementally. After N calls of update_with(), the Formation's
+        aggregate fields (cognitive_centroid, mean_ache, cog_amplitude,
+        content_diversity, compression_score, etc.) match what
+        detect_formations would compute on the same N-member set, modulo
+        float-precision drift from the running-mean update vs. batch sum.
+
+        This is the §RECOUPLE.IN.PLACE addressed-formations engine — the
+        function that makes filing-into-formation O(1) per crystal at
+        any corpus size, replacing the O(N+E) BFS that detect_formations
+        runs to discover membership.
+
+        Args:
+            crystal: a v3 Crystal whose grammar (cognitive_vector, ache,
+                keywords, chains, source_mind, self_referential, text)
+                feeds the formation's running aggregates.
+        """
+        n = self.crystal_count   # before this insert; incremented at the end
+
+        # Welford-style running mean for cognitive_centroid. Each dim
+        # updates to (old_mean * n + new_value) / (n + 1). On the first
+        # crystal (n == 0), this collapses to just the new vector.
+        cv = list(crystal.cognitive_vector or [])
+        if cv and len(cv) >= 8:
+            if not self.cognitive_centroid or len(self.cognitive_centroid) < 8:
+                self.cognitive_centroid = [0.0] * 8
+            for i in range(8):
+                self.cognitive_centroid[i] = (
+                    (self.cognitive_centroid[i] * n) + cv[i]
+                ) / (n + 1)
+
+        # Same shape for the resonance centroid (legacy 8-dim average).
+        res = list(getattr(crystal, 'resonance', None) or [])
+        if res and len(res) >= 8:
+            if not self.centroid or len(self.centroid) < 8:
+                self.centroid = [0.0] * 8
+            for i in range(8):
+                self.centroid[i] = (
+                    (self.centroid[i] * n) + res[i]
+                ) / (n + 1)
+
+        # mean_ache — only positive-ache crystals contribute, mirroring
+        # the detect_formations behavior where positive_aches filters
+        # the population first.
+        ache = crystal.ache or 0.0
+        if ache > 0:
+            self._ache_count += 1
+            self.mean_ache = (
+                (self.mean_ache * (self._ache_count - 1)) + ache
+            ) / self._ache_count
+
+        # cog_amplitude — L2 norm of the cognitive_centroid. Recomputed
+        # each call (O(8), trivial).
+        if self.cognitive_centroid:
+            self.cog_amplitude = math.sqrt(
+                sum(v * v for v in self.cognitive_centroid)
+            )
+
+        # content_diversity — unique normalized hashes / crystal_count.
+        # The set grows unbounded; for 387K-corpus formations the
+        # memory cost is ~6MB (one hash per crystal). Acceptable for v1;
+        # the gardener pass can prune to a reservoir later if needed.
+        if crystal.text:
+            self._seen_hashes.add(normalize_for_dedup(crystal.text))
+        if (n + 1) > 0:
+            self.content_diversity = len(self._seen_hashes) / (n + 1)
+
+        # compression_score — recomputes from the four factors.
+        self.compression_score = (
+            self.mean_ache * self.cog_amplitude
+            * self.trust_weight * self.content_diversity
+        )
+
+        # Keywords + chains — bounded by language vocabulary, not N.
+        for kw in (crystal.keywords or []):
+            self._keyword_counter[kw] += 1
+        # Top 5 surfaced into the user-facing list, alphabetical tie-break
+        # for shuffle-invariant naming (matches detect_formations:354-357).
+        kw_sorted = sorted(self._keyword_counter.most_common(),
+                           key=lambda x: (-x[1], x[0]))
+        self.keywords = [kw for kw, _ in kw_sorted[:5]]
+
+        for chain in (crystal.chains or []):
+            if isinstance(chain, (list, tuple)):
+                self._chain_counter[">".join(chain)] += 1
+            else:
+                self._chain_counter[str(chain)] += 1
+        self.top_chains = [c for c, _ in self._chain_counter.most_common(5)]
+
+        # source_minds + trust_weight — derive from accumulated mind set
+        mind = getattr(crystal, 'source_mind', None)
+        if mind:
+            self._mind_set.add(mind)
+        self.source_minds = sorted(self._mind_set)
+        n_minds = len(self._mind_set) if self._mind_set else 1
+        self.trust_weight = min(0.5 * n_minds, 1.5)
+
+        # self_referential_pct — running count
+        if getattr(crystal, 'self_referential', False):
+            self._self_ref_count += 1
+        if (n + 1) > 0:
+            self.self_referential_pct = round(
+                self._self_ref_count / (n + 1), 2
+            )
+
+        # representative_text — keep the highest coupling-sum text seen.
+        coupling_sum = sum(g for _, g in (crystal.couplings or []))
+        if coupling_sum >= self._best_coupling_sum or not self.representative_text:
+            self._best_coupling_sum = coupling_sum
+            self.representative_text = crystal.text or self.representative_text
+
+        # crystal_count is the LAST step so that running-mean math above
+        # used the pre-insert count consistently. The caller is expected
+        # to have appended crystal.id to member_ids at the same time.
+        self.crystal_count = n + 1
+
 
 def formation_rank_key(formation):
     """Shared sort key for v7 surface ranking.

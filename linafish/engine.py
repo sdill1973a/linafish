@@ -107,7 +107,8 @@ class FishEngine:
                  seed_grammar: bool = True, min_gamma: float = None,
                  subtract_centroid: bool = False,
                  git_autocommit: bool = True,
-                 dedupe: bool = False):
+                 dedupe: bool = False,
+                 addressed_formations: bool = False):
         self.name = name
         self.state_dir = state_dir or Path.home() / ".linafish"
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -164,6 +165,18 @@ class FishEngine:
 
         self.formations: List[Formation] = []
         self.docs_ingested = 0
+
+        # §RECOUPLE.IN.PLACE — addressed-formations path (commit 2 of 5).
+        # When addressed_formations=True, eat() files each new crystal
+        # into self.formation_index by its grammar address rather than
+        # waiting for detect_formations to discover membership via BFS.
+        # rebuild_formations short-circuits to a no-op in this mode
+        # because formations are maintained incrementally on every eat.
+        # The flag default is False — existing callers keep the legacy
+        # behavior unchanged. Subsequent commits flip the default once
+        # migration tooling and the gardener pass land.
+        self.addressed_formations = addressed_formations
+        self.formation_index: Dict[str, Formation] = {}
 
         # ---------------------------------------------------------------
         # ASSESSMENT STATE — the RTI data layer
@@ -695,6 +708,48 @@ class FishEngine:
             if not c.resonance and c.mi_vector:
                 c.resonance = c.mi_vector
 
+        # §RECOUPLE.IN.PLACE addressed-formations path: when the engine
+        # was constructed with addressed_formations=True, formations are
+        # maintained incrementally via _file_into_formation() on every
+        # eat(). rebuild_formations becomes a no-op except as a snapshot
+        # publication step — copy the index values into self.formations
+        # so anything reading FishEngine.formations sees the same data.
+        # Crystal couplings still need attention for the new tail (the
+        # PR #18 incremental coupling work below); this short-circuit
+        # only skips the detect_formations BFS.
+        if self.addressed_formations:
+            # Couplings are still maintained — same suffix-detection logic
+            # as the legacy path, just without the detect_formations call.
+            suffix_start = len(crystals)
+            for i in range(len(crystals) - 1, -1, -1):
+                if crystals[i].couplings:
+                    suffix_start = i + 1
+                    break
+            else:
+                suffix_start = 0
+            if suffix_start >= len(crystals):
+                pass
+            elif suffix_start == 0 or self.subtract_centroid:
+                for c in crystals:
+                    c.couplings = []
+                self.fish._compute_couplings(
+                    crystals,
+                    min_gamma=self.min_gamma,
+                    subtract_centroid=self.subtract_centroid,
+                )
+            else:
+                self.fish._couple_appended_crystals(
+                    crystals, suffix_start,
+                    min_gamma=self.min_gamma,
+                )
+            # Publish the in-memory index as the formations list. This
+            # is O(F) where F is the number of active formations
+            # (typically 50-150), not O(N) over the whole corpus.
+            self.formations = list(self.formation_index.values())
+            if self.fish._has_metabolism and self.formations:
+                self.fish.metabolic_engine.teach_from_formations(self.formations)
+            return
+
         # Use v1 formation detection on v3 crystals (same coupling math).
         #
         # History: the original gate was "if first crystal has couplings,
@@ -790,6 +845,53 @@ class FishEngine:
 
     # Backward-compat alias — extension code may call the private name.
     _rebuild_formations = rebuild_formations
+
+    def _file_into_formation(self, crystal: Crystal) -> None:
+        """File a freshly-crystallized crystal into its formation by grammar.
+
+        The §RECOUPLE.IN.PLACE addressed-formations entry point. Called
+        from eat() / eat_many() / eat_path() AFTER crystallize_text has
+        produced the crystal and BEFORE any rebuild_formations call.
+        Constant time per crystal regardless of corpus size.
+
+        Looks up (or creates) the Formation at ``crystal``'s grammar
+        address — the top-3 cognitive-dimension address from
+        ``formation_address(crystal.cognitive_vector, crystal.resonance,
+        crystal.keywords)``. The crystal's formation field is set, the
+        member_ids list grows, and Formation.update_with() folds the
+        crystal's signals into the running aggregates.
+
+        No-op when ``self.addressed_formations`` is False — the legacy
+        path discovers formation membership later via detect_formations.
+        """
+        if not self.addressed_formations:
+            return
+
+        from .formations import formation_address
+
+        address = formation_address(
+            cognitive_vector=getattr(crystal, 'cognitive_vector', None),
+            resonance=getattr(crystal, 'resonance', None),
+            keywords=getattr(crystal, 'keywords', None),
+        )
+        crystal.formation = address
+
+        formation = self.formation_index.get(address)
+        if formation is None:
+            formation = Formation(
+                id=len(self.formation_index),
+                name=address,
+                keywords=[],
+                member_ids=[],
+                centroid=[0.0] * 8,
+                representative_text="",
+                crystal_count=0,
+                cognitive_centroid=[0.0] * 8,
+            )
+            self.formation_index[address] = formation
+
+        formation.member_ids.append(crystal.id)
+        formation.update_with(crystal)
 
     def _save_state(self, commit: Optional[bool] = None):
         """Save state as fish.md — formations on top, crystal JSON at bottom.
@@ -1039,6 +1141,12 @@ class FishEngine:
         self.docs_ingested += 1
         self._last_source = source
         self._last_new_crystals = len(self.fish.crystals) - prev_count
+        # §RECOUPLE.IN.PLACE addressed-formations: file the new crystal
+        # into its formation by grammar address. No-op when the flag is
+        # off — legacy callers still get the discovered-formations path
+        # via rebuild_formations below. With the flag on, formations are
+        # maintained incrementally and rebuild_formations short-circuits.
+        self._file_into_formation(crystal)
         self.rebuild_formations()
         self._save_state()
 
@@ -1167,6 +1275,10 @@ class FishEngine:
                     self._last_source = source
                     self._last_new_crystals = len(self.fish.crystals) - before
                     crystals_added += self._last_new_crystals
+                    # §RECOUPLE.IN.PLACE — file each new crystal into its
+                    # formation by grammar address. Per-crystal O(1); no-op
+                    # when addressed_formations=False.
+                    self._file_into_formation(crystal)
 
                 # Optional periodic checkpoint (no commit even if autocommit=True)
                 if save_every and (i + 1) % save_every == 0:
