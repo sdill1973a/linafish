@@ -76,6 +76,91 @@ def _cognitive_name(cognitive_centroid: List[float],
             f"_via_{DIM_LABELS[top[2][0]].upper()}")
 
 
+def formation_address(
+    cognitive_vector: Optional[List[float]] = None,
+    resonance: Optional[List[float]] = None,
+    keywords: Optional[List[str]] = None,
+) -> str:
+    """Map a crystal's grammar signature to a deterministic formation address.
+
+    The §RECOUPLE.IN.PLACE follow-up: instead of discovering formation
+    membership by walking the coupling graph in detect_formations(), each
+    crystal's grammar (cognitive_vector + chains + modifiers) IS the address.
+    Insertion is filing, not searching. The 8 cognitive dimensions
+    (KO/TE/SF/CR/IC/DE/EW/AI) are the grammar; the address space they
+    define is finite and bounded (~300 ordered top-3 combinations max,
+    typically 50-150 active in practice).
+
+    The output is byte-compatible with ``_cognitive_name`` so downstream
+    consumers (fish.md naming, fish_taste_anchor regex parsing,
+    /pfc reads) keep working unchanged. This function is the public entry
+    point that adds a fallback chain for legacy crystals whose
+    ``cognitive_vector`` was never populated (e.g. ingested before the
+    metabolic engine was wired, or by code paths that skip the metabolic
+    digest).
+
+    Fallback order — same chain as ``interpret_formation``:
+        1. ``cognitive_vector`` (preferred): the 8-dim QLP parse from the
+           metabolic engine. Top-3 dims with score > 0.01.
+        2. ``resonance`` / mi-vector (legacy): first 8 dims as a coarse
+           cognitive proxy. Top-3 with score > 0.01.
+        3. ``keywords`` matched against ``CANONICAL_SEED``: dims with the
+           most keyword overlap.
+        4. ``"UNKNOWN"``: no signal in any input. The gardener pass
+           handles UNKNOWN crystals separately so they don't pollute
+           addressed formations.
+
+    Constant time: 8-element sort, k=3 join. No graph traversal.
+
+    Args:
+        cognitive_vector: 8-dim QLP cognitive vector. Primary signal.
+        resonance: vector with at least 8 leading dims. Fallback.
+        keywords: list of strings. Last-resort fallback.
+
+    Returns:
+        Address string matching ``_cognitive_name`` output. Examples:
+        ``"FEELING"``, ``"ACTING+RELATING"``, ``"ACTING+FEELING_via_RELATING"``,
+        ``"UNKNOWN"``.
+    """
+    # Primary: cognitive_vector
+    if cognitive_vector and len(cognitive_vector) >= 8:
+        addr = _cognitive_name(list(cognitive_vector[:8]), [])
+        if addr != "UNKNOWN":
+            return addr
+
+    # Fallback 1: resonance vector first 8 dims (matches interpret_formation)
+    if resonance and len(resonance) >= 8 and any(
+        v > 0.01 for v in resonance[:8]
+    ):
+        addr = _cognitive_name(list(resonance[:8]), [])
+        if addr != "UNKNOWN":
+            return addr
+
+    # Fallback 2: keyword overlap with CANONICAL_SEED
+    if keywords:
+        from .crystallizer_v3 import CANONICAL_SEED
+        kw_set = set(k.lower() for k in keywords)
+        dim_scores = {}
+        for dim, seeds in CANONICAL_SEED.items():
+            overlap = len(kw_set & set(s.lower() for s in seeds))
+            if overlap:
+                dim_scores[dim] = overlap
+        if dim_scores:
+            # Build a synthetic cognitive_vector with the matched dims
+            # populated by overlap counts so _cognitive_name produces
+            # the same name shape as the primary path.
+            synthetic = [0.0] * 8
+            max_overlap = max(dim_scores.values())
+            for dim, overlap in dim_scores.items():
+                if dim in DIM_ORDER:
+                    synthetic[DIM_ORDER.index(dim)] = overlap / max_overlap
+            addr = _cognitive_name(synthetic, [])
+            if addr != "UNKNOWN":
+                return addr
+
+    return "UNKNOWN"
+
+
 @dataclass
 class Formation:
     """A named cluster of coupled crystals. Becomes a glyph."""
