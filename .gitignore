@@ -19,6 +19,11 @@ build/
 
 # Test output — generated, not source
 tests/lab_results.json
+tests/*_test_report.txt
+
+# Operational scratch — never commit
+/tmp/
+/stress_*.py
 
 # Calcifer release outtakes — exported to Drive, not committed
 media/calcifer_r*.png
