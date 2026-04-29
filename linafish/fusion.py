@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple
 
 from .engine import FishEngine
-from .formations import Formation
+from .formations import Formation, formation_rank_key
 from .ingest import ingest_directory, ingest_file
 
 
@@ -290,7 +290,7 @@ class FusionResult:
         # The iron — final-level formations
         lines.append("  --- Iron (Irreducible Formations) ---")
         for f in sorted(self.irreducible_formations,
-                        key=lambda x: x.crystal_count, reverse=True):
+                        key=formation_rank_key, reverse=True):
             kw = ", ".join(f.keywords[:5]) if f.keywords else ""
             lines.append(f"  {f.name} ({f.crystal_count}c) [{kw}]")
         lines.append("")

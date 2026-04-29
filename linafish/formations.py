@@ -14,11 +14,13 @@ Not clustering. Not k-means. Graph traversal.
 The graph is the truth. Formations are just what the BFS finds.
 """
 
+import math
 from collections import Counter, deque
 from dataclasses import dataclass, field
 from typing import List, Optional
 
 from .crystallizer_v3 import Crystal
+from ._dedup_helpers import normalize_for_dedup
 
 CATEGORIES = ["KO", "TE", "SF", "CR", "IC", "DE", "EW", "AI"]
 
@@ -92,6 +94,46 @@ class Formation:
     cognitive_centroid: List[float] = field(default_factory=list)  # 8-dim average
     top_chains: List[str] = field(default_factory=list)  # most common chains in members
     top_operations: List[str] = field(default_factory=list)  # most common QUANTUM ops
+
+    # ---------- v7 surface-ranking signals ----------
+    # All derived at detect_formations() time from existing Crystal fields.
+    # No new persistence: these get recomputed on every formation pass.
+    # Crystal data is never mutated; conservation preserved by construction.
+    mean_ache: float = 0.0           # mean Crystal.ache across positive-ache members
+    cog_amplitude: float = 0.0       # L2 norm of cognitive_centroid (QLP signal strength)
+    content_diversity: float = 0.0   # unique_normalized_hashes / crystal_count, in (0, 1]
+    compression_score: float = 0.0   # mean_ache * cog_amplitude * trust_weight * content_diversity
+                                     # validated 4133x ratio between top substantive and ALL MINDS
+                                     # dominator on me-fish 2026-04-28. Replaces crystal_count as
+                                     # the surface ranking key — broadcast-regime saturation
+                                     # (low ache, low cog_amplitude, low diversity from
+                                     # normalized-hash collapse) compresses to ~0; substantive
+                                     # multi-mind content dominates the surface.
+
+
+def formation_rank_key(formation):
+    """Shared sort key for v7 surface ranking.
+
+    Returns a tuple ``(compression_score, crystal_count, id)`` for use
+    with ``sorted(..., key=formation_rank_key, reverse=True)``. The
+    primary key is ``compression_score`` (a float). Tie-breaks fall
+    through to ``crystal_count`` then ``id``.
+
+    Defensive against:
+      - missing ``compression_score`` attribute (legacy Formation
+        objects loaded from cached state) — defaults to 0.0
+      - explicit ``None`` value (someone manually constructed a
+        Formation with ``compression_score=None``) — coerced to 0.0
+        via ``or 0.0`` so ``sorted`` doesn't crash on
+        ``None < float`` comparison
+
+    Used at all 11 surface ranking call sites (post-v7.1 round-4 fold —
+    they now call ``formation_rank_key`` directly rather than inlining
+    a tuple, so a None ``compression_score`` is handled uniformly).
+    Future formula changes happen in this one helper.
+    """
+    score = getattr(formation, 'compression_score', 0.0) or 0.0
+    return (score, formation.crystal_count, formation.id)
 
 
 # ---------------------------------------------------------------------------
@@ -381,6 +423,27 @@ def detect_formations(crystals: List[Crystal]) -> List[Formation]:
         n_self_ref = sum(1 for mc in member_crystals if getattr(mc, 'self_referential', False))
         self_ref_pct = round(n_self_ref / len(member_crystals), 2) if member_crystals else 0.0
 
+        # v7 surface-ranking signals — derived from member_crystals,
+        # never modify the underlying Crystal objects.
+        positive_aches = [
+            mc.ache for mc in member_crystals if (mc.ache or 0) > 0
+        ]
+        mean_ache_val = (
+            sum(positive_aches) / len(positive_aches)
+            if positive_aches else 0.0
+        )
+        cog_amp_val = math.sqrt(sum(v * v for v in cog_centroid)) if cog_centroid else 0.0
+        if member_crystals:
+            unique_hashes = {
+                normalize_for_dedup(mc.text or "") for mc in member_crystals
+            }
+            content_div_val = len(unique_hashes) / len(member_crystals)
+        else:
+            content_div_val = 0.0
+        compression_val = (
+            mean_ache_val * cog_amp_val * trust * content_div_val
+        )
+
         formations.append(Formation(
             id=i,
             name=name,
@@ -395,6 +458,10 @@ def detect_formations(crystals: List[Crystal]) -> List[Formation]:
             cognitive_centroid=cog_centroid,
             top_chains=top_chains_list,
             top_operations=top_ops_list,
+            mean_ache=mean_ache_val,
+            cog_amplitude=cog_amp_val,
+            content_diversity=content_div_val,
+            compression_score=compression_val,
         ))
 
     return formations
@@ -629,12 +696,31 @@ def formations_to_codebook_text(
     # Build crystal lookup if provided
     crystal_map = {c.id: c for c in crystals} if crystals else {}
 
-    for f in sorted(formations, key=lambda x: x.crystal_count, reverse=True):
+    # v7: rank by compression_score, not crystal_count. Big != more
+    # important. The score blends mean_ache (information density), QLP
+    # cognitive amplitude, trust_weight (cross-mind diversity), and
+    # content_diversity (unique-normalized-hash / count — RCP compression-
+    # equivalence). Empirical 4133x ratio between top substantive and ALL
+    # MINDS dominator on me-fish 2026-04-28. crystal_count still rendered
+    # in the formation header so repetition-as-signal stays visible.
+    # `formation_rank_key` (module-level, see above) gives deterministic
+    # tie-break and handles None/legacy Formation objects safely.
+    for f in sorted(formations, key=formation_rank_key, reverse=True):
         cats = dict(zip(CATEGORIES, f.centroid))
         top_cats = sorted(cats.items(), key=lambda x: -x[1])[:3]
         cat_str = "+".join(dim_names.get(c, c) for c, v in top_cats if v > 0.05)
 
-        lines.append(f"**{f.name}** ({f.crystal_count} crystals, {cat_str})")
+        # Surface header: name, crystal_count (so repetition stays visible),
+        # cognitive category mix, plus compression_score in parentheses
+        # when the formation has v7 fields populated.
+        score = getattr(f, 'compression_score', None)
+        if score is not None and score > 0:
+            lines.append(
+                f"**{f.name}** ({f.crystal_count} crystals, {cat_str}, "
+                f"score={score:.3f})"
+            )
+        else:
+            lines.append(f"**{f.name}** ({f.crystal_count} crystals, {cat_str})")
         # Warm interpretation — what this formation means about you
         interpretation = interpret_formation(f)
         if interpretation:

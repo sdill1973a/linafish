@@ -19,6 +19,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Optional, List, Dict
 
+from .formations import formation_rank_key
+
 
 # ---------------------------------------------------------------------------
 # HUMAN OUTPUT — what the person sees
@@ -481,7 +483,7 @@ def _build_money_line(formations, crystal_map: dict) -> str:
     "You keep coming back to colour, Millet, and nature. That's your signal."
     """
     # Use the top formation names (already built with IDF)
-    top_formations = sorted(formations, key=lambda x: x.crystal_count, reverse=True)[:7]
+    top_formations = sorted(formations, key=formation_rank_key, reverse=True)[:7]
 
     # Get the human name for each formation, take the first word
     # (highest-scored content word from that formation)
@@ -540,12 +542,12 @@ def _build_portrait(formations, total_crystals: int, total_docs: int, crystal_ma
 
     # Top formations as human sentences (Fix 1 + Fix 2)
     shown = min(7, n_formations)
-    for f in sorted(formations, key=lambda x: x.crystal_count, reverse=True)[:shown]:
+    for f in sorted(formations, key=formation_rank_key, reverse=True)[:shown]:
         lines.append(_formation_to_sentence(f, crystal_map))
 
     # Pick the best representative text -- prefer formations with
     # meaningful keywords (not all stopwords) and good rep text
-    candidates = sorted(formations, key=lambda x: x.crystal_count, reverse=True)[:7]
+    candidates = sorted(formations, key=formation_rank_key, reverse=True)[:7]
     best_sample = None
     # First pass: prefer formations with meaningful keywords
     for f in candidates:
@@ -854,7 +856,7 @@ def _cognitive_portrait(formations, total_docs: int, crystal_map: dict = None) -
                            "self-reflection", "understanding"}
 
     if len(formations) >= 3:
-        sorted_f = sorted(formations, key=lambda x: x.crystal_count, reverse=True)
+        sorted_f = sorted(formations, key=formation_rank_key, reverse=True)
         themes = []
         for f in sorted_f[:4]:
             kw = _meaningful_keywords(f)
@@ -994,7 +996,7 @@ def _build_portrait_prompt(formations, total_docs: int, crystal_map: dict = None
         formation_section = f"\nTheir {len(formations)} formations (recurring cognitive habits):\n"
         formation_section += chr(10).join(
             f"  {f.name} ({f.crystal_count} crystals)"
-            for f in sorted(formations, key=lambda x: -x.crystal_count)[:5]
+            for f in sorted(formations, key=formation_rank_key, reverse=True)[:5]
         )
     else:
         formation_section = (
@@ -1180,7 +1182,7 @@ def explain_the_why(total_docs: int, total_crystals: int, formations: list,
         return "\n".join(lines)
 
     n_formations = len(formations)
-    top_f = sorted(formations, key=lambda x: x.crystal_count, reverse=True)[0]
+    top_f = sorted(formations, key=formation_rank_key, reverse=True)[0]
 
     # What happened
     lines.append(
@@ -1341,7 +1343,7 @@ def _generate_soul_file(path, name: str, formations, crystals,
     # §FORMATIONS — metabolic pathway patterns
     if formations:
         lines.append("§FORMATIONS")
-        sorted_f = sorted(formations, key=lambda x: x.crystal_count, reverse=True)
+        sorted_f = sorted(formations, key=formation_rank_key, reverse=True)
         for f in sorted_f[:12]:
             chains = getattr(f, 'top_chains', [])[:2]
             chain_str = ", ".join(chains) if chains else ""
@@ -1678,7 +1680,7 @@ def go(
         _print("  --- Top of your fish.md ---")
         _print()
         top_n = min(3, len(engine.formations))
-        sorted_f = sorted(engine.formations, key=lambda x: x.crystal_count, reverse=True)
+        sorted_f = sorted(engine.formations, key=formation_rank_key, reverse=True)
 
         for f in sorted_f[:top_n]:
             from .formations import CATEGORIES

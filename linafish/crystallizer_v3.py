@@ -183,8 +183,20 @@ def _content_hash(text: str) -> str:
     md5 is used for speed, not cryptographic strength — this is a
     dedup key, not a security boundary. Text is encoded utf-8 before
     hashing so the hash is stable across platforms.
+
+    Byte-exact equivalence on purpose. The engine's ``dedupe=True``
+    flag is opt-in (default off) and means "the operator promised the
+    same text won't be ingested twice; if it is, it's safe to drop."
+    Normalizing here would expand what counts as "same text" to
+    include timestamp-variant duplicates — that's a STORAGE-policy
+    change beyond what dedupe=True declared. The listener has its
+    own plate-dedup that DOES normalize (see daemon.py
+    ``_listener_content_hash``) because the listener's stated intent
+    is to rate-limit MQTT bridge near-duplicates; that's the right
+    layer for the normalization fix. The engine layer stays
+    byte-exact. ``tests/test_dedup_helpers.py::TestStorageLayerImportGuard``
+    asserts this divergence as a regression guard.
     """
-    import hashlib
     return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 

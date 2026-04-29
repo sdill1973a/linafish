@@ -46,6 +46,25 @@ from typing import Optional
 from datetime import datetime
 
 from .engine import FishEngine
+from ._dedup_helpers import normalize_for_dedup
+
+
+def _listener_content_hash(text: str) -> str:
+    """Compute the listener plate-dedup hash for a given text.
+
+    Truncates to first 500 chars, then normalizes (strips
+    `[timestamp source]\\n` prefix line, lowercases, collapses
+    whitespace), then MD5-hashes. This is the canonical listener-
+    side dedup key — exposed so tests can assert behavior without
+    reimplementing the logic.
+
+    Used by ``RoomListener._on_message`` for inbound MQTT message
+    rate-limiting. NOT a storage-layer dedup; see ``_dedup_helpers``
+    docstring for the layered-architecture rationale.
+    """
+    return hashlib.md5(
+        normalize_for_dedup(str(text)[:500]).encode("utf-8", errors="replace")
+    ).hexdigest()
 
 
 class RoomListener:
@@ -330,9 +349,19 @@ class RoomListener:
             if len(str(text)) < 30:
                 return
 
-            content_hash = hashlib.md5(
-                str(text)[:500].encode("utf-8", errors="replace")
-            ).hexdigest()
+            # Listener plate-dedup. The listener's stated intent (per
+            # `dedupe=True` on the FishEngine init at line 99 and the
+            # docstring "skip any already-crystallized content by text
+            # hash") is to rate-limit MQTT bridge near-duplicates.
+            # Pre-fix behavior hashed raw text including the per-message
+            # timestamp prefix; broadcasts hashed uniquely and bypassed
+            # dedup. Empirical against me-fish 2026-04-28: 10,135 ALL
+            # MINDS broadcasts → 23 normalized hashes (440x compression).
+            # Engine-side ``_content_hash`` stays byte-exact; that's a
+            # different layer with different opt-in semantics. See
+            # ``_listener_content_hash`` (above) for the canonical
+            # implementation; tests share it to avoid drift.
+            content_hash = _listener_content_hash(text)
             if content_hash in self.content_hashes:
                 return
             self.content_hashes.add(content_hash)
