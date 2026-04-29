@@ -539,6 +539,35 @@ def cmd_absorb(args):
               f"{result.get('formations', '?')} formations")
 
 
+def cmd_revectorize(args):
+    """Rebuild vocab and re-vectorize all crystals (the digest-gap fix)."""
+    # Allow --subtract-centroid to flow into engine construction
+    engine = _resolve_engine(args)
+    if getattr(args, "subtract_centroid", False):
+        engine.subtract_centroid = True
+    n = len(engine.crystals)
+    print(f"  Fish: {engine.name} ({n} crystals)")
+    if n == 0:
+        print("  Empty fish. Nothing to do.")
+        return
+    print(f"  Pre-formations: {len(engine.formations)}")
+    print(f"  Re-learning vectorizer, re-freezing vocab, re-vectorizing...")
+    result = engine.revectorize_all(
+        vocab_size=getattr(args, "vocab_size", None),
+        d=getattr(args, "d", None),
+    )
+    if not result.get("revectorized"):
+        print(f"  Skipped: {result.get('reason', 'unknown')}")
+        return
+    print(f"  Done.")
+    print(f"  Formations: {result['pre_formation_count']} -> {result['post_formation_count']}")
+    print(f"  Survived: {len(result['survived'])}, "
+          f"Dissolved: {len(result['dissolved'])}, "
+          f"Emerged: {len(result['emerged'])}")
+    print(f"  Vocab (top 15): {result['vocab_sample']}")
+    print(f"  Epoch: {result['epoch']}")
+
+
 def cmd_converse(args):
     """Two fish, one conversation."""
     from .converse import serve_converse
@@ -1620,6 +1649,7 @@ def cmd_capabilities(args):
             ("ingest", "File readers — 39 extensions, falls through for unknown suffixes"),
             ("eat", "CLI command — ingest files or MCP server tool defs"),
             ("absorb", "Eat existing FAISS / JSONL / HTTP RAG endpoints"),
+            ("revectorize", "Rebuild vocab + re-vectorize all crystals — fix for §THE.DIGEST.GAP"),
             ("listener", "Ambient: mqtt:// / folder: / stdin sources"),
             ("daemon", "Long-running walk-dir or listen-room mode"),
         ]),
@@ -1736,6 +1766,22 @@ def main():
     absorb_p.add_argument("source", help="Source: path.jsonl, faiss:path.faiss, http://url")
     absorb_p.add_argument("-n", "--name", default="linafish", help="Fish name")
     absorb_p.add_argument("--state-dir", type=_user_path, help="State directory")
+
+    # revectorize — rebuild vocab + mi_vectors from full crystal corpus
+    # (the fix for §THE.DIGEST.GAP: crystals added after initial freeze
+    #  were vectorized against stale vocab; this refreshes the whole lens)
+    revec_p = sub.add_parser(
+        "revectorize",
+        help="Rebuild vocab + re-vectorize all crystals (digest-gap fix)",
+    )
+    revec_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    revec_p.add_argument("--state-dir", type=_user_path, help="State directory")
+    revec_p.add_argument("--vocab-size", type=int, default=None,
+                         help="Override vocab size (default: engine default 200)")
+    revec_p.add_argument("--d", type=float, default=None,
+                         help="Override d blend parameter (default: 4.0)")
+    revec_p.add_argument("--subtract-centroid", action="store_true",
+                         help="Subtract mean embedding before coupling (single-voice corpora)")
 
     # converse — two fish, one conversation
     conv_p = sub.add_parser("converse", help="Two fish, one conversation. Crystal exchange over HTTP.")
@@ -2019,6 +2065,7 @@ def main():
         "recall": cmd_recall,
         "ask": cmd_ask,
         "absorb": cmd_absorb,
+        "revectorize": cmd_revectorize,
         "converse": cmd_converse,
         "whisper": cmd_whisper,
         "check": cmd_check,

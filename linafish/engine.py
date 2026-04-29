@@ -1337,6 +1337,121 @@ class FishEngine:
 
         return result
 
+    def revectorize_all(self, vocab_size: Optional[int] = None,
+                        d: Optional[float] = None) -> dict:
+        """Rebuild vocab from full crystal corpus, re-vectorize every crystal.
+
+        The fix for §THE.DIGEST.GAP. The engine freezes vocab after the first
+        batch (by design — stable vocab gives formations stable identity).
+        Every crystal added after that freeze gets its MI vector computed
+        against the *original* vocab, not the current corpus. Those new
+        crystals land on disk but can't participate in the current vector
+        space — invisible to formation clustering, /taste, and /pfc.
+
+        This method:
+          1. Creates a fresh MIVectorizer
+          2. Re-feeds every crystal's text (full corpus relearning)
+          3. Re-freezes vocab from the refreshed co-occurrence stats
+          4. Re-computes each crystal's mi_vector + ache against new vocab
+          5. Clears couplings (so rebuild recomputes against new vectors)
+          6. Rebuilds formations against the refreshed vector space
+          7. Saves state (no autocommit regardless of engine setting)
+
+        Use when:
+          - New crystals accumulated after initial freeze (common case —
+            every incremental eat() past the first batch lands here)
+          - Fish appears collapsed into one or few formations but the
+            corpus should have more structure
+          - Vocab parameters need tuning and you want to see the effect
+
+        For single-voice corpora, construct the engine with
+        ``subtract_centroid=True`` — centroid subtraction exposes
+        within-author variance that otherwise gets drowned by the
+        author signal.
+
+        Args:
+            vocab_size: override vocab size (default: self.vocab_size)
+            d: override d blend parameter (default: self.d)
+
+        Returns:
+            dict with pre/post formation counts, survived/dissolved/emerged
+            formation names, crystals_processed, new vocab_size, epoch.
+        """
+        crystals = self.fish.crystals
+        if not crystals:
+            return {"revectorized": False, "reason": "no_crystals"}
+
+        # Lazy import to avoid circular
+        from .crystallizer_v3 import MIVectorizer
+
+        size = vocab_size if vocab_size is not None else self.vocab_size
+        d_val = d if d is not None else self.d
+
+        # Snapshot before
+        pre_formations = {f.name for f in self.formations}
+        pre_vocab = list(self.fish.vocab)
+
+        # Phase 1: Fresh vectorizer, re-learn from all crystal texts
+        new_vec = MIVectorizer()
+        for c in crystals:
+            if c.text and len(c.text.strip()) > 10:
+                new_vec.feed(c.text)
+        self.fish.vectorizer = new_vec
+
+        # Phase 2: Re-freeze vocab from refreshed stats
+        seed_terms, seed_weight = self._resolve_seed_terms()
+        new_vocab = new_vec.get_vocab(
+            size=size, d=d_val,
+            seed_terms=seed_terms, seed_weight=seed_weight,
+        )
+        self.fish.vocab = new_vocab
+        self.fish.frozen = True
+        self.fish.epoch += 1
+
+        # Phase 3: Re-vectorize every crystal against new vocab
+        revectored = 0
+        for c in crystals:
+            if not c.text:
+                continue
+            try:
+                c.mi_vector = new_vec.mi_ache_vector(c.text, new_vocab)
+                c.ache = new_vec.ache_relevance(c.text)
+                c.resonance = c.mi_vector
+                c.couplings = []  # force recompute in rebuild_formations
+                revectored += 1
+            except Exception:
+                # Preserve stale vector if revec fails for this crystal;
+                # caller can inspect counts to detect partial failures.
+                pass
+
+        # Phase 4: Rebuild formations against new vectors
+        self.rebuild_formations()
+        post_formations = {f.name for f in self.formations}
+
+        # Phase 5: Persist — do not autocommit regardless of engine flag;
+        # revectorize is a bulk rewrite and the caller decides when to commit.
+        self.fish._save_state()
+        self._save_state(commit=False)
+
+        survived = pre_formations & post_formations
+        dissolved = pre_formations - post_formations
+        emerged = post_formations - pre_formations
+
+        return {
+            "revectorized": True,
+            "epoch": self.fish.epoch,
+            "crystals_processed": revectored,
+            "vocab_size": len(new_vocab),
+            "d": d_val,
+            "pre_formation_count": len(pre_formations),
+            "post_formation_count": len(post_formations),
+            "survived": sorted(survived),
+            "dissolved": sorted(dissolved),
+            "emerged": sorted(emerged),
+            "vocab_sample": new_vocab[:15],
+            "vocab_changed": sorted(set(new_vocab) - set(pre_vocab))[:10],
+        }
+
     # -------------------------------------------------------------------
     # QUERY METHODS
     # -------------------------------------------------------------------
