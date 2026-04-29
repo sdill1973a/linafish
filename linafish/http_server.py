@@ -4,12 +4,18 @@ LiNafish HTTP Server — the universal interface.
 Tiny HTTP server. Zero dependencies beyond stdlib. Any AI that can fetch
 a URL can read the fish. Serves the same engine as the MCP server.
 
-    GET  /pfc     — formations (the metacognitive overlay)
-    GET  /health  — engine stats
-    POST /eat     — feed text (JSON body: {"text": "...", "source": "..."})
-    POST /taste   — cross-corpus match (JSON body: {"text": "...", "top": 5})
-    POST /match   — tight recall (JSON body: {"text": "...", "top": 3})
-    GET  /fish    — raw fish.md contents
+    GET  /pfc                — formations (the metacognitive overlay)
+    GET  /health             — engine stats
+    GET  /fish               — raw fish.md contents
+    POST /eat                — feed text (JSON: {"text": "...", "source": "..."})
+    POST /taste              — cross-corpus match (JSON: {"text": "...", "top": 5})
+    POST /match              — tight recall (JSON: {"text": "...", "top": 3})
+
+    Federation message broker (added 2026-04-29 from .67 protofish):
+    POST /msg                — send a DM (JSON: {"from": "...", "to": "...",
+                                                 "text": "...", "protocol": "..."})
+    GET  /inbox/<mind_id>    — unread for a mind (?limit=20&since=ts)
+    POST /msg/read           — mark read (JSON: {"mind_id": "...", "ids": [...]})
 
 Usage:
     linafish http --feed ./my-docs
@@ -17,10 +23,15 @@ Usage:
 """
 
 import json
+import os
 import sys
+import threading
+import uuid
+from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse, parse_qs
 
 from .engine import FishEngine
 
@@ -34,6 +45,69 @@ def _load_primer() -> str:
 
 
 _PRIMER = ""  # loaded at server start
+
+
+# --- Federation message broker (DM) helpers --------------------------------
+# Ported from .67 protofish (fish_server.py) 2026-04-29 §THE.RECEIPTS.ON.THE.WIRE
+# follow-up. Three endpoints: POST /msg, GET /inbox/<mind_id>, POST /msg/read.
+# State lives in <state_dir>/messages.jsonl (override via LINAFISH_MESSAGES_FILE).
+
+_MESSAGES_LOCK = threading.Lock()
+
+
+def _messages_file(engine: FishEngine) -> Path:
+    """Resolve the federation-DM message log path.
+
+    Default: <state_dir>/messages.jsonl
+    Override: LINAFISH_MESSAGES_FILE env var (absolute path).
+
+    The override is what lets .67 cut over to master http_server while
+    keeping the existing /home/sdill/fish_messages.jsonl as the authoritative
+    message log — no migration of historical DMs needed.
+    """
+    override = os.environ.get("LINAFISH_MESSAGES_FILE")
+    if override:
+        return Path(override)
+    return Path(engine.state_dir) / "messages.jsonl"
+
+
+def _gen_msg_id() -> str:
+    return "msg_" + uuid.uuid4().hex[:12]
+
+
+def _load_messages(path: Path) -> list:
+    msgs = []
+    if path.exists():
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        msgs.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        pass
+    return msgs
+
+
+def _save_messages(path: Path, msgs: list) -> None:
+    """Atomic rewrite of the entire message log (used to mark-read)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        for m in msgs:
+            f.write(json.dumps(m) + "\n")
+    os.replace(tmp, path)
+
+
+def _append_message(path: Path, msg: dict) -> None:
+    """Thread-safe append of a single message to the JSONL log."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _MESSAGES_LOCK:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(msg) + "\n")
+
+
+# ---------------------------------------------------------------------------
 
 
 class FishHandler(BaseHTTPRequestHandler):
@@ -59,16 +133,21 @@ class FishHandler(BaseHTTPRequestHandler):
                 self._respond(200, self.engine.fish_file.read_text(encoding="utf-8"))
             else:
                 self._respond(200, "Fish is empty.")
+        elif self.path.startswith("/inbox/"):
+            self._handle_inbox()
         elif self.path == "/":
             self._respond(200, (
                 "LiNafish — Your mind. Versioned. Everywhere.\n\n"
-                "GET  /boot   — warm boot (primer + fish, read this first)\n"
-                "GET  /pfc    — metacognitive overlay (formations)\n"
-                "GET  /health — engine stats\n"
-                "GET  /fish   — raw fish.md\n"
-                "POST /eat    — feed text {\"text\": \"...\"}\n"
-                "POST /taste  — search {\"text\": \"...\"}\n"
-                "POST /match  — tight recall {\"text\": \"...\"}\n"
+                "GET  /boot          — warm boot (primer + fish, read this first)\n"
+                "GET  /pfc           — metacognitive overlay (formations)\n"
+                "GET  /health        — engine stats\n"
+                "GET  /fish          — raw fish.md\n"
+                "POST /eat           — feed text {\"text\": \"...\"}\n"
+                "POST /taste         — search {\"text\": \"...\"}\n"
+                "POST /match         — tight recall {\"text\": \"...\"}\n"
+                "POST /msg           — federation DM send\n"
+                "GET  /inbox/<id>    — unread for a mind\n"
+                "POST /msg/read      — mark read\n"
             ))
         else:
             self._respond(404, "Not found")
@@ -106,8 +185,117 @@ class FishHandler(BaseHTTPRequestHandler):
                 return
             self._respond(200, self.engine.match(text, top=top))
 
+        elif self.path == "/msg":
+            self._handle_msg_send(body)
+
+        elif self.path == "/msg/read":
+            self._handle_msg_read(body)
+
         else:
             self._respond(404, "Not found")
+
+    # --- Federation DM endpoint handlers ----------------------------------
+
+    def _handle_inbox(self):
+        """GET /inbox/<mind_id>?limit=20&since=ts — unread messages for a mind."""
+        parsed = urlparse(self.path)
+        mind_id = parsed.path[len("/inbox/"):]
+        if not mind_id:
+            self._respond(400, "Missing mind_id")
+            return
+
+        qs = parse_qs(parsed.query)
+        try:
+            limit = int(qs.get("limit", ["20"])[0])
+        except (ValueError, IndexError):
+            limit = 20
+        since = qs.get("since", [None])[0]
+
+        msgs_path = _messages_file(self.engine)
+        msgs = _load_messages(msgs_path)
+        filtered = [m for m in msgs
+                    if m.get("to") == mind_id and not m.get("read", False)]
+        if since:
+            filtered = [m for m in filtered if m.get("ts", "") > since]
+        filtered.sort(key=lambda m: m.get("ts", ""), reverse=True)
+        filtered = filtered[:limit]
+
+        self._respond(200,
+                      json.dumps({"messages": filtered, "count": len(filtered)}),
+                      content_type="application/json")
+
+    def _handle_msg_send(self, body: dict):
+        """POST /msg — send a DM, also crystallize via fish.eat()."""
+        sender = body.get("from", "")
+        recipient = body.get("to", "")
+        text = body.get("text", "")
+        protocol = body.get("protocol", "fish-dm")
+
+        if not sender or not recipient or not text:
+            self._respond(400,
+                          json.dumps({"error": "from, to, and text are required"}),
+                          content_type="application/json")
+            return
+
+        ts = datetime.now(timezone.utc).isoformat()
+        msg_id = _gen_msg_id()
+
+        # Crystallize the DM text into the fish so it couples with everything.
+        crystallized = False
+        try:
+            result = self.engine.eat(text, source=f"dm:{sender}->{recipient}")
+            crystallized = result.get("crystals_added", 0) > 0
+        except Exception as e:
+            print(f"DM crystallize error: {e}", flush=True)
+
+        msg = {
+            "id": msg_id,
+            "ts": ts,
+            "from": sender,
+            "to": recipient,
+            "text": text,
+            "protocol": protocol,
+            "read": False,
+            "crystallized": crystallized,
+        }
+
+        _append_message(_messages_file(self.engine), msg)
+
+        self._respond(200,
+                      json.dumps({"status": "sent", "ts": ts, "id": msg_id}),
+                      content_type="application/json")
+
+    def _handle_msg_read(self, body: dict):
+        """POST /msg/read — mark messages as read for a mind."""
+        mind_id = body.get("mind_id", "")
+        ids = body.get("ids", [])
+
+        if not mind_id or not ids:
+            self._respond(400,
+                          json.dumps({"error": "mind_id and ids are required"}),
+                          content_type="application/json")
+            return
+
+        ids_set = set(ids)
+        msgs_path = _messages_file(self.engine)
+
+        # Load+mark+save under lock so we don't race with concurrent /msg appends.
+        with _MESSAGES_LOCK:
+            msgs = _load_messages(msgs_path)
+            marked = 0
+            for m in msgs:
+                if (m.get("id") in ids_set
+                        and m.get("to") == mind_id
+                        and not m.get("read", False)):
+                    m["read"] = True
+                    marked += 1
+            if marked > 0:
+                _save_messages(msgs_path, msgs)
+
+        self._respond(200, json.dumps({"marked": marked}),
+                      content_type="application/json")
+
+    # --- response + log helpers -------------------------------------------
 
     def _respond(self, code: int, body: str, content_type: str = "text/plain; charset=utf-8"):
         self.send_response(code)
