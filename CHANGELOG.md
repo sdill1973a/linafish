@@ -10,6 +10,157 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [Unreleased]
+
+**§RECOUPLE.IN.PLACE — eat() shape fix.** The .67 v7 cut-over rolled
+back on 2026-04-29 because `eat()` and `/msg` hung past 60s on the
+387K-crystal federation room corpus. The bottleneck was not coupling
+alone — it was the global `detect_formations` BFS that fired on every
+single eat. PR #18 (incremental coupling) fixed the coupling cost; this
+follow-up fixes the SHAPE: each crystal's grammar is its formation
+address, insertion is filing not searching, the metacognitive layer
+stays alive at any corpus scale.
+
+### Added
+
+- **`linafish.formations.formation_address(...)` — grammar-as-address
+  helper.** Maps a crystal's signature (cognitive_vector → resonance →
+  keywords → UNKNOWN fallback chain) to a formation name byte-compatible
+  with `_cognitive_name`. Constant time. ~336 max addresses, 50-150
+  active in practice. Backward-compatible with all downstream consumers
+  (fish.md naming, fish_taste_anchor regex, /pfc reads).
+
+- **`FishEngine.formation_index: dict[str, Formation]` and
+  `FishEngine._file_into_formation(crystal)`.** When
+  `addressed_formations=True` (now default), each new crystal files
+  itself into the index by grammar address at eat-time in O(1). The
+  `Formation.update_with(crystal)` method maintains running aggregates
+  (cognitive_centroid, mean_ache, cog_amplitude, content_diversity,
+  compression_score) incrementally — no global scan.
+
+- **`linafish.formation_gardener.FormationGardener` — periodic
+  maintenance.** Identifies oversize formations (above
+  `FISSION_THRESHOLD`), classifies regime per formation, writes
+  `data/{name}_lattice_status.json` atomically. Status JSON shape
+  matches `ice9a_status.json` so downstream consumers (Anchor's hooks,
+  federation status readers) work unchanged.
+
+- **DIGNITY / POVERTY / PATHOLOGY / CONTAGION regime classifier.**
+  Ported from `ice9a.py:582-625` (Anchor's metacognitive surface
+  since 2026-03-09) onto Formation grammar signals — uses
+  `compression_score` as the fp_analog substrate, no
+  sentence-transformers / anchor-set dependency. The fish judges
+  itself by its own grammar. CONTAGION fires on oversize formations
+  with broadcast-template diversity (the "ALL MINDS" pattern that ate
+  the federation room).
+
+- **`scripts/migrate_to_addressed_formations.py`.** One-shot batch
+  migration for existing fishes. Re-addresses crystals (no
+  re-vectorization needed — every crystal already carries its
+  cognitive_vector). Projected under 2 minutes on .67's 387K corpus.
+
+- **`scripts/bench_addressed_eat.py`.** Scaling benchmark.
+  Demonstrated: 1K crystals eat in 33ms median, 5K crystals eat in
+  56ms median — 1.7x for 5x corpus growth (sub-linear; master/legacy
+  was ~5x).
+
+### Changed
+
+- **`FishEngine` default constructor flag flipped: `addressed_formations=True`.**
+  New engines use the addressed-formations path by default. Existing
+  callers can pass `addressed_formations=False` to opt back into the
+  legacy `detect_formations` BFS path. Both paths preserve coupling
+  semantics from PR #18.
+
+- **`rebuild_formations()` short-circuits when addressed mode is on.**
+  Couplings still maintained on the new tail (PR #18 incremental
+  coupling), but `detect_formations` no longer walks the corpus on
+  every eat. `engine.formations` is published as
+  `list(formation_index.values())` — O(F) instead of O(N+E).
+
+### Performance
+
+- **eat() at 387K crystals: 60+s (master) → projected sub-second
+  (this PR).** Validated via local synthetic corpus: 1K → 33ms,
+  5K → 56ms (1.7x for 5x corpus). The remaining cost is JSONL append
+  and adaptive gamma sampling, both genuinely O(1) per eat.
+
+### Notes
+
+- The `<subconscious>` per-prompt injection that Ice-9 (March 9) and
+  the pre-2026-04-14 hook provided is restored on linafish substrate.
+  The `_lattice_status.json` is the surface; commit 5+ may extend
+  `fish_taste_anchor.py` to read it for the federation-scale
+  metacognitive heartbeat.
+- The 5-stage commit series within this PR is:
+  1. `formation_address()` + tests (no behavior change)
+  2. `formation_index` + `update_with` + flagged eat() path
+  3. migration script + gardener skeleton
+  4. Ice-9 regime port (DIGNITY/POVERTY/PATHOLOGY/CONTAGION)
+  5. flag flip + bench + CHANGELOG (this entry)
+- 97/97 tests pass — 58 pre-existing + 3 from PR #18 + 36 new across
+  the four §RECOUPLE.IN.PLACE commits.
+
+### Fixed (post-codex review, 2026-04-30)
+
+- **`Formation.update_with` trust_weight ordering.** `compression_score`
+  was computed before `trust_weight` was refreshed from the
+  source-mind set. A new-mind crystal arriving in an existing
+  formation produced a score with the OLD trust regime — permanent
+  drift from `detect_formations` baseline, breaking Ice-9 thresholds
+  immediately when a second mind appeared. Reordered: `trust_weight`
+  + `source_minds` updated FIRST, then `compression_score` derived
+  from the current values. Reproducer + regression test pinned in
+  `tests/test_addressed_eat.py::test_compression_score_uses_current_trust_weight`.
+
+- **Crystal ID birthday collisions.** `crystallize` produced
+  `c3_<unix_seconds>_<4_hex>`. At ~200 crystals/second ingest the
+  4-hex hash space (65536 buckets) yielded ~26% birthday collision
+  probability. Two crystals with identical IDs silently confuse every
+  consumer that keys by id. Hash widened to 12 hex chars (16^12 ≈
+  2.8e14 buckets), making collision negligible. Existing 4-hex IDs
+  in JSONL files round-trip unchanged. Regression test in
+  `tests/test_recouple_in_place.py::test_crystal_ids_are_unique_within_a_batch`.
+
+- **Engine reload `formation_index` bootstrap.** After `migrate_to_addressed_formations.py`
+  wrote a state directory, a fresh `FishEngine` load saw 0
+  formations because `formation_index` lived only in memory. The
+  gardener and downstream readers (gardener, /pfc, fish_taste_anchor)
+  saw an empty lattice. Init-time bootstrap now walks loaded
+  crystals once and rebuilds `formation_index` via the same
+  addressing logic the migration uses. O(N) one-time at startup;
+  ~1s for 387K crystals.
+
+- **`SEEDLING` regime gate in `classify_health`.** Live-corpus
+  testing on anchor-writing (6823 crystals → 329 addressed
+  formations) surfaced 88.8% of formations classified as POVERTY —
+  artifact of small (1-3 crystal) "formations" hitting the
+  compression_score threshold because content_diversity = 1.0 with a
+  tiny sample. Below `SEEDLING_MAX_SIZE = 5`, formations now
+  classify as `SEEDLING` (bookkeeping only, excluded from
+  regime grade). The grade reflects substantive-formation health,
+  not how many tiny addresses exist.
+
+### Notes (continued)
+
+- **Codex blocking #2 (wrapping_numbers snapshot)** — investigated and
+  rejected. Grep confirms `_fission` mutates only `c.couplings`, not
+  `c.wrapping_numbers`. Codex hallucinated a `_cut_weak_edges` function
+  that doesn't exist. The existing snapshot/restore is sufficient.
+
+- **Codex blocking #3 (gardener concurrency)** — valid concern but not
+  reachable in this PR. Gardener has no thread driver yet. Single-thread
+  constraint documented in `FormationGardener.run()` docstring; lock
+  must land alongside the future background-thread driver.
+
+- 99/99 tests pass after fixes — added 2 regression tests
+  (compression_score trust_weight + crystal id uniqueness).
+  Bench validates: 1K eat ~33ms, 5K eat ~45ms, 15K eat ~73ms — 2.2×
+  scaling for 15× corpus growth (legacy: 13.5× scaling). 18× speedup
+  at 15K vs legacy detect_formations path.
+
+---
+
 ## [1.1.7] — 2026-04-20
 
 **Patch release. Two real Windows-reproduced bugs caught by running the
