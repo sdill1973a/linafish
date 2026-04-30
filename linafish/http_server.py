@@ -172,10 +172,18 @@ class FishHandler(BaseHTTPRequestHandler):
         elif self.path == "/taste":
             text = body.get("text", "")
             top = body.get("top", 5)
+            fmt = body.get("format", "text")
             if not text:
                 self._respond(400, "Missing 'text' field")
                 return
-            self._respond(200, self.engine.taste(text, top=top))
+            if fmt == "json":
+                self._respond(
+                    200,
+                    json.dumps(self.engine.taste_dict(text, top=top)),
+                    content_type="application/json",
+                )
+            else:
+                self._respond(200, self.engine.taste(text, top=top))
 
         elif self.path == "/match":
             text = body.get("text", "")

@@ -133,6 +133,13 @@ class FishListener:
             print("MQTT source requires paho-mqtt: pip install paho-mqtt")
             return
 
+        # paho-mqtt 2.0 added a required `callback_api_version` arg to
+        # mqtt.Client(...). Detect it and pass conditionally so this code
+        # works on both 1.x and 2.x without a hard pin.
+        _paho_kwargs = {}
+        if hasattr(mqtt, "CallbackAPIVersion"):
+            _paho_kwargs["callback_api_version"] = mqtt.CallbackAPIVersion.VERSION1
+
         def on_connect(client, userdata, flags, rc):
             if rc == 0:
                 for topic in topics.split(","):
@@ -151,7 +158,11 @@ class FishListener:
             source = f"mqtt://{sender}/{channel}"
             self.feed(payload, source=source)
 
-        client = mqtt.Client(client_id=f"linafish-{self.engine.name}", clean_session=True)
+        client = mqtt.Client(
+            client_id=f"linafish-{self.engine.name}",
+            clean_session=True,
+            **_paho_kwargs,
+        )
         client.on_connect = on_connect
         client.on_message = on_message
         if username is not None:

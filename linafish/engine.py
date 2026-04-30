@@ -1682,18 +1682,57 @@ class FishEngine:
             crystals=self.fish.crystals,
         )
 
-    def taste(self, text: str, top: int = 5) -> str:
-        """Cross-corpus matching. What does the fish know about this text?"""
-        if not self.fish.crystals:
-            return "Fish is empty. Nothing to match against."
+    def taste_dict(self, text: str, top: int = 5) -> dict:
+        """Structured cross-corpus match. Returns a JSON-serializable dict.
 
+        Schema:
+            {
+                "ok": bool,
+                "reason": str (only when ok=False),
+                "query_keywords": [str, ...],
+                "match_count": int,
+                "total_crystals": int,
+                "matches": [
+                    {
+                        "id": str,
+                        "text": str,
+                        "source": str,
+                        "ts": str,
+                        "relevance": float,    # gamma score, 0..1
+                        "keywords": [str, ...],
+                    },
+                    ...
+                ],
+            }
+
+        ``ok=False`` with ``reason`` set covers the empty-fish, not-frozen,
+        no-signal, and no-resonance cases — same five terminal paths the
+        text ``taste()`` returns. Consumers (guppies, federation tooling)
+        check ``ok`` before iterating ``matches``.
+        """
+        total = len(self.fish.crystals)
+
+        if not self.fish.crystals:
+            return {
+                "ok": False, "reason": "empty_fish",
+                "query_keywords": [], "match_count": 0,
+                "total_crystals": 0, "matches": [],
+            }
         if not self.fish.frozen:
-            return "Fish hasn't learned enough yet. Feed more content."
+            return {
+                "ok": False, "reason": "not_frozen",
+                "query_keywords": [], "match_count": 0,
+                "total_crystals": total, "matches": [],
+            }
 
         probe = v3_crystallize(text, self.fish.vectorizer,
                                source="query", vocab=self.fish.vocab)
         if not probe or not probe.mi_vector:
-            return "Text too short or no signal detected."
+            return {
+                "ok": False, "reason": "no_signal",
+                "query_keywords": [], "match_count": 0,
+                "total_crystals": total, "matches": [],
+            }
 
         scores = []
         for c in self.fish.crystals:
@@ -1706,22 +1745,63 @@ class FishEngine:
 
         scores.sort(key=lambda x: x[0], reverse=True)
 
-        if not scores:
+        matches = []
+        for g, c in scores[:top]:
+            matches.append({
+                "id": c.id,
+                "text": c.text or "",
+                "source": c.source or "",
+                "ts": c.ts or "",
+                "relevance": round(float(g), 4),
+                "keywords": list(c.keywords) if c.keywords else [],
+            })
+
+        return {
+            "ok": True,
+            "query_keywords": list(probe.keywords) if probe.keywords else [],
+            "match_count": len(scores),
+            "total_crystals": total,
+            "matches": matches,
+        }
+
+    def taste(self, text: str, top: int = 5) -> str:
+        """Cross-corpus matching. What does the fish know about this text?
+
+        Returns a human-readable text rendering. For structured data
+        (used by guppies and other federation tooling), call
+        ``taste_dict()`` instead.
+        """
+        result = self.taste_dict(text, top=top)
+
+        if not result["ok"]:
+            messages = {
+                "empty_fish": "Fish is empty. Nothing to match against.",
+                "not_frozen": "Fish hasn't learned enough yet. Feed more content.",
+                "no_signal": "Text too short or no signal detected.",
+            }
+            return messages.get(result["reason"], "No resonance found.")
+
+        if not result["matches"]:
             return "No resonance found. The text doesn't match existing patterns."
 
-        results = [f"Query keywords: {', '.join(probe.keywords)}"]
-        results.append(f"Matches: {len(scores)} from {len(self.fish.crystals)} crystals\n")
+        kw = result["query_keywords"]
+        results = [f"Query keywords: {', '.join(kw)}"]
+        results.append(
+            f"Matches: {result['match_count']} from "
+            f"{result['total_crystals']} crystals\n"
+        )
 
-        for g, c in scores[:top]:
-            kw = ', '.join(c.keywords) if c.keywords else 'no keywords'
-            src = c.source or ""
-            ts = c.ts or ""
+        for m in result["matches"]:
+            mk = ', '.join(m["keywords"]) if m["keywords"] else 'no keywords'
             # Metadata inline on the score line lets downstream consumers
             # (fish_taste_anchor diversity floor) filter by source_prefix
             # and age without a second round-trip. Parser reads score first,
             # then whatever trails; body starts on the next indented line.
-            results.append(f"[{g:.3f}] src={src} | ts={ts} | {kw}")
-            results.append(f"  {c.text[:200]}\n")
+            results.append(
+                f"[{m['relevance']:.3f}] src={m['source']} | "
+                f"ts={m['ts']} | {mk}"
+            )
+            results.append(f"  {m['text'][:200]}\n")
 
         return "\n".join(results)
 

@@ -423,6 +423,13 @@ class RoomListener:
             print("ERROR: pip install paho-mqtt")
             return
 
+        # paho-mqtt 2.0 added a required `callback_api_version` arg to
+        # mqtt.Client(...). Detect it and pass conditionally so this code
+        # works on both 1.x and 2.x without a hard pin.
+        _paho_kwargs = {}
+        if hasattr(mqtt, "CallbackAPIVersion"):
+            _paho_kwargs["callback_api_version"] = mqtt.CallbackAPIVersion.VERSION1
+
         self.running = True
         self.stats["started"] = datetime.now().isoformat()
 
@@ -450,7 +457,8 @@ class RoomListener:
                 self.running = False
 
         client = mqtt.Client(
-            client_id="linafish-room", protocol=mqtt.MQTTv311
+            client_id="linafish-room", protocol=mqtt.MQTTv311,
+            **_paho_kwargs,
         )
         client.on_connect = _on_connect
         client.on_message = self._on_message

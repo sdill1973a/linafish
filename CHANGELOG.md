@@ -10,6 +10,32 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [1.2.1] — 2026-04-30
+
+**Patch release. Two fixes for issues caught the same day 1.2.0 shipped: federation guppies were silently failing to parse `/taste` responses, and `paho-mqtt 2.x` broke `linafish room` and other MQTT consumers.**
+
+### Added
+
+- **`FishEngine.taste_dict(text, top)` — structured cross-corpus match.**
+  Returns a JSON-serializable dict with `ok`, `query_keywords`, `match_count`, `total_crystals`, and `matches` (each match has `id`, `text`, `source`, `ts`, `relevance`, `keywords`). Backward-compatible with `taste()`, which now renders text via the same dict.
+
+- **`/taste` JSON format option.** POST body field `"format": "json"` returns the structured `taste_dict` shape with `Content-Type: application/json`. Default response stays text for backward compatibility with existing human-readable consumers.
+
+### Fixed
+
+- **`linafish.guppy.hunt_room` no longer silently fails on every cycle.**
+  Federation guppies expected `data["matches"]` from `/taste` but the endpoint returned plain text — `_post_json` failed JSON parsing, returned `None`, and every hunt cycle silently caught zero matches. Now passes `format=json` in the POST body and parses the structured response.
+
+- **`paho-mqtt 2.x` compatibility in `linafish.daemon` and `linafish.listener`.**
+  paho-mqtt 2.0 added a required `callback_api_version` argument to `mqtt.Client(...)`. The `linafish room` daemon and the MQTT listener used the 1.x-style constructor and crashed on `paho-mqtt>=2.0` with `ValueError: Unsupported callback API version`. Both now detect `mqtt.CallbackAPIVersion` and pass the version conditionally, so the same code works on both 1.x and 2.x without a hard pin.
+
+### Notes
+
+- 99/99 tests pass plus new regression tests for both fixes.
+- No corpus migration needed.
+
+---
+
 ## [1.2.0] — 2026-04-30
 
 **Minor release. Constant-time eat path at any corpus scale, periodic
