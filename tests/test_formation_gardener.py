@@ -22,9 +22,29 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from linafish.engine import FishEngine
+from linafish.formations import Formation
 from linafish.formation_gardener import (
     FormationGardener, FISSION_THRESHOLD, GARDEN_INTERVAL_SEC,
+    classify_health, assign_grade, _compression_to_fp_analog,
+    FP_POVERTY_CUTOFF, FP_DIGNITY_CUTOFF, CONTAGION_MIN_SIZE,
+    CONTAGION_DIVERSITY_FLOOR,
 )
+
+
+def _make_formation(score=0.3, size=10, diversity=0.7, name="TEST"):
+    """Build a synthetic Formation with the regime-relevant fields set."""
+    return Formation(
+        id=0,
+        name=name,
+        keywords=[],
+        member_ids=[f"id_{i}" for i in range(size)],
+        centroid=[0.0] * 8,
+        representative_text="",
+        crystal_count=size,
+        cognitive_centroid=[0.0] * 8,
+        compression_score=score,
+        content_diversity=diversity,
+    )
 
 
 def _make_engine(state_dir, addressed=True):
@@ -176,6 +196,144 @@ def test_gardener_summary_idempotent_on_unchanged_state(tmp_path):
         assert s1[key] == s2[key], (
             f"key {key!r} drifted between passes: {s1[key]} → {s2[key]}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Regime classification (commit 4)
+# ---------------------------------------------------------------------------
+
+def test_compression_to_fp_analog_endpoints():
+    """The mapping fp_analog = clamp(2.0 - score * 4.0, 0.0, 2.0).
+
+    Verify the endpoints — score=0 → fp=2 (max pathology), score=0.5 →
+    fp=0 (max poverty), score in middle stays in [0, 2].
+    """
+    assert _compression_to_fp_analog(0.0) == 2.0
+    assert _compression_to_fp_analog(0.5) == 0.0
+    # Above the saturation point, clamps to 0.0
+    assert _compression_to_fp_analog(1.0) == 0.0
+    # Negative shouldn't happen in practice, but should clamp
+    assert _compression_to_fp_analog(-1.0) == 2.0
+
+
+def test_classify_health_poverty():
+    """Very high compression_score → POVERTY (rock-solid grounded)."""
+    f = _make_formation(score=0.5, size=10, diversity=0.8)
+    assert classify_health(f) == "POVERTY"
+
+
+def test_classify_health_dignity():
+    """Moderate compression_score → DIGNITY (the healthy regime)."""
+    f = _make_formation(score=0.3, size=10, diversity=0.8)
+    # fp = 2 - 0.3*4 = 0.8, in [0.6, 1.2]
+    assert classify_health(f) == "DIGNITY"
+
+
+def test_classify_health_pathology():
+    """Low compression_score → PATHOLOGY."""
+    f = _make_formation(score=0.05, size=10, diversity=0.8)
+    # fp = 2 - 0.05*4 = 1.8, > 1.2
+    assert classify_health(f) == "PATHOLOGY"
+
+
+def test_classify_health_contagion():
+    """Pathology + oversize + low diversity → CONTAGION (the actionable
+    warning that a formation is broadcast pollution).
+    """
+    f = _make_formation(
+        score=0.05,                # PATHOLOGY band
+        size=CONTAGION_MIN_SIZE,   # at threshold
+        diversity=CONTAGION_DIVERSITY_FLOOR - 0.05,  # below floor
+    )
+    assert classify_health(f) == "CONTAGION"
+
+
+def test_classify_health_pathology_not_contagion_when_diverse():
+    """Pathology with HIGH diversity stays PATHOLOGY (not enough
+    template-saturation to be contagion)."""
+    f = _make_formation(
+        score=0.05,
+        size=CONTAGION_MIN_SIZE,
+        diversity=0.8,
+    )
+    assert classify_health(f) == "PATHOLOGY"
+
+
+def test_classify_health_pathology_not_contagion_when_small():
+    """Pathology BELOW CONTAGION_MIN_SIZE stays PATHOLOGY (too small
+    to be a federation-scale problem)."""
+    f = _make_formation(
+        score=0.05,
+        size=10,  # below CONTAGION_MIN_SIZE
+        diversity=0.1,
+    )
+    assert classify_health(f) == "PATHOLOGY"
+
+
+def test_assign_grade_a():
+    """80%+ DIGNITY, no CONTAGION → A."""
+    counts = {"DIGNITY": 8, "POVERTY": 1, "PATHOLOGY": 1, "CONTAGION": 0}
+    assert assign_grade(counts) == "A"
+
+
+def test_assign_grade_b():
+    """60%+ DIGNITY, ≤5% CONTAGION → B."""
+    counts = {"DIGNITY": 60, "POVERTY": 20, "PATHOLOGY": 17, "CONTAGION": 3}
+    assert assign_grade(counts) == "B"
+
+
+def test_assign_grade_c():
+    """40%+ DIGNITY, ≤15% CONTAGION → C."""
+    counts = {"DIGNITY": 40, "POVERTY": 30, "PATHOLOGY": 20, "CONTAGION": 10}
+    assert assign_grade(counts) == "C"
+
+
+def test_assign_grade_d():
+    """Below C thresholds → D."""
+    counts = {"DIGNITY": 10, "POVERTY": 30, "PATHOLOGY": 30, "CONTAGION": 30}
+    assert assign_grade(counts) == "D"
+
+
+def test_assign_grade_empty():
+    """Zero formations → '?'."""
+    assert assign_grade({"DIGNITY": 0, "POVERTY": 0,
+                         "PATHOLOGY": 0, "CONTAGION": 0}) == "?"
+
+
+def test_gardener_status_contains_real_regime_counts(tmp_path):
+    """After commit 4, status counts are populated by the real classifier
+    — the placeholder 'unclassified' bucket is gone, replaced by real
+    regime counts that sum to len(formation_index).
+    """
+    engine = _make_engine(tmp_path / "state")
+    _seed_corpus(engine, 50)
+    gardener = FormationGardener(engine)
+    summary = gardener.run(write_status=False)
+
+    counts = summary["counts"]
+    assert "unclassified" not in counts, (
+        "placeholder bucket should be gone after commit 4"
+    )
+    total_classified = sum(counts.values())
+    assert total_classified == summary["n_formations"], (
+        f"sum of regime counts ({total_classified}) != "
+        f"n_formations ({summary['n_formations']})"
+    )
+    # Grade is no longer '?' once real classification runs
+    assert summary["grade"] in {"A", "B", "C", "D", "?"}
+
+
+def test_gardener_status_includes_contagion_top(tmp_path):
+    """Status JSON has a contagion_top key matching ice9a_status.json shape.
+    Even when empty (no contagion formations), the key must be present.
+    """
+    engine = _make_engine(tmp_path / "state")
+    _seed_corpus(engine, 30)
+    gardener = FormationGardener(engine)
+    summary = gardener.run(write_status=False)
+
+    assert "contagion_top" in summary
+    assert isinstance(summary["contagion_top"], list)
 
 
 def test_migration_script_runs_on_small_corpus(tmp_path):

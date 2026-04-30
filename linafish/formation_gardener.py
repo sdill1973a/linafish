@@ -1,14 +1,32 @@
 """Formation Gardener — periodic maintenance for addressed formations.
 
-Commit 3 of 5 in the §RECOUPLE.IN.PLACE follow-up. The gardener runs
+Commits 3-4 of 5 in the §RECOUPLE.IN.PLACE follow-up. The gardener runs
 maintenance the addressed-formations path defers from the eat() hot
-path: fission of oversized formations, formation-health status JSON
-emission, and (in commit 4) the DIGNITY/POVERTY/PATHOLOGY/CONTAGION
-regime classification port from Ice-9.
+path: oversize fission identification and formation-health status JSON
+emission, ported from the Ice-9 lineage that has been Anchor's
+metacognitive surface since 2026-03-09.
 
-This skeleton lands the structure and the status JSON write. Full
-fission split logic and the regime port arrive in commit 4 alongside
-the Ice-9 surface restoration.
+Commit 3 (skeleton): structure + atomic status JSON write
+Commit 4 (regime port): DIGNITY/POVERTY/PATHOLOGY/CONTAGION classifier
+   ported from ice9a.py:582-625, operating on grammar signals
+   already on Formation (compression_score / cog_amplitude / mean_ache
+   / content_diversity) instead of the v2-memory anchor-set cosine that
+   the original Ice-9 used.
+
+The classification semantics are preserved:
+  POVERTY   — formation is too grounded (high signal density, low
+              engagement). Bedrock crystals, system facts. Uninteresting.
+  DIGNITY   — well-grounded, varied content with real engagement.
+              The healthy target regime.
+  PATHOLOGY — low signal density. Operational noise, tool spam,
+              broadcast templates with no ground truth.
+  CONTAGION — pathology AT SCALE: oversize formation, low diversity,
+              no grounded crystals to anchor it. The actionable warning
+              regime — needs data injection or pruning.
+
+The status JSON file (data/{name}_lattice_status.json) matches the
+shape of ice9a_status.json so any downstream consumer that reads
+Ice-9's output can read linafish's lattice status without retraining.
 
 Wakes on:
   - GARDEN_INTERVAL_SEC periodic timer (default 600s)
@@ -18,10 +36,6 @@ Wakes on:
 Operates on a snapshot of self.formation_index under a brief lock so
 /pfc and eat() keep flowing during the pass. Never blocks the eat()
 hot path.
-
-The status JSON file (data/{name}_lattice_status.json) matches the
-shape of ice9a_status.json so any downstream consumer that reads
-Ice-9's output can read linafish's lattice status without retraining.
 """
 
 import json
@@ -39,6 +53,112 @@ if TYPE_CHECKING:
 GARDEN_INTERVAL_SEC = 600    # 10 min default; daemon can override
 GARDEN_NUDGE_EATS = 5000     # threshold-triggered fast pass
 SUB_ADDRESS_SEPARATOR = "/"  # hierarchical sub-address marker for fission output
+
+# Health regime thresholds. Ported from ice9a.py:582-592 in spirit, but
+# applied to ``compression_score`` (mean_ache × cog_amplitude × trust ×
+# content_diversity) instead of the anchor-set fp_estimate that v2 memory
+# used. The threshold values are deliberately the same numerical values as
+# Ice-9's fp cutoffs (0.6 / 1.2) but interpreted on the inverted axis:
+# higher compression_score → lower fp_analog → more grounded.
+#
+# fp_analog = clamp(2.0 - compression_score * 4.0, 0.0, 2.0)
+#   compression_score = 0.5  →  fp_analog = 0.0  (POVERTY — rock-solid grounded)
+#   compression_score = 0.3  →  fp_analog = 0.8  (DIGNITY — healthy)
+#   compression_score = 0.2  →  fp_analog = 1.2  (DIGNITY/PATHOLOGY boundary)
+#   compression_score = 0.1  →  fp_analog = 1.6  (PATHOLOGY)
+#   compression_score = 0.0  →  fp_analog = 2.0  (PATHOLOGY ceiling)
+#
+# The 4.0 multiplier calibrates against typical compression_score values
+# (0.05 - 0.5 in observed federation corpora). Re-tunable; commit 5 may
+# adjust based on production telemetry.
+COMPRESSION_TO_FP_MULTIPLIER = 4.0
+FP_POVERTY_CUTOFF = 0.6
+FP_DIGNITY_CUTOFF = 1.2
+
+# CONTAGION criteria: pathology AT SCALE without grounded crystals.
+# Mirrors ice9a.py:591 — pat > 0.8 * size and pov == 0.
+# In linafish-terms: a PATHOLOGY-classified formation that is large
+# (>= CONTAGION_MIN_SIZE) and has very low diversity (broadcast/template
+# saturation). The "no grounded crystals" check translates to
+# content_diversity below CONTAGION_DIVERSITY_FLOOR — a formation
+# saturated with retransmission has nothing to anchor it.
+CONTAGION_MIN_SIZE = 50
+CONTAGION_DIVERSITY_FLOOR = 0.3
+
+
+def _compression_to_fp_analog(compression_score: float) -> float:
+    """Map compression_score to a [0, 2] fp_analog axis.
+
+    Higher compression_score → lower fp_analog → more grounded (POVERTY
+    end of spectrum). Lower compression_score → higher fp_analog → more
+    noise (PATHOLOGY end). Boundary at fp_analog 0.6 / 1.2 matches
+    Ice-9's regime cutoffs.
+
+    See module docstring for the calibration rationale.
+    """
+    fp = 2.0 - compression_score * COMPRESSION_TO_FP_MULTIPLIER
+    return max(0.0, min(2.0, fp))
+
+
+def classify_health(formation: Formation) -> str:
+    """Classify a formation's health regime.
+
+    Ported from ice9a.py:582-592. Operates on Formation.compression_score
+    as the fp_analog substrate — the same composite signal v7 surface
+    ranking uses (mean_ache × cog_amplitude × trust × content_diversity).
+    No anchor-set / sentence-transformers dependency; the fish judges
+    itself by its own grammar.
+
+    Regimes:
+      POVERTY   — formation is bedrock-grounded (system facts, sensor
+                  data, factual citations). compression_score very high.
+      DIGNITY   — healthy: well-grounded, varied content with real
+                  engagement.
+      PATHOLOGY — low signal density. Operational noise.
+      CONTAGION — pathology + oversize + no diversity. The actionable
+                  warning that the formation is broadcast pollution.
+    """
+    fp = _compression_to_fp_analog(formation.compression_score)
+
+    if fp < FP_POVERTY_CUTOFF:
+        regime = "POVERTY"
+    elif fp <= FP_DIGNITY_CUTOFF:
+        regime = "DIGNITY"
+    else:
+        regime = "PATHOLOGY"
+
+    # CONTAGION override: oversize PATHOLOGY with broadcast-template
+    # diversity. The "ALL MINDS" formation pattern that ate the .67
+    # federation room.
+    if (regime == "PATHOLOGY"
+            and formation.crystal_count >= CONTAGION_MIN_SIZE
+            and formation.content_diversity < CONTAGION_DIVERSITY_FLOOR):
+        regime = "CONTAGION"
+
+    return regime
+
+
+def assign_grade(counts: dict) -> str:
+    """Letter grade from regime counts. Mirrors ice9a's grade computation
+    in spirit — high CONTAGION drags grade down; high DIGNITY raises it.
+
+    A: ≥80% DIGNITY, no CONTAGION
+    B: ≥60% DIGNITY, ≤5% CONTAGION
+    C: ≥40% DIGNITY, ≤15% CONTAGION
+    D: anything else
+    """
+    total = sum(counts.values())
+    if total == 0:
+        return "?"
+    dignity_pct = counts.get("DIGNITY", 0) / total
+    contagion_pct = counts.get("CONTAGION", 0) / total
+    if dignity_pct >= 0.80 and contagion_pct == 0.0:
+        return "A"
+    if dignity_pct >= 0.60 and contagion_pct <= 0.05:
+        return "B"
+    if dignity_pct >= 0.40 and contagion_pct <= 0.15:
+        return "C"
+    return "D"
 
 
 class FormationGardener:
@@ -148,24 +268,57 @@ class FormationGardener:
             for f in top
         ]
 
-        # Placeholder regime counts. Commit 4 ports the real Ice-9
-        # classifier; the keys here match ice9a_status.json's shape so
-        # downstream consumers don't break when commit 4 lands real
-        # values. Until then everything classifies as "unclassified".
-        summary["counts"] = {
-            "DIGNITY": 0,
+        # §RECOUPLE.IN.PLACE commit 4 — Ice-9 regime classification
+        # ported onto Formation grammar signals (compression_score as
+        # fp_analog substrate). Each formation gets a regime tag; the
+        # counts roll up; the grade summarizes fleet health.
+        counts = {
             "POVERTY": 0,
+            "DIGNITY": 0,
             "PATHOLOGY": 0,
             "CONTAGION": 0,
-            "unclassified": len(self.engine.formation_index),
         }
-        summary["grade"] = "?"  # commit 4 fills this in
-        summary["fp_mean"] = round(
-            # Inverted cog_amplitude as a placeholder fp analog —
-            # amplitude in [0, 1] → 1.0 - amplitude in [0, 1].
-            # commit 4 replaces this with real fp_estimate.
-            1.0 - summary["cog_amplitude_mean"], 4
+        regime_per_formation = {}
+        fp_analogs = []
+        for f in self.engine.formation_index.values():
+            regime = classify_health(f)
+            counts[regime] += 1
+            regime_per_formation[f.name] = regime
+            fp_analogs.append(_compression_to_fp_analog(f.compression_score))
+
+        summary["counts"] = counts
+        summary["grade"] = assign_grade(counts)
+        # fp_mean across all formations — analogous to ice9a's fp_mean
+        # but on the linafish fp_analog (derived from compression_score).
+        if fp_analogs:
+            summary["fp_mean"] = round(
+                sum(fp_analogs) / len(fp_analogs), 4
+            )
+        else:
+            summary["fp_mean"] = 0.0
+
+        # contagion_top — the actionable list. Ported from ice9a's
+        # contagion_top key in the status file. Top-N by fp_analog
+        # within the CONTAGION regime; what fish_taste_anchor's hook
+        # would surface in the per-turn `<subconscious>` block.
+        contagion_formations = [
+            f for f in self.engine.formation_index.values()
+            if regime_per_formation.get(f.name) == "CONTAGION"
+        ]
+        contagion_formations.sort(
+            key=lambda f: f.crystal_count,
+            reverse=True,
         )
+        summary["contagion_top"] = [
+            {
+                "id": f.name,
+                "fp": round(_compression_to_fp_analog(f.compression_score), 4),
+                "size": f.crystal_count,
+                "compression_score": round(f.compression_score, 4),
+                "content_diversity": round(f.content_diversity, 4),
+            }
+            for f in contagion_formations[:5]
+        ]
 
         summary["pass_seconds"] = round(time.perf_counter() - t0, 3)
         summary["status"] = "ran"
