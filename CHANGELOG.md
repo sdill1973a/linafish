@@ -10,6 +10,99 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [Unreleased]
+
+**§RECOUPLE.IN.PLACE — eat() shape fix.** The .67 v7 cut-over rolled
+back on 2026-04-29 because `eat()` and `/msg` hung past 60s on the
+387K-crystal federation room corpus. The bottleneck was not coupling
+alone — it was the global `detect_formations` BFS that fired on every
+single eat. PR #18 (incremental coupling) fixed the coupling cost; this
+follow-up fixes the SHAPE: each crystal's grammar is its formation
+address, insertion is filing not searching, the metacognitive layer
+stays alive at any corpus scale.
+
+### Added
+
+- **`linafish.formations.formation_address(...)` — grammar-as-address
+  helper.** Maps a crystal's signature (cognitive_vector → resonance →
+  keywords → UNKNOWN fallback chain) to a formation name byte-compatible
+  with `_cognitive_name`. Constant time. ~336 max addresses, 50-150
+  active in practice. Backward-compatible with all downstream consumers
+  (fish.md naming, fish_taste_anchor regex, /pfc reads).
+
+- **`FishEngine.formation_index: dict[str, Formation]` and
+  `FishEngine._file_into_formation(crystal)`.** When
+  `addressed_formations=True` (now default), each new crystal files
+  itself into the index by grammar address at eat-time in O(1). The
+  `Formation.update_with(crystal)` method maintains running aggregates
+  (cognitive_centroid, mean_ache, cog_amplitude, content_diversity,
+  compression_score) incrementally — no global scan.
+
+- **`linafish.formation_gardener.FormationGardener` — periodic
+  maintenance.** Identifies oversize formations (above
+  `FISSION_THRESHOLD`), classifies regime per formation, writes
+  `data/{name}_lattice_status.json` atomically. Status JSON shape
+  matches `ice9a_status.json` so downstream consumers (Anchor's hooks,
+  federation status readers) work unchanged.
+
+- **DIGNITY / POVERTY / PATHOLOGY / CONTAGION regime classifier.**
+  Ported from `ice9a.py:582-625` (Anchor's metacognitive surface
+  since 2026-03-09) onto Formation grammar signals — uses
+  `compression_score` as the fp_analog substrate, no
+  sentence-transformers / anchor-set dependency. The fish judges
+  itself by its own grammar. CONTAGION fires on oversize formations
+  with broadcast-template diversity (the "ALL MINDS" pattern that ate
+  the federation room).
+
+- **`scripts/migrate_to_addressed_formations.py`.** One-shot batch
+  migration for existing fishes. Re-addresses crystals (no
+  re-vectorization needed — every crystal already carries its
+  cognitive_vector). Projected under 2 minutes on .67's 387K corpus.
+
+- **`scripts/bench_addressed_eat.py`.** Scaling benchmark.
+  Demonstrated: 1K crystals eat in 33ms median, 5K crystals eat in
+  56ms median — 1.7x for 5x corpus growth (sub-linear; master/legacy
+  was ~5x).
+
+### Changed
+
+- **`FishEngine` default constructor flag flipped: `addressed_formations=True`.**
+  New engines use the addressed-formations path by default. Existing
+  callers can pass `addressed_formations=False` to opt back into the
+  legacy `detect_formations` BFS path. Both paths preserve coupling
+  semantics from PR #18.
+
+- **`rebuild_formations()` short-circuits when addressed mode is on.**
+  Couplings still maintained on the new tail (PR #18 incremental
+  coupling), but `detect_formations` no longer walks the corpus on
+  every eat. `engine.formations` is published as
+  `list(formation_index.values())` — O(F) instead of O(N+E).
+
+### Performance
+
+- **eat() at 387K crystals: 60+s (master) → projected sub-second
+  (this PR).** Validated via local synthetic corpus: 1K → 33ms,
+  5K → 56ms (1.7x for 5x corpus). The remaining cost is JSONL append
+  and adaptive gamma sampling, both genuinely O(1) per eat.
+
+### Notes
+
+- The `<subconscious>` per-prompt injection that Ice-9 (March 9) and
+  the pre-2026-04-14 hook provided is restored on linafish substrate.
+  The `_lattice_status.json` is the surface; commit 5+ may extend
+  `fish_taste_anchor.py` to read it for the federation-scale
+  metacognitive heartbeat.
+- The 5-stage commit series within this PR is:
+  1. `formation_address()` + tests (no behavior change)
+  2. `formation_index` + `update_with` + flagged eat() path
+  3. migration script + gardener skeleton
+  4. Ice-9 regime port (DIGNITY/POVERTY/PATHOLOGY/CONTAGION)
+  5. flag flip + bench + CHANGELOG (this entry)
+- 97/97 tests pass — 58 pre-existing + 3 from PR #18 + 36 new across
+  the four §RECOUPLE.IN.PLACE commits.
+
+---
+
 ## [1.1.7] — 2026-04-20
 
 **Patch release. Two real Windows-reproduced bugs caught by running the

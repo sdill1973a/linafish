@@ -108,7 +108,7 @@ class FishEngine:
                  subtract_centroid: bool = False,
                  git_autocommit: bool = True,
                  dedupe: bool = False,
-                 addressed_formations: bool = False):
+                 addressed_formations: bool = True):
         self.name = name
         self.state_dir = state_dir or Path.home() / ".linafish"
         self.state_dir.mkdir(parents=True, exist_ok=True)
