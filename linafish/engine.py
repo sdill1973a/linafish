@@ -178,6 +178,37 @@ class FishEngine:
         self.addressed_formations = addressed_formations
         self.formation_index: Dict[str, Formation] = {}
 
+        # Bootstrap: when addressed_formations=True and the engine just
+        # loaded crystals from disk, walk them once and rebuild
+        # formation_index. The migration script does the same one-shot,
+        # but engines constructed against an already-migrated state dir
+        # would otherwise see empty formation_index until the next eat()
+        # — and downstream consumers (gardener, /pfc, fish_taste_anchor)
+        # operating in read-only mode would see "0 formations." Cost is
+        # O(N) at startup; ~1s for 387K crystals. Skipped when there
+        # are no crystals yet (initial empty fish).
+        if self.addressed_formations and self.fish.crystals:
+            from .formations import formation_address as _fa
+            for c in self.fish.crystals:
+                addr = _fa(
+                    cognitive_vector=getattr(c, 'cognitive_vector', None),
+                    resonance=getattr(c, 'resonance', None),
+                    keywords=getattr(c, 'keywords', None),
+                )
+                c.formation = addr
+                f = self.formation_index.get(addr)
+                if f is None:
+                    f = Formation(
+                        id=len(self.formation_index),
+                        name=addr, keywords=[], member_ids=[],
+                        centroid=[0.0] * 8, representative_text="",
+                        crystal_count=0, cognitive_centroid=[0.0] * 8,
+                    )
+                    self.formation_index[addr] = f
+                f.member_ids.append(c.id)
+                f.update_with(c)
+            self.formations = list(self.formation_index.values())
+
         # ---------------------------------------------------------------
         # ASSESSMENT STATE — the RTI data layer
         # ---------------------------------------------------------------

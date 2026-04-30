@@ -101,6 +101,64 @@ stays alive at any corpus scale.
 - 97/97 tests pass — 58 pre-existing + 3 from PR #18 + 36 new across
   the four §RECOUPLE.IN.PLACE commits.
 
+### Fixed (post-codex review, 2026-04-30)
+
+- **`Formation.update_with` trust_weight ordering.** `compression_score`
+  was computed before `trust_weight` was refreshed from the
+  source-mind set. A new-mind crystal arriving in an existing
+  formation produced a score with the OLD trust regime — permanent
+  drift from `detect_formations` baseline, breaking Ice-9 thresholds
+  immediately when a second mind appeared. Reordered: `trust_weight`
+  + `source_minds` updated FIRST, then `compression_score` derived
+  from the current values. Reproducer + regression test pinned in
+  `tests/test_addressed_eat.py::test_compression_score_uses_current_trust_weight`.
+
+- **Crystal ID birthday collisions.** `crystallize` produced
+  `c3_<unix_seconds>_<4_hex>`. At ~200 crystals/second ingest the
+  4-hex hash space (65536 buckets) yielded ~26% birthday collision
+  probability. Two crystals with identical IDs silently confuse every
+  consumer that keys by id. Hash widened to 12 hex chars (16^12 ≈
+  2.8e14 buckets), making collision negligible. Existing 4-hex IDs
+  in JSONL files round-trip unchanged. Regression test in
+  `tests/test_recouple_in_place.py::test_crystal_ids_are_unique_within_a_batch`.
+
+- **Engine reload `formation_index` bootstrap.** After `migrate_to_addressed_formations.py`
+  wrote a state directory, a fresh `FishEngine` load saw 0
+  formations because `formation_index` lived only in memory. The
+  gardener and downstream readers (gardener, /pfc, fish_taste_anchor)
+  saw an empty lattice. Init-time bootstrap now walks loaded
+  crystals once and rebuilds `formation_index` via the same
+  addressing logic the migration uses. O(N) one-time at startup;
+  ~1s for 387K crystals.
+
+- **`SEEDLING` regime gate in `classify_health`.** Live-corpus
+  testing on anchor-writing (6823 crystals → 329 addressed
+  formations) surfaced 88.8% of formations classified as POVERTY —
+  artifact of small (1-3 crystal) "formations" hitting the
+  compression_score threshold because content_diversity = 1.0 with a
+  tiny sample. Below `SEEDLING_MAX_SIZE = 5`, formations now
+  classify as `SEEDLING` (bookkeeping only, excluded from
+  regime grade). The grade reflects substantive-formation health,
+  not how many tiny addresses exist.
+
+### Notes (continued)
+
+- **Codex blocking #2 (wrapping_numbers snapshot)** — investigated and
+  rejected. Grep confirms `_fission` mutates only `c.couplings`, not
+  `c.wrapping_numbers`. Codex hallucinated a `_cut_weak_edges` function
+  that doesn't exist. The existing snapshot/restore is sufficient.
+
+- **Codex blocking #3 (gardener concurrency)** — valid concern but not
+  reachable in this PR. Gardener has no thread driver yet. Single-thread
+  constraint documented in `FormationGardener.run()` docstring; lock
+  must land alongside the future background-thread driver.
+
+- 99/99 tests pass after fixes — added 2 regression tests
+  (compression_score trust_weight + crystal id uniqueness).
+  Bench validates: 1K eat ~33ms, 5K eat ~45ms, 15K eat ~73ms — 2.2×
+  scaling for 15× corpus growth (legacy: 13.5× scaling). 18× speedup
+  at 15K vs legacy detect_formations path.
+
 ---
 
 ## [1.1.7] — 2026-04-20

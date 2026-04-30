@@ -224,3 +224,68 @@ def test_addressed_couplings_still_work(tmp_path):
     assert len(new_crystal.couplings) > 0, (
         "addressed path didn't couple the new crystal to window neighbors"
     )
+
+
+def test_compression_score_uses_current_trust_weight(tmp_path):
+    """Regression for the trust_weight ordering bug surfaced by codex review
+    on 2026-04-30. Formation.update_with computed compression_score before
+    refreshing trust_weight from the accumulated source-mind set, so a
+    new-mind crystal arriving in an existing formation produced a score
+    half (or 1/3) of what detect_formations would compute on the same
+    member set. The ordering must be: trust_weight updated FIRST, then
+    compression_score derived from it.
+
+    The bug breaks Ice-9 regime classification — a formation that should
+    be DIGNITY can be misclassified as PATHOLOGY because the score
+    multiplicand stays stuck at the old (low) trust regime.
+    """
+    from linafish.formations import Formation
+    from linafish.crystallizer_v3 import Crystal
+
+    f = Formation(
+        id=0, name="TEST", keywords=[], member_ids=[],
+        centroid=[0.0] * 8, representative_text="",
+        crystal_count=0, cognitive_centroid=[0.0] * 8,
+    )
+
+    def _make_crystal(cid: str, mind: str) -> Crystal:
+        c = Crystal(
+            id=cid, ts="", text=f"text-{cid}", source="",
+            mi_vector=[1, 2, 3, 4, 5, 6, 7, 8],
+            resonance=[1, 2, 3, 4, 5, 6, 7, 8],
+            keywords=["x"], ache=0.5,
+            cognitive_vector=[1.0] + [0.5] * 7,
+        )
+        c.source_mind = mind
+        return c
+
+    # First crystal from mind A — single-mind regime, trust_weight=0.5
+    f.update_with(_make_crystal("c1", "A"))
+    assert f.trust_weight == 0.5
+    score_one_mind = f.compression_score
+    # Manual: 0.5 ache * |[1,0.5,...]|=sqrt(1+7*0.25)=1.658 * 0.5 trust * 1.0 div
+    expected_one = 0.5 * f.cog_amplitude * 0.5 * 1.0
+    assert abs(score_one_mind - expected_one) < 1e-6, (
+        f"single-mind score {score_one_mind} != expected {expected_one}"
+    )
+
+    # Second crystal from mind B — two-mind regime, trust_weight=1.0
+    f.update_with(_make_crystal("c2", "B"))
+    assert f.trust_weight == 1.0, "trust_weight didn't update on new mind"
+    score_two_minds = f.compression_score
+    expected_two = f.mean_ache * f.cog_amplitude * 1.0 * f.content_diversity
+    assert abs(score_two_minds - expected_two) < 1e-6, (
+        f"two-mind compression_score {score_two_minds} disagrees with "
+        f"manual product {expected_two} — trust_weight ordering bug "
+        f"reintroduced. The fix is in formations.py: trust_weight + "
+        f"source_minds update MUST come before the compression_score "
+        f"multiplicand line."
+    )
+    # And the post-fix score must be strictly larger than the pre-fix
+    # would have been (which was multiplied by 0.5 trust instead of 1.0).
+    pre_fix_would_have_been = (
+        f.mean_ache * f.cog_amplitude * 0.5 * f.content_diversity
+    )
+    assert score_two_minds > pre_fix_would_have_been + 1e-9, (
+        f"score didn't double on new-mind arrival — likely regression"
+    )

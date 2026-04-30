@@ -698,9 +698,22 @@ def crystallize(text: str, vectorizer: MIVectorizer,
         chains = parse_result.chains
         modifiers = parse_result.modifiers
 
-    # Generate ID
+    # Generate ID. Format `c3_<unix_seconds>_<hex>`.
+    #
+    # Hash component widened from 4 hex chars to 12 (2026-04-30
+    # §RECOUPLE.IN.PLACE follow-up). At 4 hex, the birthday probability of
+    # collision in a 200-crystal batch ingested in one second is ~26%; at
+    # 387K crystals over a long-running ingest, collisions are virtually
+    # certain. Two crystals sharing an id silently conflate their coupling
+    # entries (couplings are (id, gamma) tuples — same id from two distinct
+    # objects merges in any consumer that keys by id). 12 hex = 16^12 = 2.8e14
+    # buckets — collision probability negligible at any plausible corpus size.
+    #
+    # Backward compatibility: the JSONL loader reads whatever id string is
+    # on disk. Existing 4-hex ids continue to load and round-trip; new
+    # crystals get 12-hex. Mixed corpora coexist. No schema migration needed.
     ts = datetime.now(timezone.utc).isoformat()
-    h = hashlib.md5(f"{ts}{text[:100]}".encode()).hexdigest()[:4]
+    h = hashlib.md5(f"{ts}{text[:100]}".encode()).hexdigest()[:12]
     crystal_id = f"c3_{int(datetime.now(timezone.utc).timestamp())}_{h}"
 
     # Preserve full crystal text. The previous 300-char cap silently

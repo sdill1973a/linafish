@@ -14,6 +14,7 @@ These tests pin both the semantics (existing couplings preserved) and the
 scaling (per-eat time should not grow linearly with corpus size).
 """
 
+import random
 import sys
 import time
 import tempfile
@@ -24,6 +25,27 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from linafish.engine import FishEngine
+
+
+@pytest.fixture(autouse=True)
+def _seed_random():
+    """Pin the global random state for every test in this module.
+
+    The adaptive-gamma sampler in ``UniversalFish._compute_couplings`` and
+    ``_couple_appended_crystals`` calls ``random.randint`` against the
+    process-wide RNG. When the suite runs in default order, earlier
+    tests perturb that state, occasionally driving the sampled p75
+    threshold below the legitimate edge gammas of the seeded corpus.
+    The result was a ~20% flake on test_eat_preserves_existing_couplings
+    (5x sweep on 2026-04-30: 4 pass, 1 fail).
+
+    Seeding to a fixed value at the start of every test makes the
+    adaptive-gamma sampler deterministic across the suite. The
+    production sampler is genuinely stochastic — that's by design,
+    not a property the tests need to assert against.
+    """
+    random.seed(0xA9C70F)  # arbitrary fixed seed; "ANCHOR" in hex-ish
+    yield
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +99,37 @@ def _time_one_eat(engine, text):
     t0 = time.perf_counter()
     engine.eat(text, source="timing-probe")
     return time.perf_counter() - t0
+
+
+# ---------------------------------------------------------------------------
+# ID uniqueness — regression test for the 4-hex collision found 2026-04-30
+# ---------------------------------------------------------------------------
+
+
+def test_crystal_ids_are_unique_within_a_batch(tmp_path):
+    """Crystals ingested in the same second must still get unique IDs.
+
+    Pre-2026-04-30 crystallize() used 4 hex chars after the unix-second
+    prefix. At ~200 crystals per second the birthday probability of
+    collision exceeds 25%. Two crystals sharing an id silently confuse
+    every coupling consumer that keys by id.
+
+    The fix widened the hash component to 12 hex chars (16^12 = 2.8e14
+    buckets), making collision negligible at any plausible corpus size.
+    This test pins the invariant: a 200-crystal seed batch produces 200
+    unique ids.
+    """
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    engine = _make_engine(state_dir)
+
+    _seed_corpus(engine, 200)
+    ids = [c.id for c in engine.fish.crystals]
+    assert len(ids) == len(set(ids)), (
+        f"crystal ids not unique within batch: "
+        f"{len(ids) - len(set(ids))} duplicates among {len(ids)} crystals — "
+        f"the hex component of the id may be too short"
+    )
 
 
 # ---------------------------------------------------------------------------

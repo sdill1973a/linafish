@@ -285,7 +285,23 @@ class Formation:
         if (n + 1) > 0:
             self.content_diversity = len(self._seen_hashes) / (n + 1)
 
-        # compression_score — recomputes from the four factors.
+        # source_minds + trust_weight — derive from accumulated mind set.
+        # Updated BEFORE compression_score because compression_score is a
+        # function of trust_weight; computing the score with stale
+        # trust_weight (the bug fixed 2026-04-30 §RECOUPLE.IN.PLACE follow-up)
+        # caused permanent drift from detect_formations baseline whenever a
+        # new source-mind appeared mid-formation.
+        mind = getattr(crystal, 'source_mind', None)
+        if mind:
+            self._mind_set.add(mind)
+        self.source_minds = sorted(self._mind_set)
+        n_minds = len(self._mind_set) if self._mind_set else 1
+        self.trust_weight = min(0.5 * n_minds, 1.5)
+
+        # compression_score — recomputes from the four factors. Must be
+        # AFTER trust_weight is updated (the multiplicand) so a new-mind
+        # crystal's score reflects the correct trust regime, not the
+        # pre-insert one.
         self.compression_score = (
             self.mean_ache * self.cog_amplitude
             * self.trust_weight * self.content_diversity
@@ -306,14 +322,6 @@ class Formation:
             else:
                 self._chain_counter[str(chain)] += 1
         self.top_chains = [c for c, _ in self._chain_counter.most_common(5)]
-
-        # source_minds + trust_weight — derive from accumulated mind set
-        mind = getattr(crystal, 'source_mind', None)
-        if mind:
-            self._mind_set.add(mind)
-        self.source_minds = sorted(self._mind_set)
-        n_minds = len(self._mind_set) if self._mind_set else 1
-        self.trust_weight = min(0.5 * n_minds, 1.5)
 
         # self_referential_pct — running count
         if getattr(crystal, 'self_referential', False):

@@ -85,6 +85,21 @@ FP_DIGNITY_CUTOFF = 1.2
 CONTAGION_MIN_SIZE = 50
 CONTAGION_DIVERSITY_FLOOR = 0.3
 
+# Minimum formation size for regime classification. A 1-3 crystal
+# "formation" hasn't accumulated enough signal for the
+# DIGNITY/POVERTY/PATHOLOGY/CONTAGION semantics to apply — its
+# compression_score reflects that every text is "unique" (div=1.0)
+# in a tiny sample, not that it's bedrock-grounded. Below this
+# threshold, classify_health returns "SEEDLING" — bookkeeping
+# only, not part of the regime grade.
+#
+# Calibrated 2026-04-30 against a real anchor-writing corpus
+# (6823 crystals, 329 addressed formations): without this gate,
+# 88.8% of formations classified as POVERTY purely because most
+# were 1-3 crystals with maximum diversity. With this gate, the
+# regime mix reflects substantive formations only.
+SEEDLING_MAX_SIZE = 5
+
 
 def _compression_to_fp_analog(compression_score: float) -> float:
     """Map compression_score to a [0, 2] fp_analog axis.
@@ -110,6 +125,9 @@ def classify_health(formation: Formation) -> str:
     itself by its own grammar.
 
     Regimes:
+      SEEDLING  — formation has too few crystals (<= SEEDLING_MAX_SIZE)
+                  for the regime semantics to apply. Bookkeeping only;
+                  not counted in regime grade.
       POVERTY   — formation is bedrock-grounded (system facts, sensor
                   data, factual citations). compression_score very high.
       DIGNITY   — healthy: well-grounded, varied content with real
@@ -118,6 +136,9 @@ def classify_health(formation: Formation) -> str:
       CONTAGION — pathology + oversize + no diversity. The actionable
                   warning that the formation is broadcast pollution.
     """
+    if formation.crystal_count <= SEEDLING_MAX_SIZE:
+        return "SEEDLING"
+
     fp = _compression_to_fp_analog(formation.compression_score)
 
     if fp < FP_POVERTY_CUTOFF:
@@ -142,16 +163,22 @@ def assign_grade(counts: dict) -> str:
     """Letter grade from regime counts. Mirrors ice9a's grade computation
     in spirit — high CONTAGION drags grade down; high DIGNITY raises it.
 
+    SEEDLING formations are excluded from the denominator — the grade
+    reflects substantive-formation health, not how many tiny addresses
+    exist. A corpus with 200 seedlings and 10 healthy formations gets
+    the same grade as one with 0 seedlings and 10 healthy formations.
+
     A: ≥80% DIGNITY, no CONTAGION
     B: ≥60% DIGNITY, ≤5% CONTAGION
     C: ≥40% DIGNITY, ≤15% CONTAGION
     D: anything else
     """
-    total = sum(counts.values())
+    classified = {k: v for k, v in counts.items() if k != "SEEDLING"}
+    total = sum(classified.values())
     if total == 0:
         return "?"
-    dignity_pct = counts.get("DIGNITY", 0) / total
-    contagion_pct = counts.get("CONTAGION", 0) / total
+    dignity_pct = classified.get("DIGNITY", 0) / total
+    contagion_pct = classified.get("CONTAGION", 0) / total
     if dignity_pct >= 0.80 and contagion_pct == 0.0:
         return "A"
     if dignity_pct >= 0.60 and contagion_pct <= 0.05:
@@ -201,6 +228,25 @@ class FormationGardener:
           - Compute basic counts and an aggregate fp_mean stand-in
             (cog_amplitude inverted: low amplitude = high "fp" analog)
           - Write status JSON in ice9a_status.json's shape
+
+        SINGLE-THREADED ONLY (until a future commit lands the lock).
+        ``run()`` iterates ``self.engine.formation_index.values()``
+        directly. ``FishEngine._file_into_formation`` mutates
+        ``formation_index`` in the eat() hot path. If both run on the
+        same engine in different threads, ``run()`` will raise
+        ``RuntimeError: dictionary changed size during iteration`` (or
+        worse, silently read partially-mutated formations whose
+        ``member_ids`` were appended but whose aggregates are mid-update).
+
+        For now, callers MUST guarantee no eat() is in flight when
+        ``run()`` executes. The intended deployment shape (manual call,
+        explicit /pfc-side maintenance hook, end-of-eat batch sweep) is
+        single-threaded by construction. The deferred background-thread
+        driver (commit 5+ in the §RECOUPLE.IN.PLACE roadmap) MUST land an
+        engine-level lock alongside it, snapshotting the formation_index
+        under that lock before iteration. Codex flagged this as a
+        BLOCKING concurrency issue 2026-04-30 — the fix is a
+        commit-5-prerequisite, not a commit-4 patch.
         """
         t0 = time.perf_counter()
         summary = {
@@ -273,6 +319,7 @@ class FormationGardener:
         # fp_analog substrate). Each formation gets a regime tag; the
         # counts roll up; the grade summarizes fleet health.
         counts = {
+            "SEEDLING": 0,
             "POVERTY": 0,
             "DIGNITY": 0,
             "PATHOLOGY": 0,
