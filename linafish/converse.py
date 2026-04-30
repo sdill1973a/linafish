@@ -155,10 +155,18 @@ class ConverseHandler(BaseHTTPRequestHandler):
         elif parsed.path == "/taste":
             text = body.get("text", "")
             top = body.get("top", 5)
+            fmt = body.get("format", "text")
             if not text:
                 self._respond(400, json.dumps({"error": "missing text"}), "application/json")
                 return
-            self._respond(200, self.engine.taste(text, top=top))
+            if fmt == "json":
+                self._respond(
+                    200,
+                    json.dumps(self.engine.taste_dict(text, top=top)),
+                    "application/json",
+                )
+            else:
+                self._respond(200, self.engine.taste(text, top=top))
 
         else:
             self._respond(404, "Not found")

@@ -249,12 +249,19 @@ class Guppy:
         return catches[:MAX_CATCHES]
 
     def hunt_room(self, queries: List[str]) -> List[dict]:
-        """Taste the room fish for resonance."""
+        """Taste the room fish for resonance.
+
+        Requests the structured JSON response from /taste (linafish 1.2.1+).
+        On older servers that don't honor ``format=json`` and return text,
+        the parse fails in ``_post_json`` and this hunt cycle returns
+        empty for that query — same silent-skip behavior as before, but
+        now correctly captures matches when the room is on 1.2.1+.
+        """
         if not ROOM_TASTE_URL:
             return []  # No room fish endpoint configured
         catches = []
         for q in queries:
-            data = _post_json(ROOM_TASTE_URL, {"text": q})
+            data = _post_json(ROOM_TASTE_URL, {"text": q, "format": "json"})
             if not data:
                 continue
             for m in data.get("matches", [])[:2]:
