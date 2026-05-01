@@ -346,7 +346,12 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
     global _PRIMER
     _PRIMER = _load_primer()
 
-    engine = FishEngine(state_dir=state_dir, name=name)
+    # HTTP /eat path skips per-call git autocommit — every request would otherwise
+    # spawn a `git commit` against the state-dir repo, which is the wedge cause
+    # diagnosed 2026-05-01: HTTP server single-threaded, one slow commit blocks
+    # every queued request. fish-kick (daemon path) already passes False for the
+    # same reason. Commits happen at /close via `linafish session end`, not per-eat.
+    engine = FishEngine(state_dir=state_dir, name=name, git_autocommit=False)
 
     if feed_path and feed_path.exists() and not engine.crystals:
         print(f"  Feeding: {feed_path}", file=sys.stderr)

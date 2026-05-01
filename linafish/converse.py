@@ -260,7 +260,10 @@ def serve_converse(
     if mind is None:
         mind = socket.gethostname()
 
-    engine = FishEngine(state_dir=state_dir, name=name)
+    # Converse /eat path skips per-call git autocommit — same reason as
+    # http_server.py: per-call `git commit` against the state-dir wedges the
+    # single-threaded HTTP loop. Commits happen at /close via `linafish session end`.
+    engine = FishEngine(state_dir=state_dir, name=name, git_autocommit=False)
 
     ConverseHandler.engine = engine
     ConverseHandler.mind_name = mind
