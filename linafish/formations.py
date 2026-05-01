@@ -16,7 +16,7 @@ The graph is the truth. Formations are just what the BFS finds.
 
 import math
 from collections import Counter, deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, InitVar
 from typing import List, Optional
 
 from .crystallizer_v3 import Crystal
@@ -166,7 +166,7 @@ class Formation:
     """A named cluster of coupled crystals. Becomes a glyph."""
     id: int
     name: str                        # cognitive name (ACTING+RELATING_via_FEELING)
-    keywords: List[str]              # top 5 by frequency (kept for backward compat)
+    keywords: InitVar[List[str]]     # init-only seed; reads come from the @property below
     member_ids: List[str]            # crystal ids
     centroid: List[float]            # average QLP vector
     representative_text: str         # most-connected crystal's text
@@ -214,6 +214,20 @@ class Formation:
     _chain_counter: Counter = field(default_factory=Counter)
     _mind_set: set = field(default_factory=set)
     _self_ref_count: int = 0
+
+    def __post_init__(self, keywords):
+        """Seed the keyword counter from any keywords passed at construction.
+
+        Legacy ``detect_formations`` builds a Formation with pre-computed
+        top keywords; the addressed path passes ``keywords=[]`` and lets
+        ``update_with`` populate the counter incrementally. Seeding gives
+        the @property below a non-empty source for the legacy path so a
+        Formation read immediately after construction returns the same
+        names that were passed in.
+        """
+        if keywords:
+            for kw in keywords:
+                self._keyword_counter[kw] += 1
 
     def update_with(self, crystal: "Crystal") -> None:
         """Fold a single crystal into running aggregates. Constant time.
@@ -308,13 +322,12 @@ class Formation:
         )
 
         # Keywords + chains — bounded by language vocabulary, not N.
+        # Counter bumps are O(1) per keyword. Top-5 is computed lazily by
+        # the ``keywords`` @property below, moving sort cost from per-call
+        # (O(K log K) × N crystals — the 14-min init walk on .67's 393K
+        # corpus, 2026-04-30 §TWO.RELEASES.ONE.OOM) to per-read.
         for kw in (crystal.keywords or []):
             self._keyword_counter[kw] += 1
-        # Top 5 surfaced into the user-facing list, alphabetical tie-break
-        # for shuffle-invariant naming (matches detect_formations:354-357).
-        kw_sorted = sorted(self._keyword_counter.most_common(),
-                           key=lambda x: (-x[1], x[0]))
-        self.keywords = [kw for kw, _ in kw_sorted[:5]]
 
         for chain in (crystal.chains or []):
             if isinstance(chain, (list, tuple)):
@@ -341,6 +354,34 @@ class Formation:
         # used the pre-insert count consistently. The caller is expected
         # to have appended crystal.id to member_ids at the same time.
         self.crystal_count = n + 1
+
+
+def _formation_keywords_get(self) -> List[str]:
+    """Top-5 keywords by frequency, with alphabetical tie-break.
+
+    Lazy: derived from ``_keyword_counter`` on access. Moves the sort cost
+    that used to live inside ``update_with`` (where it ran on every
+    crystal) to per-read. Eats are O(1) in the keyword path now; reads
+    pay the O(K log K) sort once per access — fine because reads are
+    rare (gardener pass, /pfc serialization, fish.md regen) compared to
+    eats (393K on a federation-room cold load).
+
+    Background: pre-2026-05-01 this list was a regular dataclass field
+    that ``update_with`` re-sorted on every call. The sort dominated
+    bootstrap walks at federation scale — 14 minutes init time on .67's
+    393K corpus, surfaced 2026-04-30 §TWO.RELEASES.ONE.OOM. The fix
+    moves the sort behind a property; the field is gone, the InitVar
+    seed in ``__post_init__`` preserves the legacy detect_formations
+    construction shape.
+    """
+    if not self._keyword_counter:
+        return []
+    items = self._keyword_counter.most_common()
+    items.sort(key=lambda x: (-x[1], x[0]))
+    return [kw for kw, _ in items[:5]]
+
+
+Formation.keywords = property(_formation_keywords_get)
 
 
 def formation_rank_key(formation):
@@ -785,29 +826,21 @@ def hierarchical_merge(
 
     from .crystallizer_v3 import gamma as gamma_coefficient
 
-    # Couple formations by centroid similarity
+    # Couple formations by centroid similarity, building adjacency directly.
+    # Pre-2026-05-01 this routed through f.keywords as a side-channel
+    # (`_coupled_X` markers appended then stripped); refactored here to
+    # populate the adjacency dict in place. Required to make
+    # Formation.keywords read-only-derived (the lazy @property fix for
+    # the update_with perf bug surfaced 2026-04-30).
+    adjacency = {f.id: set() for f in formations}
+    form_map = {f.id: f for f in formations}
+
     for i, a in enumerate(formations):
         for b in formations[i + 1:]:
             gamma = gamma_coefficient(a.centroid, b.centroid)
             if gamma >= gamma_threshold:
-                a.keywords.append(f"_coupled_{b.id}")
-                b.keywords.append(f"_coupled_{a.id}")
-
-    # BFS on formation coupling graph
-    adjacency = {f.id: set() for f in formations}
-    form_map = {f.id: f for f in formations}
-
-    for f in formations:
-        for kw in f.keywords:
-            if kw.startswith("_coupled_"):
-                other_id = int(kw.split("_coupled_")[1])
-                if other_id in adjacency:
-                    adjacency[f.id].add(other_id)
-                    adjacency[other_id].add(f.id)
-
-    # Clean up temporary coupling markers
-    for f in formations:
-        f.keywords = [kw for kw in f.keywords if not kw.startswith("_coupled_")]
+                adjacency[a.id].add(b.id)
+                adjacency[b.id].add(a.id)
 
     visited = set()
     meta_groups = []

@@ -289,3 +289,76 @@ def test_compression_score_uses_current_trust_weight(tmp_path):
     assert score_two_minds > pre_fix_would_have_been + 1e-9, (
         f"score didn't double on new-mind arrival — likely regression"
     )
+
+
+def test_update_with_no_per_call_keyword_sort():
+    """Regression for the Formation.update_with keyword-sort perf bug
+    surfaced 2026-04-30 §TWO.RELEASES.ONE.OOM.
+
+    Pre-2026-05-01 ``update_with`` called
+    ``sorted(self._keyword_counter.most_common(), key=...)`` on every
+    invocation. That's O(K log K) per call where K = unique keywords
+    seen so far. The init-time bootstrap walk over .67's 393K-crystal
+    federation room corpus took 14 minutes solo because the dominant
+    formation's vocabulary K grew to ~5-10K and the per-crystal sort
+    cost compounded. Past any reasonable maintenance window.
+
+    Fix: ``Formation.keywords`` is now a lazy ``@property`` derived from
+    ``_keyword_counter`` on access. ``update_with`` only bumps the
+    counter (O(1) per keyword); the sort runs once per read, not per
+    write.
+
+    This test drives 5000 update_with calls with vocabulary growing to
+    ~3000 unique keywords. Pre-fix: would take seconds-to-tens-of-seconds
+    on a dev box. Post-fix: should complete in well under a second.
+    Threshold of 3.0 seconds is a generous ceiling that still catches
+    re-introduction of the per-call sort by an order of magnitude.
+    """
+    import time
+    from linafish.formations import Formation
+    from linafish.crystallizer_v3 import Crystal
+
+    f = Formation(
+        id=0, name="PERF", keywords=[], member_ids=[],
+        centroid=[0.0] * 8, representative_text="",
+        crystal_count=0, cognitive_centroid=[0.0] * 8,
+    )
+
+    n_calls = 5000
+    vocab_size = 3000  # unique keywords across the run
+
+    # Pre-build crystal stubs so we time only update_with, not Crystal init.
+    crystals = []
+    for i in range(n_calls):
+        # Each crystal contributes 5 keywords; keyword indices spread
+        # across vocab_size so the counter grows steadily, hitting the
+        # K = ~3000 unique-vocabulary regime before the loop ends.
+        kws = [f"kw_{(i * 5 + j) % vocab_size:04d}" for j in range(5)]
+        c = Crystal(
+            id=f"c{i}", ts="", text=f"text-{i}", source="",
+            mi_vector=[1, 2, 3, 4, 5, 6, 7, 8],
+            resonance=[1, 2, 3, 4, 5, 6, 7, 8],
+            keywords=kws, ache=0.5,
+            cognitive_vector=[1.0] + [0.5] * 7,
+        )
+        c.source_mind = "A"
+        crystals.append(c)
+
+    t0 = time.perf_counter()
+    for c in crystals:
+        f.update_with(c)
+    elapsed = time.perf_counter() - t0
+
+    assert elapsed < 3.0, (
+        f"update_with × {n_calls} took {elapsed:.2f}s; expected well under "
+        f"3s. Likely the per-call keyword sort was reintroduced. The fix "
+        f"is in formations.py: update_with bumps _keyword_counter only, "
+        f"and Formation.keywords is a @property derived on read."
+    )
+
+    # Sanity: the lazy property still produces a correct top-5.
+    top = f.keywords
+    assert len(top) == 5
+    assert all(kw.startswith("kw_") for kw in top), top
+    # And the counter saw all the calls (5 keywords × n_calls).
+    assert sum(f._keyword_counter.values()) == n_calls * 5
