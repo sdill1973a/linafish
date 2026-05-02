@@ -349,11 +349,15 @@ def test_update_with_no_per_call_keyword_sort():
         f.update_with(c)
     elapsed = time.perf_counter() - t0
 
-    assert elapsed < 3.0, (
+    assert elapsed < 0.5, (
         f"update_with × {n_calls} took {elapsed:.2f}s; expected well under "
-        f"3s. Likely the per-call keyword sort was reintroduced. The fix "
-        f"is in formations.py: update_with bumps _keyword_counter only, "
-        f"and Formation.keywords is a @property derived on read."
+        f"0.5s. Pre-fix code (O(K log K) per call at K=3000) takes 5-8s on "
+        f"a dev laptop, so the 0.5s ceiling actually catches re-introduction "
+        f"of the per-call sort while tolerating CI jitter (post-fix typical "
+        f"is ~70 ms). Codex round-1 2026-05-02: prior 3.0s threshold let "
+        f"reversion slip through on fast hardware. The fix is in "
+        f"formations.py: update_with bumps _keyword_counter only, and "
+        f"Formation.keywords is a @property derived on read."
     )
 
     # Sanity: the lazy property still produces a correct top-5.

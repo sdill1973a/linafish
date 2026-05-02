@@ -464,6 +464,15 @@ def _resolve_state_dir(name, explicit_state_dir, default_root=None):
     """
     if explicit_state_dir:
         return Path(explicit_state_dir)
+    # Reject path-separator-bearing names — they would let `-n '../etc/passwd'`
+    # resolve outside ~/.linafish/ and FishEngine's mkdir would happily
+    # create directories anywhere on disk. Codex round-1 finding 2026-05-02.
+    # Explicit --state-dir is the legitimate way to point outside the root.
+    if name and any(sep in name for sep in ("/", "\\")) or (name and ".." in name.split("/") + name.split("\\")):
+        raise ValueError(
+            f"linafish: name {name!r} contains path separators; "
+            "use --state-dir to point at a specific directory instead"
+        )
     root = Path(default_root) if default_root else Path.home() / ".linafish"
     if name:
         nested = root / name / f"{name}_crystals.jsonl"

@@ -24,6 +24,7 @@ Usage:
 
 import json
 import os
+import signal
 import sys
 import threading
 import uuid
@@ -346,12 +347,25 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
     global _PRIMER
     _PRIMER = _load_primer()
 
-    # HTTP /eat path skips per-call git autocommit — every request would otherwise
-    # spawn a `git commit` against the state-dir repo, which is the wedge cause
-    # diagnosed 2026-05-01: HTTP server single-threaded, one slow commit blocks
-    # every queued request. fish-kick (daemon path) already passes False for the
-    # same reason. Commits happen at /close via `linafish session end`, not per-eat.
-    engine = FishEngine(state_dir=state_dir, name=name, git_autocommit=False)
+    # HTTP /eat path uses periodic commit (every 100 eats) instead of per-eat
+    # autocommit — per-eat fired a `git commit` that wedged the request loop
+    # (25-30s on .140, indefinite on .67's 393K corpus, diagnosed 2026-05-01).
+    # The N=100 cadence keeps state-dir git history advancing so rollback
+    # remains possible (codex round-1 finding 2026-05-02: pure git_autocommit=
+    # False stranded daemon history because daemons never call session_end).
+    # Plus a SIGTERM/SIGINT handler below flushes uncommitted eats on
+    # graceful shutdown so the final commit is captured even if N hasn't
+    # rolled over.
+    engine = FishEngine(state_dir=state_dir, name=name, commit_every_n_eats=100)
+
+    def _flush_on_shutdown(signum, frame):
+        try:
+            engine.flush_commit(f"http daemon shutdown (signal {signum})")
+        except Exception as e:
+            print(f"flush_commit failed on shutdown: {e}", file=sys.stderr)
+        sys.exit(0)
+    signal.signal(signal.SIGTERM, _flush_on_shutdown)
+    signal.signal(signal.SIGINT, _flush_on_shutdown)
 
     if feed_path and feed_path.exists() and not engine.crystals:
         print(f"  Feeding: {feed_path}", file=sys.stderr)

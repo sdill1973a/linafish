@@ -108,7 +108,8 @@ class FishEngine:
                  subtract_centroid: bool = False,
                  git_autocommit: bool = True,
                  dedupe: bool = False,
-                 addressed_formations: bool = True):
+                 addressed_formations: bool = True,
+                 commit_every_n_eats: int = 0):
         self.name = name
         self.state_dir = state_dir or Path.home() / ".linafish"
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -129,6 +130,21 @@ class FishEngine:
         # mean — the latency slope is the git commit overhead, not the
         # crystallization work).
         self.git_autocommit = git_autocommit
+        # commit_every_n_eats: periodic-commit mode for long-running daemons
+        # (HTTP / converse servers) that never call session_end. 0 means
+        # "use git_autocommit": True commits per eat, False never commits.
+        # > 0 means commit on every Nth _save_state regardless of
+        # git_autocommit. Daemons pass e.g. 100 to keep ~1% of the per-call
+        # overhead while preserving rollback granularity for state-dir git
+        # history. flush_commit() forces a commit on shutdown via signal
+        # handler in serve_http / serve_converse — covers graceful exit.
+        # Hard kill (SIGKILL, OOM) loses up to N eats of granularity but
+        # data is still on disk in JSONL — only point-in-time git rollback
+        # gets coarse. Codex round-1 finding 2026-05-02: with
+        # git_autocommit=False the daemon's state-dir git log silently
+        # stops advancing, breaking the only built-in rollback safety net.
+        self.commit_every_n_eats = max(0, int(commit_every_n_eats))
+        self._eat_save_counter = 0
         # dedupe: when True, crystallize_text hashes incoming text and
         # short-circuits if the same text has already been crystallized
         # this session (or was present on disk at load time). Off by
@@ -608,6 +624,19 @@ class FishEngine:
             return r.returncode, out, err
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return -1, "", "git not available"
+
+    def flush_commit(self, message: str = "daemon flush — periodic commit"):
+        """Force a commit regardless of policy. For long-running daemons
+        (HTTP / converse) that don't call session_end on graceful shutdown.
+
+        Called from signal handlers (SIGTERM/SIGINT) registered by
+        serve_http and serve_converse so SIGTERM produces a final
+        rollback point even between periodic-commit boundaries. Hard
+        kills (SIGKILL, OOM) skip this — eats since the last periodic
+        commit are still on disk in JSONL but uncaptured in the
+        state-dir git log.
+        """
+        self._git_commit(message)
 
     def session_start(self, name: str = ""):
         """Start a session branch. Returns branch name."""
@@ -1113,11 +1142,20 @@ class FishEngine:
         # Also save assessment state
         self._save_assessment_state()
 
-        # Version it — unless the caller opted out of autocommit.
-        # Precedence: per-call `commit=` override > instance git_autocommit.
-        # Batch consumers pass commit=False explicitly; single-eat paths
-        # pass commit=None and inherit the instance default.
-        should_commit = commit if commit is not None else self.git_autocommit
+        # Version it — precedence:
+        # 1. per-call `commit=` override (batch consumers pass False)
+        # 2. periodic mode: commit_every_n_eats > 0 fires on every Nth save
+        # 3. instance git_autocommit (legacy single-eat default)
+        # The counter advances on EVERY _save_state regardless of policy
+        # so the cadence is honored even when individual calls skip via
+        # commit=False overrides.
+        self._eat_save_counter += 1
+        if commit is not None:
+            should_commit = commit
+        elif self.commit_every_n_eats > 0:
+            should_commit = (self._eat_save_counter % self.commit_every_n_eats == 0)
+        else:
+            should_commit = self.git_autocommit
         if should_commit:
             source = getattr(self, '_last_source', '')
             new_crystals = getattr(self, '_last_new_crystals', 0)
