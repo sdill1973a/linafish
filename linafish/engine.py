@@ -972,22 +972,50 @@ class FishEngine:
         handler defers (sets _shutdown_pending) instead of running a commit
         mid-write; the finally block honors the deferred shutdown after
         the impl completes, ensuring git only ever sees well-formed state.
+
+        Codex round-3 2026-05-02: round-2 fix had a fix-of-the-fix bug —
+        the finally block committed unconditionally on _shutdown_pending,
+        including when _save_state_impl raised mid-write (state.json
+        truncated but never re-written, JSONL half-appended, etc). Same
+        torn-state corruption, gated on "save failed" instead of "save
+        in progress." The success flag below ensures we only deferred-
+        commit when the impl returned cleanly. On failure with a pending
+        shutdown, we exit non-zero without committing — torn working tree
+        stays uncommitted, original exception details lost to SystemExit
+        but stderr carries the warning, and systemd/supervisord sees a
+        non-zero exit so the failure surfaces upstream.
         """
         self._save_in_progress = True
+        success = False
         try:
-            return self._save_state_impl(commit=commit)
+            result = self._save_state_impl(commit=commit)
+            success = True
+            return result
         finally:
             self._save_in_progress = False
             if self._shutdown_pending:
-                # In-flight save just completed; commit any trailing eats
-                # that the periodic-N policy hadn't captured, then exit.
-                # Best-effort — shutdown should not be blocked by commit
-                # failure (e.g., stale .git/index.lock).
-                try:
-                    self._git_commit("daemon shutdown — deferred flush from in-flight save")
-                except Exception as _e:
-                    print(f"shutdown commit failed: {_e}", file=sys.stderr)
-                sys.exit(0)
+                if success:
+                    # In-flight save completed cleanly. Commit trailing
+                    # eats that the periodic-N policy hadn't captured.
+                    # Best-effort — shutdown should not be blocked by
+                    # commit failure (e.g., stale .git/index.lock).
+                    try:
+                        self._git_commit("daemon shutdown — deferred flush from in-flight save")
+                    except Exception as _e:
+                        print(f"shutdown commit failed: {_e}", file=sys.stderr)
+                    sys.exit(0)
+                else:
+                    # Save raised before completing. Working tree is
+                    # inconsistent (truncated state.json, partial JSONL,
+                    # etc.). DO NOT commit — that would write the torn
+                    # state into history permanently. Exit non-zero so
+                    # the supervisor knows something went wrong.
+                    print(
+                        "shutdown deferred but _save_state_impl failed — "
+                        "skipping commit to avoid torn-state capture",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
 
     def _save_state_impl(self, commit: Optional[bool] = None):
         """Save state as fish.md — formations on top, crystal JSON at bottom.
