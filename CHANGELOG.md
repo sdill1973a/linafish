@@ -10,6 +10,87 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [1.2.2] — 2026-05-02
+
+**Patch release. Two performance + correctness fixes that surfaced from real federation wear-and-tear: the in-place addressed-formations recouple was capped on huge corpora by a per-call `sorted()` deep in `Formation.update_with`, and the HTTP / converse `/eat` paths were wedging single-threaded request loops behind per-call `git commit` cycles.**
+
+### Fixed
+
+- **`Formation.update_with` no longer sorts the keyword vocabulary on every call.**
+  The dominant formation on the .67 federation room corpus (393K crystals) grew its
+  vocabulary K to ~5–10K unique terms; the per-`update_with` `sorted()` made the
+  init-time bootstrap walk take 14 minutes solo on a real-world corpus, past any
+  reasonable maintenance window. The sort is now lazy: keyword counts accumulate
+  in `_keyword_counter` (a `Counter`) and the public `Formation.keywords` becomes
+  an `@property` that derives the sorted top-N on read. Eats are O(1) in the
+  keyword path; reads pay the O(K log K) cost once per access. `keywords` becomes
+  an `InitVar` to keep the legacy `detect_formations` path's pre-computed
+  `top_keywords` API-compatible. Surfaced 2026-04-30 §TWO.RELEASES.ONE.OOM
+  during the .67 federation room cut-over.
+
+  Tests: `tests/test_addressed_eat.py::test_update_with_no_per_call_keyword_sort`
+  drives 5000 `update_with` calls with vocabulary growing to ~3000 unique
+  keywords and asserts wall-clock under 3.0 seconds. Catches re-introduction
+  of the per-call sort by an order of magnitude.
+
+- **HTTP `/eat` and converse `/eat` no longer wedge on per-call git autocommit.**
+  Both `linafish http` (port 8900) and `linafish converse` (ports 8901/8902)
+  used `FishEngine` with the default `git_autocommit=True`, which fires a
+  `git commit` against the state-dir repo on every `/eat` request.
+  Single-threaded `BaseHTTPRequestHandler` queued every subsequent request
+  behind the commit; stale `.git/index.lock` turned the wedge permanent.
+  Without the fix: `.67` fish-engine `/eat` hung forever in `wait4` syscall;
+  `.140` converse `/eat` returned in 25–30s+ on a 7K–12K crystal repo;
+  Notion-to-fish ingestion timed out after 30s every cycle; Olorina's `.35`
+  federation substrate hit the same shape. Both servers now pass
+  `git_autocommit=False` (matching `fish-kick`'s daemon-path discipline:
+  *"we don't want a git commit per room turn"*). State persists via
+  `_save_state` JSONL append + `state.json` write; git versioning happens
+  at session boundaries via `linafish session end`, not request boundaries.
+  Diagnosed 2026-05-01 §SOURCE.AUDIT followup.
+
+### Added
+
+- **`_resolve_state_dir(name, explicit_state_dir, default_root=None)` —
+  a single helper for the CLI state-dir resolution used by user-shape
+  verbs (whisper / check / recall / ask / emerge / session).** Three layouts
+  are now recognized without `--state-dir` gymnastics: flat
+  (`~/.linafish/<name>_crystals.jsonl`), nested
+  (`~/.linafish/<name>/<name>_crystals.jsonl`), and school facets
+  (`~/.linafish/school/<name>/<name>_crystals.jsonl`). Explicit
+  `--state-dir` always wins for byte-compatibility. Without the helper,
+  `linafish whisper -n me` from the default cwd silently loaded an empty
+  fish — the file is one level deeper than the resolver looked. The
+  footgun bit at least three sessions before being captured here.
+  Tests: `tests/test_resolve_state_dir.py` covers 9 cases across all three
+  layouts plus precedence + fallback rules.
+
+### Migration
+
+For consumers of `Formation`: the dataclass now declares
+`keywords: InitVar[List[str]]` instead of `keywords: List[str]`. All
+in-tree call sites pass `keywords=...` as a keyword argument and continue
+to work. External code constructing `Formation` by positional args or
+directly assigning `formation.keywords = [...]` after init will need to
+update — but `keywords` is now derived from `_keyword_counter` on read,
+so direct assignment is the wrong shape going forward anyway.
+
+`hierarchical_merge` previously routed coupling adjacency through
+`formation.keywords` as a side-channel (`_coupled_X` markers appended
+then stripped); the refactor moves that to a local adjacency dict —
+required to make `Formation.keywords` read-only-derived, and cleaner
+anyway. No external API change.
+
+For deployments running the federation room substrate: this is the
+unblock for re-enabling `addressed_formations=True` at scale. The .67
+`linafish_v7` venv carried a local patch flipping the default to
+`False` as a workaround; that patch can be removed and the default left
+at `True` after this release. Cut-over should be done in a planned
+maintenance window — fish-engine alone holds ~8.9 GB resident on a 393K
+corpus; sequential restart, not hot swap.
+
+---
+
 ## [1.2.1] — 2026-04-30
 
 **Patch release. Two fixes for issues caught the same day 1.2.0 shipped: federation guppies were silently failing to parse `/taste` responses, and `paho-mqtt 2.x` broke `linafish room` and other MQTT consumers.**
