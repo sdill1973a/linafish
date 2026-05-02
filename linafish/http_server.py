@@ -359,11 +359,17 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
     engine = FishEngine(state_dir=state_dir, name=name, commit_every_n_eats=100)
 
     def _flush_on_shutdown(signum, frame):
-        try:
-            engine.flush_commit(f"http daemon shutdown (signal {signum})")
-        except Exception as e:
-            print(f"flush_commit failed on shutdown: {e}", file=sys.stderr)
-        sys.exit(0)
+        # Reentrancy-safe: if a _save_state is in progress we cannot commit
+        # right now without risking torn-state capture (codex round-2
+        # 2026-05-02). Mark intent and let the in-flight save's finally
+        # clause handle the commit + exit. If idle, flush + exit here.
+        engine._shutdown_pending = True
+        if not engine._save_in_progress:
+            try:
+                engine.flush_commit(f"http daemon shutdown (signal {signum})")
+            except Exception as e:
+                print(f"flush_commit failed on shutdown: {e}", file=sys.stderr)
+            sys.exit(0)
     signal.signal(signal.SIGTERM, _flush_on_shutdown)
     signal.signal(signal.SIGINT, _flush_on_shutdown)
 

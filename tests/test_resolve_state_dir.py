@@ -92,6 +92,27 @@ class TestResolveStateDir(unittest.TestCase):
         result = _resolve_state_dir("phantom", None, default_root=None)
         self.assertEqual(result, Path.home() / ".linafish")
 
+    def test_path_separator_in_name_raises(self):
+        # Codex round-1 finding 2026-05-02: -n '../etc/passwd' previously
+        # let FishEngine mkdir/append outside ~/.linafish. The guard
+        # rejects names containing /, \, or .. so --state-dir remains the
+        # only legitimate way to point outside the root.
+        with self.assertRaises(ValueError):
+            _resolve_state_dir("../etc/passwd", None, default_root=self.root)
+        with self.assertRaises(ValueError):
+            _resolve_state_dir("foo/bar", None, default_root=self.root)
+        with self.assertRaises(ValueError):
+            _resolve_state_dir("foo\\bar", None, default_root=self.root)
+        with self.assertRaises(ValueError):
+            _resolve_state_dir("..", None, default_root=self.root)
+
+    def test_path_separator_in_name_with_explicit_state_dir_does_not_raise(self):
+        # Explicit --state-dir is the legitimate escape; the name guard
+        # should not fire when explicit_state_dir is set (legacy callers
+        # may pass odd names + explicit dirs).
+        result = _resolve_state_dir("../weird", "/tmp/my_dir", default_root=self.root)
+        self.assertEqual(result, Path("/tmp/my_dir"))
+
 
 if __name__ == "__main__":
     unittest.main()

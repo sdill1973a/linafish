@@ -145,6 +145,16 @@ class FishEngine:
         # stops advancing, breaking the only built-in rollback safety net.
         self.commit_every_n_eats = max(0, int(commit_every_n_eats))
         self._eat_save_counter = 0
+        # Reentrancy guard for signal-triggered flush_commit (codex round-2
+        # 2026-05-02 BLOCKING). _save_state can be interrupted between
+        # state.json truncate and JSON write; if the SIGTERM handler runs
+        # _git_commit at that instant, git captures the torn file. The
+        # handler now sets _shutdown_pending instead of committing
+        # directly when _save_in_progress is True; the finally block at
+        # the end of _save_state honors the deferred shutdown after the
+        # write completes — so git only ever sees a well-formed state.
+        self._save_in_progress = False
+        self._shutdown_pending = False
         # dedupe: when True, crystallize_text hashes incoming text and
         # short-circuits if the same text has already been crystallized
         # this session (or was present on disk at load time). Off by
@@ -954,6 +964,32 @@ class FishEngine:
         formation.update_with(crystal)
 
     def _save_state(self, commit: Optional[bool] = None):
+        """Public entry point — wraps _save_state_impl with reentrancy guard.
+
+        Codex round-2 2026-05-02: signal-triggered flush_commit could fire
+        between state.json truncate and JSON write, capturing torn state
+        into git history. The guard sets _save_in_progress so the SIGTERM
+        handler defers (sets _shutdown_pending) instead of running a commit
+        mid-write; the finally block honors the deferred shutdown after
+        the impl completes, ensuring git only ever sees well-formed state.
+        """
+        self._save_in_progress = True
+        try:
+            return self._save_state_impl(commit=commit)
+        finally:
+            self._save_in_progress = False
+            if self._shutdown_pending:
+                # In-flight save just completed; commit any trailing eats
+                # that the periodic-N policy hadn't captured, then exit.
+                # Best-effort — shutdown should not be blocked by commit
+                # failure (e.g., stale .git/index.lock).
+                try:
+                    self._git_commit("daemon shutdown — deferred flush from in-flight save")
+                except Exception as _e:
+                    print(f"shutdown commit failed: {_e}", file=sys.stderr)
+                sys.exit(0)
+
+    def _save_state_impl(self, commit: Optional[bool] = None):
         """Save state as fish.md — formations on top, crystal JSON at bottom.
 
         commit: override the instance-level ``git_autocommit`` flag for
