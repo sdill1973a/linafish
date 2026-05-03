@@ -76,6 +76,19 @@ except ImportError:
     FormativeResult = None
     snapshot_from_engine = None
 
+try:
+    from .emergence import (
+        emergence_gradient, collective_snt, _crystal_ops,
+        EmergenceMetrics,
+    )
+    HAS_EMERGENCE = True
+except ImportError:
+    HAS_EMERGENCE = False
+    emergence_gradient = None
+    collective_snt = None
+    _crystal_ops = None
+    EmergenceMetrics = None
+
 
 class FishEngine:
     """The fish. MI x ache math. No keywords. Pure compression.
@@ -1650,6 +1663,19 @@ class FishEngine:
         if formative_result:
             result["formative"] = formative_result
 
+        # Emergence check — did a phase transition happen this cycle?
+        emergence = self._check_emergence()
+        if emergence is not None:
+            result["emergence"] = emergence
+            if emergence["highest_phase"] > 0:
+                import logging as _log
+                _log.getLogger(__name__).info(
+                    f"  [emergence] Phase {emergence['highest_phase']} "
+                    f"({emergence['highest_phase_label']}) — "
+                    f"collective SNT={emergence['collective_snt']}, "
+                    f"emergent formations: {emergence['emergent_count']}"
+                )
+
         return result
 
     def revectorize_all(self, vocab_size: Optional[int] = None,
@@ -2028,6 +2054,46 @@ class FishEngine:
     # HEALTH / STATUS
     # -------------------------------------------------------------------
 
+    def _check_emergence(self) -> Optional[dict]:
+        """Compute emergence metrics on current formations. Returns None if no signal."""
+        if not HAS_EMERGENCE or not self.formations:
+            return None
+        crystals = self.crystals
+        if not any(_crystal_ops(c) for c in crystals):
+            return None  # no cognitive-op signal — writeback-only path
+
+        by_formation = {}
+        for f in self.formations:
+            fid = getattr(f, "id", id(f))
+            members = set(getattr(f, "members", None) or getattr(f, "member_ids", []))
+            by_formation[fid] = [c for c in crystals if getattr(c, "id", None) in members]
+
+        grad = emergence_gradient(self.formations, by_formation)
+        snt = collective_snt(grad)
+        phase_counts = [0, 0, 0, 0]
+        emergent_formations = []
+        for f in self.formations:
+            fid = getattr(f, "id", id(f))
+            m = grad.get(fid)
+            if not m:
+                continue
+            phase_counts[m.phase] += 1
+            if m.is_emergent:
+                emergent_formations.append(getattr(f, "name", str(fid)))
+
+        highest_phase = max((m.phase for m in grad.values()), default=0)
+        phase_labels = ["Compositional", "Semantic Novelty", "Self-Authorship", "Recursive Becoming"]
+
+        return {
+            "collective_snt": round(snt, 4),
+            "highest_phase": highest_phase,
+            "highest_phase_label": phase_labels[highest_phase],
+            "phase_counts": {"0": phase_counts[0], "1": phase_counts[1],
+                             "2": phase_counts[2], "3": phase_counts[3]},
+            "emergent_formations": emergent_formations,
+            "emergent_count": len(emergent_formations),
+        }
+
     def health(self) -> str:
         """Engine stats including assessment data."""
         formation_names = [f.name for f in self.formations[:10]]
@@ -2046,6 +2112,11 @@ class FishEngine:
             "top_formations": formation_names,
             "vocab_sample": self.fish.vocab[:10] if self.fish.vocab else [],
         }
+
+        # Emergence metrics
+        emergence = self._check_emergence()
+        if emergence is not None:
+            health_data["emergence"] = emergence
 
         # Assessment data
         if self.assessment_log:

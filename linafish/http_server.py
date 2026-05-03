@@ -136,12 +136,22 @@ class FishHandler(BaseHTTPRequestHandler):
                 self._respond(200, "Fish is empty.")
         elif self.path.startswith("/inbox/"):
             self._handle_inbox()
+        elif self.path == "/emerge":
+            result = self.engine._check_emergence()
+            if result is None:
+                self._respond(200, json.dumps({"signal": False,
+                    "reason": "no cognitive-op data or no formations"}),
+                    content_type="application/json")
+            else:
+                self._respond(200, json.dumps(result, indent=2),
+                    content_type="application/json")
         elif self.path == "/":
             self._respond(200, (
                 "LiNafish — Your mind. Versioned. Everywhere.\n\n"
                 "GET  /boot          — warm boot (primer + fish, read this first)\n"
                 "GET  /pfc           — metacognitive overlay (formations)\n"
                 "GET  /health        — engine stats\n"
+                "GET  /emerge        — emergence metrics (ν, μ, ρ, Ψ, phase)\n"
                 "GET  /fish          — raw fish.md\n"
                 "POST /eat           — feed text {\"text\": \"...\"}\n"
                 "POST /taste         — search {\"text\": \"...\"}\n"
@@ -149,6 +159,7 @@ class FishHandler(BaseHTTPRequestHandler):
                 "POST /msg           — federation DM send\n"
                 "GET  /inbox/<id>    — unread for a mind\n"
                 "POST /msg/read      — mark read\n"
+                "POST /shutdown      — graceful exit (nssm restarts)\n"
             ))
         else:
             self._respond(404, "Not found")
@@ -199,6 +210,16 @@ class FishHandler(BaseHTTPRequestHandler):
 
         elif self.path == "/msg/read":
             self._handle_msg_read(body)
+
+        elif self.path == "/shutdown":
+            self._respond(200, "Shutting down — nssm will restart.")
+            def _do_shutdown():
+                try:
+                    self.engine.flush_commit("http shutdown endpoint")
+                except Exception as e:
+                    print(f"flush_commit on shutdown: {e}", file=sys.stderr)
+                os._exit(0)
+            threading.Timer(0.5, _do_shutdown).start()
 
         else:
             self._respond(404, "Not found")
