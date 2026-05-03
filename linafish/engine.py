@@ -96,6 +96,13 @@ except ImportError:
     HAS_GARDENER = False
     FormationGardener = None
 
+try:
+    from .metrics import GrowthTracker
+    HAS_TRACKER = True
+except ImportError:
+    HAS_TRACKER = False
+    GrowthTracker = None
+
 
 class FishEngine:
     """The fish. MI x ache math. No keywords. Pure compression.
@@ -284,6 +291,11 @@ class FishEngine:
         self._pre_assessed = False
 
         self.gardener = FormationGardener(self) if HAS_GARDENER else None
+
+        self.tracker = GrowthTracker() if HAS_TRACKER else None
+        if self.tracker is not None:
+            _tp = self.state_dir / f"{name}_growth.json"
+            self.tracker.load(_tp)
 
         self._git_init()
         self._load_fish_md()
@@ -1662,6 +1674,18 @@ class FishEngine:
             if emerged:
                 import logging as _log; _log.getLogger(__name__).debug(f"Emerged: {', '.join(sorted(emerged)[:5])}")
 
+        # GrowthTracker snapshot — captures R(n), coupling density, dimension
+        # entropy, and formation stability delta after the rebuild settles.
+        # Persists to {name}_growth.json alongside the crystal log.
+        tracker_delta = None
+        if self.tracker is not None:
+            try:
+                tracker_delta = self.tracker.record(self)
+                self.tracker.save(self.state_dir / f"{self.name}_growth.json")
+            except Exception as _te:
+                import logging as _log
+                _log.getLogger(__name__).warning(f"[tracker] record failed: {_te}")
+
         self.fish._save_state()
         self._save_state()
 
@@ -1704,6 +1728,17 @@ class FishEngine:
                     f"collective SNT={emergence['collective_snt']}, "
                     f"emergent formations: {emergence['emergent_count']}"
                 )
+
+        if tracker_delta is not None and self.tracker is not None and self.tracker.snapshots:
+            latest = self.tracker.snapshots[-1]
+            result["growth"] = {
+                "r_n": latest.r_n,
+                "crystal_delta": tracker_delta.crystal_delta,
+                "formation_delta": tracker_delta.formation_delta,
+                "stability_ratio": tracker_delta.stability_ratio,
+                "coupling_density": latest.coupling_density,
+                "dimension_entropy": round(self.tracker.dimension_entropy(), 4),
+            }
 
         return result
 
@@ -2157,6 +2192,23 @@ class FishEngine:
                 "oversize_count": gs.get("oversize_count", 0),
                 "contagion_top": gs.get("contagion_top", []),
                 "scanned_at": gs.get("scanned_at"),
+            }
+
+        # Growth tracker — R(n) curve, coupling density, dimension entropy
+        if self.tracker is not None and self.tracker.snapshots:
+            latest = self.tracker.snapshots[-1]
+            fit = self.tracker.fit_r_n_curve()
+            health_data["growth"] = {
+                "snapshots": len(self.tracker.snapshots),
+                "r_n": latest.r_n,
+                "r_n_fit": (
+                    {"k": fit[0], "r": fit[1], "r_squared": fit[2]} if fit else None
+                ),
+                "coupling_density": latest.coupling_density,
+                "mean_coupling": latest.mean_coupling,
+                "dimension_entropy": round(self.tracker.dimension_entropy(), 4),
+                "dimension_balance": latest.dimension_distribution,
+                "vocab_grammar_fraction": latest.vocab_grammar_fraction,
             }
 
         # Assessment data
