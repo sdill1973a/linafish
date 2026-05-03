@@ -6,10 +6,13 @@ a URL can read the fish. Serves the same engine as the MCP server.
 
     GET  /pfc                — formations (the metacognitive overlay)
     GET  /health             — engine stats
+    GET  /emerge             — emergence metrics (ν, μ, ρ, Ψ, phase)
+    GET  /growth             — R(n) curve, coupling density, dimension entropy
     GET  /fish               — raw fish.md contents
     POST /eat                — feed text (JSON: {"text": "...", "source": "..."})
     POST /taste              — cross-corpus match (JSON: {"text": "...", "top": 5})
     POST /match              — tight recall (JSON: {"text": "...", "top": 3})
+    POST /re-eat             — maintenance cycle (gardener + assessment + growth)
 
     Federation message broker (added 2026-04-29 from .67 protofish):
     POST /msg                — send a DM (JSON: {"from": "...", "to": "...",
@@ -136,19 +139,39 @@ class FishHandler(BaseHTTPRequestHandler):
                 self._respond(200, "Fish is empty.")
         elif self.path.startswith("/inbox/"):
             self._handle_inbox()
+        elif self.path == "/emerge":
+            result = self.engine._check_emergence()
+            if result is None:
+                self._respond(200, json.dumps({"signal": False,
+                    "reason": "no cognitive-op data or no formations"}),
+                    content_type="application/json")
+            else:
+                self._respond(200, json.dumps(result, indent=2),
+                    content_type="application/json")
+        elif self.path == "/growth":
+            tracker = getattr(self.engine, "tracker", None)
+            if tracker is None or not tracker.snapshots:
+                self._respond(200,
+                    "No growth data yet. POST /re-eat to run a maintenance cycle first.")
+            else:
+                self._respond(200, tracker.growth_summary())
         elif self.path == "/":
             self._respond(200, (
                 "LiNafish — Your mind. Versioned. Everywhere.\n\n"
                 "GET  /boot          — warm boot (primer + fish, read this first)\n"
                 "GET  /pfc           — metacognitive overlay (formations)\n"
                 "GET  /health        — engine stats\n"
+                "GET  /emerge        — emergence metrics (ν, μ, ρ, Ψ, phase)\n"
+                "GET  /growth        — R(n) curve, coupling density, dimension entropy\n"
                 "GET  /fish          — raw fish.md\n"
                 "POST /eat           — feed text {\"text\": \"...\"}\n"
                 "POST /taste         — search {\"text\": \"...\"}\n"
                 "POST /match         — tight recall {\"text\": \"...\"}\n"
+                "POST /re-eat        — maintenance cycle (gardener + assessment + growth)\n"
                 "POST /msg           — federation DM send\n"
                 "GET  /inbox/<id>    — unread for a mind\n"
                 "POST /msg/read      — mark read\n"
+                "POST /shutdown      — graceful exit (nssm restarts)\n"
             ))
         else:
             self._respond(404, "Not found")
@@ -199,6 +222,24 @@ class FishHandler(BaseHTTPRequestHandler):
 
         elif self.path == "/msg/read":
             self._handle_msg_read(body)
+
+        elif self.path == "/re-eat":
+            result = self.engine.re_eat()
+            self._respond(200, json.dumps(result, indent=2),
+                content_type="application/json")
+
+        elif self.path == "/shutdown":
+            self._respond(200, "Shutting down — nssm will restart.")
+            def _do_shutdown():
+                stop = getattr(self.__class__, "_stop_maintenance", None)
+                if stop is not None:
+                    stop.set()
+                try:
+                    self.engine.flush_commit("http shutdown endpoint")
+                except Exception as e:
+                    print(f"flush_commit on shutdown: {e}", file=sys.stderr)
+                os._exit(0)
+            threading.Timer(0.5, _do_shutdown).start()
 
         else:
             self._respond(404, "Not found")
@@ -319,6 +360,55 @@ class FishHandler(BaseHTTPRequestHandler):
             return
 
 
+def _maintenance_loop(engine: "FishEngine", stop_evt: threading.Event,
+                      interval_hours: float) -> None:
+    """Background self-maintenance for HTTP daemon deployments.
+
+    Fires engine.re_eat() on a fixed schedule and emits QLP-notation output
+    so growth is legible in the daemon log without a separate monitor.
+
+    QLP line format (one per cycle):
+        EW.iter{epoch=N}|AI.reflect{phase=X}|KO.diag{grade=Y}|KO.analz{R_n=Z,entropy=W}
+
+    Exits cleanly when stop_evt is set (signal or /shutdown).
+    """
+    epoch = 0
+    interval_secs = int(interval_hours * 3600)
+
+    while not stop_evt.wait(interval_secs):
+        if getattr(engine, "_shutdown_pending", False) or getattr(engine, "_save_in_progress", False):
+            continue
+
+        try:
+            result = engine.re_eat()
+        except Exception as e:
+            print(f"[maintenance] re_eat error: {e}", file=sys.stderr, flush=True)
+            continue
+
+        if result.get("re_eat") is False:
+            continue  # nothing pending — skip output, don't advance epoch
+
+        epoch += 1
+        growth = result.get("growth", {})
+        r_n = growth.get("r_n", 0.0)
+        entropy = growth.get("dimension_entropy", 0.0)
+        stability = growth.get("stability_ratio", 0.5)
+        grade = ("A" if stability >= 0.8 else
+                 "B" if stability >= 0.6 else
+                 "C" if stability >= 0.4 else "D")
+
+        emerge = engine._check_emergence()
+        phase = emerge.get("highest_phase_label", "Compositional") if emerge else "Compositional"
+
+        qline = (
+            f"EW.iter{{epoch={epoch}}}"
+            f"|AI.reflect{{phase={phase}}}"
+            f"|KO.diag{{grade={grade}}}"
+            f"|KO.analz{{R_n={r_n:.3f},entropy={entropy:.4f}}}"
+        )
+        print(f"[maintenance] {qline}", file=sys.stderr, flush=True)
+
+
 BIND_MAP = {
     "local": "127.0.0.1",
     "localhost": "127.0.0.1",
@@ -331,7 +421,8 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
                name: str = "linafish", port: int = 8900,
                vocab_path: Optional[Path] = None,
                host: Optional[str] = None,
-               bind: str = "local"):
+               bind: str = "local",
+               re_eat_interval_hours: float = 6.0):
     """Serve the fish over HTTP.
 
     ``bind`` is the convenience shorthand mirroring ``converse``:
@@ -342,6 +433,10 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
     ``host`` is a raw override. If set, it takes precedence over ``bind``
     for callers that need an exact interface IP. The plate-15 callers
     that passed ``host="0.0.0.0"`` keep working unchanged.
+
+    ``re_eat_interval_hours`` controls how often the background maintenance
+    thread calls engine.re_eat() (gardener + assessment + GrowthTracker).
+    Set to 0 to disable. Default: 6.0h. Output in QLP notation to stderr.
     """
 
     global _PRIMER
@@ -358,11 +453,14 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
     # rolled over.
     engine = FishEngine(state_dir=state_dir, name=name, commit_every_n_eats=100)
 
+    _stop_maintenance = threading.Event()
+
     def _flush_on_shutdown(signum, frame):
         # Reentrancy-safe: if a _save_state is in progress we cannot commit
         # right now without risking torn-state capture (codex round-2
         # 2026-05-02). Mark intent and let the in-flight save's finally
         # clause handle the commit + exit. If idle, flush + exit here.
+        _stop_maintenance.set()
         engine._shutdown_pending = True
         if not engine._save_in_progress:
             try:
@@ -379,6 +477,18 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
         print(f"  {result['crystals_added']} crystals, {result['formations']} formations", file=sys.stderr)
 
     FishHandler.engine = engine
+    FishHandler._stop_maintenance = _stop_maintenance
+
+    if re_eat_interval_hours > 0:
+        _maint = threading.Thread(
+            target=_maintenance_loop,
+            args=(engine, _stop_maintenance, re_eat_interval_hours),
+            name="linafish-maintenance",
+            daemon=False,
+        )
+        _maint.start()
+        print(f"  Maintenance: every {re_eat_interval_hours:.1f}h "
+              f"(QLP output to stderr)", file=sys.stderr)
 
     resolved_host = host if host else BIND_MAP.get(bind, bind)
     if bind == "wan" and not host:
