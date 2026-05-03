@@ -379,14 +379,16 @@ def _maintenance_loop(engine: "FishEngine", stop_evt: threading.Event,
         if getattr(engine, "_shutdown_pending", False) or getattr(engine, "_save_in_progress", False):
             continue
 
-        epoch += 1
         try:
             result = engine.re_eat()
         except Exception as e:
-            print(f"[maintenance] re_eat error epoch={epoch}: {e}",
-                  file=sys.stderr, flush=True)
+            print(f"[maintenance] re_eat error: {e}", file=sys.stderr, flush=True)
             continue
 
+        if result.get("re_eat") is False:
+            continue  # nothing pending — skip output, don't advance epoch
+
+        epoch += 1
         growth = result.get("growth", {})
         r_n = growth.get("r_n", 0.0)
         entropy = growth.get("dimension_entropy", 0.0)
@@ -396,7 +398,7 @@ def _maintenance_loop(engine: "FishEngine", stop_evt: threading.Event,
                  "C" if stability >= 0.4 else "D")
 
         emerge = engine._check_emergence()
-        phase = emerge.get("phase", "broadcast") if emerge else "broadcast"
+        phase = emerge.get("highest_phase_label", "Compositional") if emerge else "Compositional"
 
         qline = (
             f"EW.iter{{epoch={epoch}}}"
