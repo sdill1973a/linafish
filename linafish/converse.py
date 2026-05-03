@@ -23,6 +23,7 @@ s93, 2026-04-11. The mesh grows another synapse.
 """
 
 import json
+import signal
 import socket
 import sys
 from datetime import datetime, timezone
@@ -260,7 +261,29 @@ def serve_converse(
     if mind is None:
         mind = socket.gethostname()
 
-    engine = FishEngine(state_dir=state_dir, name=name)
+    # Converse /eat path uses periodic commit (every 100 eats) — same shape
+    # as http_server.py. Per-eat autocommit wedged the single-threaded
+    # request loop (25-30s on .140 me-fish at 12K crystals). N=100 keeps
+    # state-dir git history advancing for rollback (codex round-1 finding
+    # 2026-05-02: pure git_autocommit=False stranded daemon history because
+    # daemons never call session_end). SIGTERM/SIGINT handler flushes
+    # uncommitted eats on graceful shutdown.
+    engine = FishEngine(state_dir=state_dir, name=name, commit_every_n_eats=100)
+
+    def _flush_on_shutdown(signum, frame):
+        # Reentrancy-safe: if a _save_state is in progress we cannot commit
+        # right now without risking torn-state capture (codex round-2
+        # 2026-05-02). Mark intent and let the in-flight save's finally
+        # clause handle the commit + exit. If idle, flush + exit here.
+        engine._shutdown_pending = True
+        if not engine._save_in_progress:
+            try:
+                engine.flush_commit(f"converse daemon shutdown (signal {signum})")
+            except Exception as e:
+                print(f"flush_commit failed on shutdown: {e}", file=sys.stderr)
+            sys.exit(0)
+    signal.signal(signal.SIGTERM, _flush_on_shutdown)
+    signal.signal(signal.SIGINT, _flush_on_shutdown)
 
     ConverseHandler.engine = engine
     ConverseHandler.mind_name = mind

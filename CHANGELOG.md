@@ -10,6 +10,198 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [1.3.0] — 2026-05-02
+
+**Minor release. Three production-scale fixes, a new periodic-commit policy for HTTP/converse daemons, and a CLI auto-detect helper for the read-side verbs.**
+
+> **Vocabulary used below.** A *crystal* is one ingested writing chunk. A *formation* is a recurring cognitive pattern that emerges across crystals. A *fish* is a state-dir holding crystals + formation summary, versioned in git. The *init walk* is the engine's startup pass that rebuilds in-memory formations from the on-disk crystal log.
+
+### Why 1.3, not 1.2.3
+
+The perf fix turns `Formation.keywords` from a stored dataclass field into a derived `@property`. CLI users notice nothing — every surface verb still works. But external code that does `dataclasses.asdict(formation)`, `formation.keywords = [...]`, `dataclasses.replace(f, keywords=...)`, or `formation.keywords.append(...)` will break (silently, in the `.append` case). Under SemVer that's a minor bump, not a patch. The Migration section below names every breakage mode we've identified with concrete fixes.
+
+**Why not 2.0?** Strict SemVer could call a writable-field-becoming-read-only-property a major bump. We held it at minor because (a) the common surface — CLI verbs, `eat`/`recall`/etc., the public engine API — stays byte-compatible, (b) we know of no external integration constructing `Formation` directly today. The next breaking change to a publicly-stable surface (engine, CLI args, on-disk state-dir layout) will warrant 2.0.
+
+### What you'll notice
+
+**As a CLI user** (`linafish go`, `eat`, `recall`, `taste`, etc.): nothing changes for the everyday verbs. As a quiet improvement, `linafish whisper -n me` and the other interactive verbs (`check`, `recall`, `ask`, `emerge`) now find your fish without `--state-dir` even when it's nested under `~/.linafish/<name>/` or in a school facet. Previously these verbs would silently resolve to an empty path and return no results — easy to miss until you noticed `recall` returning nothing on a fish you knew had content.
+
+**As an HTTP/converse server operator** (`linafish http`, `linafish converse`): `/eat` no longer wedges behind per-call git commits. (Each fish state-dir is a git repo; eats were auto-committed for rollback, which serialized through a single-threaded `BaseHTTPRequestHandler`.) Single-threaded daemons that used to hang on stale `.git/index.lock` stream cleanly. The new policy (`commit_every_n_eats=100` by default for daemon paths) commits every 100 eats plus on graceful shutdown, instead of per-eat. State-dir git log shows fewer, batched commits — same rollback granularity, no wedge.
+
+**As an operator running large corpora** (formations crossing ~50K crystals): the init walk no longer hits the formation perf wall. Sandbox bench at 100K crystals: 1.44s total ingest, ~14 ns per `update_with` call. The 393K-crystal production case is the planned validation target; linear extrapolation from the 100K bench projects ~5.6s — orders of magnitude under the prior multi-minute walks. The in-tree perf regression test (`tests/test_addressed_eat.py::test_update_with_no_per_call_keyword_sort`) is the persistent guard.
+
+**As a `Formation` consumer in code**: see Migration. The breakages are listed below; in-tree call sites already migrated.
+
+### Fixed
+
+- **`Formation.update_with` no longer sorts the keyword vocabulary on every call.**
+  On a 393K-crystal real-world corpus, the dominant formation's vocabulary K
+  reached ~5–10K unique terms; the per-`update_with` `sorted()` was super-linear
+  in cumulative work and made the init walk run multi-minute on that corpus,
+  past any reasonable maintenance window. The sort is now lazy: keyword counts
+  accumulate in `_keyword_counter` (a `Counter`) and the public
+  `Formation.keywords` becomes an `@property` that derives the sorted top-N
+  on read. Eats are O(1) in the keyword path; reads pay the O(K log K) cost
+  once per access. `keywords` becomes an `InitVar` to keep the legacy
+  `detect_formations` path's pre-computed `top_keywords` API-compatible.
+
+  Tests: `tests/test_addressed_eat.py::test_update_with_no_per_call_keyword_sort`
+  drives 5000 `update_with` calls with vocabulary growing to ~3000 unique
+  keywords and asserts wall-clock under **0.5 seconds** (typical post-fix is
+  ~70 ms; pre-fix code at K=3000 takes seconds on the same hardware, so the
+  threshold catches a full regression with margin for CI jitter). A standalone
+  100K-crystal benchmark on top of that test confirmed flat ~14 ns per call
+  past the JIT warmup, with total ingest 1.44s; the 393K production case is
+  the next validation target.
+
+- **HTTP `/eat` and converse `/eat` no longer wedge on per-call git autocommit.**
+  Both `linafish http` (port 8900) and `linafish converse` (ports 8901/8902)
+  used `FishEngine` with the default `git_autocommit=True`, which fires a
+  `git commit` against the state-dir repo on every `/eat` request.
+  Single-threaded `BaseHTTPRequestHandler` queued every subsequent request
+  behind the commit; stale `.git/index.lock` turned the wedge permanent.
+  Symptoms in production: `/eat` hung in `wait4` syscall on a 393K-crystal
+  HTTP-served corpus; converse `/eat` returned in 25–30s+ on a 7–12K
+  crystal repo; ingestion clients timed out at 30s every cycle.
+
+  Both servers now pass `commit_every_n_eats=100` (a new `FishEngine`
+  parameter — see *Added* below) plus a `SIGTERM`/`SIGINT` handler that
+  calls `engine.flush_commit()` on graceful shutdown. The N=100 cadence
+  keeps state-dir git history advancing for rollback (pre-merge review
+  flagged that pure `git_autocommit=False` stranded daemon history because
+  daemons never call `session_end`, eliminating the only built-in rollback
+  safety net). Hard kills (SIGKILL, OOM) lose up to N=100 eats of
+  granularity but data is still on disk in JSONL — only point-in-time
+  git rollback gets coarse.
+
+- **`_resolve_state_dir` rejects names containing path separators.**
+  `linafish recall -n '../etc/passwd'` previously resolved to
+  `~/.linafish/../etc/passwd_crystals.jsonl` and `FishEngine` would
+  happily mkdir/append to whatever target the resolved path landed on.
+  New attack surface introduced by this release's auto-detect helper
+  itself. Now any name containing `/`, `\`, or `..` raises `ValueError`
+  — `--state-dir` remains the legitimate way to point outside the
+  `~/.linafish/` root.
+
+### Added
+
+- **`_resolve_state_dir(name, explicit_state_dir, default_root=None)` —
+  a single helper for the CLI state-dir resolution used by the
+  interactive CLI verbs (whisper / check / recall / ask / emerge /
+  session).** Three layouts are now recognized without `--state-dir`
+  gymnastics: flat (`~/.linafish/<name>_crystals.jsonl`), nested
+  (`~/.linafish/<name>/<name>_crystals.jsonl`), and school facets
+  (`~/.linafish/school/<name>/<name>_crystals.jsonl`). Explicit
+  `--state-dir` always wins for byte-compatibility. Without the helper,
+  `linafish whisper -n me` from the default cwd silently resolved to an
+  empty fish — the file is one level deeper than the resolver looked.
+  Tests: `tests/test_resolve_state_dir.py` covers 11 cases across all three
+  layouts plus precedence, fallback rules, and the path-traversal guard.
+
+- **`FishEngine(commit_every_n_eats=N)` — periodic-commit mode for
+  daemon paths.** `0` (default) preserves legacy `git_autocommit`
+  semantics. `N > 0` commits on every Nth `_save_state` regardless
+  of `git_autocommit`, balancing rollback granularity against per-call
+  request overhead. Daemons (`linafish http`, `linafish converse`) now
+  pass `N=100`. Combined with a new `flush_commit(message)` method
+  invoked from `SIGTERM`/`SIGINT` handlers in `serve_http` and
+  `serve_converse`, this preserves state-dir git history under both
+  steady-state operation and graceful shutdown.
+
+  Interaction with `git_autocommit` (full matrix):
+
+  | `commit_every_n_eats` | `git_autocommit` | Commit cadence |
+  |---|---|---|
+  | `0` (default) | `True` (default) | Per-eat (legacy single-shot CLI) |
+  | `0` (default) | `False` | Never (legacy batch consumers) |
+  | `N > 0` | any value | Every Nth save (overrides `git_autocommit`) |
+
+  Per-call `commit=True/False` to `_save_state` always wins as the final override.
+
+  The shutdown handlers are reentrancy-safe: if `_save_state` is mid-write
+  when SIGTERM arrives, the handler sets `_shutdown_pending` and lets the
+  in-flight save's finally clause handle the deferred commit + exit. If
+  the save raised mid-write (disk full, fish-internal write failure,
+  etc.) the finally exits with code 1 WITHOUT committing — torn working
+  tree stays uncommitted, supervisor sees the failure via exit code
+  rather than corruption being permanently captured in git history.
+
+### Migration
+
+**`Formation.keywords` is now derived, not stored.** The dataclass declares
+`keywords: InitVar[List[str]]` instead of `keywords: List[str]`. All in-tree
+call sites pass `keywords=...` as a keyword argument and continue to work.
+External code that does any of the following will see silent or loud
+breakage:
+
+- **`dataclasses.asdict(formation)` no longer contains a `"keywords"` key**
+  (`InitVar` fields are not enumerated by `dataclasses.fields`). Read
+  `f.keywords` (the property) before serialization, or splice it in:
+  `dict(f.__dict__, keywords=list(f.keywords))`.
+- **`formation.keywords = [...]` raises `AttributeError`** because `keywords`
+  is now a read-only property. Use `Formation(..., keywords=[...])` at
+  construction time. There is no public mutation API in 1.3.0; if you
+  need one, open an issue.
+- **`dataclasses.replace(f, keywords=[...])` fails for the same reason.**
+  Construct a new `Formation` directly.
+- **`formation.keywords.append(kw)` silently no-ops** — the property
+  returns a freshly-derived list each read, so the append mutates a
+  throwaway. The nastiest of the breakages; existing code that *looks like*
+  it works will silently lose the change. There is no public in-place
+  mutation API; construct a new `Formation` with the desired keyword set.
+- **`repr(formation)` no longer includes `keywords`.** Snapshot tests,
+  doctests, and log-scrapers that match the prior repr will need updating.
+- **Binary deserialization of `Formation` instances serialized with
+  the standard `pickle`-style round-trip from 1.2.x will fail** under
+  1.3.0 because the `keywords` field no longer exists in the new class.
+  Re-derive the formations from the underlying crystal log via
+  `detect_formations` rather than rehydrating old binary artifacts.
+- **Custom dataclass introspection (e.g., `pydantic`, `attrs` interop,
+  hand-rolled JSON encoders that walk `__dataclass_fields__`)** will not
+  see `keywords` as a field. Same fix as `dataclasses.asdict`: read
+  `f.keywords` (the property) explicitly and splice into the output dict.
+- **Equality semantics shift slightly.** The dataclass-generated
+  `__eq__` no longer factors `keywords` into comparison (since it's not
+  a field). Two `Formation` instances with identical crystals/centroids
+  but constructed at different times will compare equal even if their
+  derived top-N keywords differ — though in practice the property is
+  deterministic from `_keyword_counter`, so equal counters produce equal
+  keyword reads.
+
+The internal attribute that powers the property — `_keyword_counter`,
+a `collections.Counter` — is module-private (underscore prefix) and
+carries **no stability guarantee.** Don't rely on it from external code.
+
+`hierarchical_merge` previously routed coupling adjacency through
+`formation.keywords` as a side-channel (`_coupled_X` markers appended
+then stripped); the refactor moves that to a local adjacency dict —
+required to make `Formation.keywords` read-only-derived, and cleaner
+anyway. No external API change at the function level.
+
+**`commit_every_n_eats` deployment notes for daemons.** If you're running
+your own `linafish http` or `linafish converse` instance, the daemon
+will commit every 100 eats by default and on graceful shutdown. To
+change the cadence, construct `FishEngine` directly with a different
+value (or open an issue if you need a CLI flag). To restore the
+pre-1.3.0 no-commit behavior, pass `git_autocommit=False,
+commit_every_n_eats=0` explicitly — but understand you're disabling
+the only built-in rollback path for the state-dir.
+
+**For operators running large HTTP-served corpora**: with the perf fix
+in 1.3.0, the engine's `addressed_formations=True` default is now
+viable at scale. Operators who had locally patched the default to
+`False` as a workaround against the pre-1.3.0 perf wall can remove
+that patch and let 1.3.0 run with the default. Cut-over should be
+done in a planned maintenance window — at scale the engine's resident
+RAM is dominated by the crystal corpus (rough rule of thumb: tens of
+KB per crystal in resident memory); a 393K-crystal load pushes ~8 GB
+on the original test deployment, so plan for sequential restart,
+not hot swap. Verify post-deploy that the state-dir's git log
+advances after ~100 eats — that's how you confirm
+`commit_every_n_eats` is actually firing.
+
+---
+
 ## [1.2.1] — 2026-04-30
 
 **Patch release. Two fixes for issues caught the same day 1.2.0 shipped: federation guppies were silently failing to parse `/taste` responses, and `paho-mqtt 2.x` broke `linafish room` and other MQTT consumers.**

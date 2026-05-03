@@ -148,19 +148,22 @@ def cmd_recall(args):
     """Full-text search across crystals. Find specific words, not patterns."""
     from .engine import FishEngine
 
-    state_dir = Path(args.state_dir) if args.state_dir else Path.home() / ".linafish"
     name = args.name
 
-    # Auto-detect fish name if not specified
+    # Auto-detect fish name if not specified — scan the flat root for crystal files
     if not name:
-        # Find most recently modified crystals file (flat structure: name_crystals.jsonl)
-        candidates = [f.stem.replace("_crystals", "") for f in state_dir.glob("*_crystals.jsonl")]
+        flat_root = Path(args.state_dir) if args.state_dir else Path.home() / ".linafish"
+        candidates = [f.stem.replace("_crystals", "") for f in flat_root.glob("*_crystals.jsonl")]
         if not candidates:
             print("No fish found. Run 'linafish go' first.")
             sys.exit(1)
         # Pick most recent by file mod time
-        candidates.sort(key=lambda n: (state_dir / f"{n}_crystals.jsonl").stat().st_mtime, reverse=True)
+        candidates.sort(key=lambda n: (flat_root / f"{n}_crystals.jsonl").stat().st_mtime, reverse=True)
         name = candidates[0]
+        state_dir = flat_root
+    else:
+        # Explicit name — resolve via shared helper (auto-detects nested layout)
+        state_dir = _resolve_state_dir(name, args.state_dir)
 
     engine = FishEngine(state_dir=state_dir, name=name)
     if not engine.fish.crystals:
@@ -435,11 +438,58 @@ def cmd_room(args):
     listener.run()
 
 
+def _resolve_state_dir(name, explicit_state_dir, default_root=None):
+    """Resolve the right state-dir for a given fish name.
+
+    Each fish stores its files as `<state_dir>/<name>_crystals.jsonl` and
+    siblings. Users with a single fish keep everything flat under
+    ~/.linafish/. Users with multiple fish often nest each one in its own
+    subdir (e.g. ~/.linafish/me/me_crystals.jsonl, school members under
+    ~/.linafish/school/<name>/<name>_crystals.jsonl). Without auto-detect,
+    `linafish whisper -n me` against a flat ~/.linafish/ silently loads an
+    empty fish because it looks for ~/.linafish/me_crystals.jsonl which
+    doesn't exist; the actual file is one level deeper.
+
+    Resolution rules (the first match wins):
+
+    1. If explicit_state_dir is set, return it. Explicit always wins so
+       existing scripts and `--state-dir` invocations are byte-compatible.
+    2. If name is given AND <root>/<name>/<name>_crystals.jsonl exists,
+       return <root>/<name>/. This catches the nested layout.
+    3. If name is given AND <root>/school/<name>/<name>_crystals.jsonl
+       exists, return <root>/school/<name>/. School facets live two
+       levels deep and the user-shape verbs (whisper/check/recall/ask/
+       emerge) should reach them without `--state-dir` gymnastics.
+    4. Else return <root> (or ~/.linafish/ if default_root is None).
+    """
+    if explicit_state_dir:
+        return Path(explicit_state_dir)
+    # Reject path-separator-bearing names — they would let `-n '../etc/passwd'`
+    # resolve outside ~/.linafish/ and FishEngine's mkdir would happily
+    # create directories anywhere on disk. Codex round-1 finding 2026-05-02.
+    # Explicit --state-dir is the legitimate way to point outside the root.
+    if name and any(sep in name for sep in ("/", "\\")) or (name and ".." in name.split("/") + name.split("\\")):
+        raise ValueError(
+            f"linafish: name {name!r} contains path separators; "
+            "use --state-dir to point at a specific directory instead"
+        )
+    root = Path(default_root) if default_root else Path.home() / ".linafish"
+    if name:
+        nested = root / name / f"{name}_crystals.jsonl"
+        if nested.exists():
+            return root / name
+        school_nested = root / "school" / name / f"{name}_crystals.jsonl"
+        if school_nested.exists():
+            return root / "school" / name
+    return root
+
+
 def _resolve_engine(args):
     """Get a FishEngine from common args."""
     from .engine import FishEngine
-    state_dir = Path(args.state_dir) if hasattr(args, 'state_dir') and args.state_dir else None
+    explicit = getattr(args, 'state_dir', None)
     name = getattr(args, 'name', None) or 'linafish'
+    state_dir = _resolve_state_dir(name, explicit)
     return FishEngine(state_dir=state_dir, name=name)
 
 

@@ -108,7 +108,8 @@ class FishEngine:
                  subtract_centroid: bool = False,
                  git_autocommit: bool = True,
                  dedupe: bool = False,
-                 addressed_formations: bool = True):
+                 addressed_formations: bool = True,
+                 commit_every_n_eats: int = 0):
         self.name = name
         self.state_dir = state_dir or Path.home() / ".linafish"
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -129,6 +130,31 @@ class FishEngine:
         # mean — the latency slope is the git commit overhead, not the
         # crystallization work).
         self.git_autocommit = git_autocommit
+        # commit_every_n_eats: periodic-commit mode for long-running daemons
+        # (HTTP / converse servers) that never call session_end. 0 means
+        # "use git_autocommit": True commits per eat, False never commits.
+        # > 0 means commit on every Nth _save_state regardless of
+        # git_autocommit. Daemons pass e.g. 100 to keep ~1% of the per-call
+        # overhead while preserving rollback granularity for state-dir git
+        # history. flush_commit() forces a commit on shutdown via signal
+        # handler in serve_http / serve_converse — covers graceful exit.
+        # Hard kill (SIGKILL, OOM) loses up to N eats of granularity but
+        # data is still on disk in JSONL — only point-in-time git rollback
+        # gets coarse. Codex round-1 finding 2026-05-02: with
+        # git_autocommit=False the daemon's state-dir git log silently
+        # stops advancing, breaking the only built-in rollback safety net.
+        self.commit_every_n_eats = max(0, int(commit_every_n_eats))
+        self._eat_save_counter = 0
+        # Reentrancy guard for signal-triggered flush_commit (codex round-2
+        # 2026-05-02 BLOCKING). _save_state can be interrupted between
+        # state.json truncate and JSON write; if the SIGTERM handler runs
+        # _git_commit at that instant, git captures the torn file. The
+        # handler now sets _shutdown_pending instead of committing
+        # directly when _save_in_progress is True; the finally block at
+        # the end of _save_state honors the deferred shutdown after the
+        # write completes — so git only ever sees a well-formed state.
+        self._save_in_progress = False
+        self._shutdown_pending = False
         # dedupe: when True, crystallize_text hashes incoming text and
         # short-circuits if the same text has already been crystallized
         # this session (or was present on disk at load time). Off by
@@ -609,6 +635,19 @@ class FishEngine:
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return -1, "", "git not available"
 
+    def flush_commit(self, message: str = "daemon flush — periodic commit"):
+        """Force a commit regardless of policy. For long-running daemons
+        (HTTP / converse) that don't call session_end on graceful shutdown.
+
+        Called from signal handlers (SIGTERM/SIGINT) registered by
+        serve_http and serve_converse so SIGTERM produces a final
+        rollback point even between periodic-commit boundaries. Hard
+        kills (SIGKILL, OOM) skip this — eats since the last periodic
+        commit are still on disk in JSONL but uncaptured in the
+        state-dir git log.
+        """
+        self._git_commit(message)
+
     def session_start(self, name: str = ""):
         """Start a session branch. Returns branch name."""
         if not name:
@@ -925,6 +964,60 @@ class FishEngine:
         formation.update_with(crystal)
 
     def _save_state(self, commit: Optional[bool] = None):
+        """Public entry point — wraps _save_state_impl with reentrancy guard.
+
+        Codex round-2 2026-05-02: signal-triggered flush_commit could fire
+        between state.json truncate and JSON write, capturing torn state
+        into git history. The guard sets _save_in_progress so the SIGTERM
+        handler defers (sets _shutdown_pending) instead of running a commit
+        mid-write; the finally block honors the deferred shutdown after
+        the impl completes, ensuring git only ever sees well-formed state.
+
+        Codex round-3 2026-05-02: round-2 fix had a fix-of-the-fix bug —
+        the finally block committed unconditionally on _shutdown_pending,
+        including when _save_state_impl raised mid-write (state.json
+        truncated but never re-written, JSONL half-appended, etc). Same
+        torn-state corruption, gated on "save failed" instead of "save
+        in progress." The success flag below ensures we only deferred-
+        commit when the impl returned cleanly. On failure with a pending
+        shutdown, we exit non-zero without committing — torn working tree
+        stays uncommitted, original exception details lost to SystemExit
+        but stderr carries the warning, and systemd/supervisord sees a
+        non-zero exit so the failure surfaces upstream.
+        """
+        self._save_in_progress = True
+        success = False
+        try:
+            result = self._save_state_impl(commit=commit)
+            success = True
+            return result
+        finally:
+            self._save_in_progress = False
+            if self._shutdown_pending:
+                if success:
+                    # In-flight save completed cleanly. Commit trailing
+                    # eats that the periodic-N policy hadn't captured.
+                    # Best-effort — shutdown should not be blocked by
+                    # commit failure (e.g., stale .git/index.lock).
+                    try:
+                        self._git_commit("daemon shutdown — deferred flush from in-flight save")
+                    except Exception as _e:
+                        print(f"shutdown commit failed: {_e}", file=sys.stderr)
+                    sys.exit(0)
+                else:
+                    # Save raised before completing. Working tree is
+                    # inconsistent (truncated state.json, partial JSONL,
+                    # etc.). DO NOT commit — that would write the torn
+                    # state into history permanently. Exit non-zero so
+                    # the supervisor knows something went wrong.
+                    print(
+                        "shutdown deferred but _save_state_impl failed — "
+                        "skipping commit to avoid torn-state capture",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
+
+    def _save_state_impl(self, commit: Optional[bool] = None):
         """Save state as fish.md — formations on top, crystal JSON at bottom.
 
         commit: override the instance-level ``git_autocommit`` flag for
@@ -1113,11 +1206,20 @@ class FishEngine:
         # Also save assessment state
         self._save_assessment_state()
 
-        # Version it — unless the caller opted out of autocommit.
-        # Precedence: per-call `commit=` override > instance git_autocommit.
-        # Batch consumers pass commit=False explicitly; single-eat paths
-        # pass commit=None and inherit the instance default.
-        should_commit = commit if commit is not None else self.git_autocommit
+        # Version it — precedence:
+        # 1. per-call `commit=` override (batch consumers pass False)
+        # 2. periodic mode: commit_every_n_eats > 0 fires on every Nth save
+        # 3. instance git_autocommit (legacy single-eat default)
+        # The counter advances on EVERY _save_state regardless of policy
+        # so the cadence is honored even when individual calls skip via
+        # commit=False overrides.
+        self._eat_save_counter += 1
+        if commit is not None:
+            should_commit = commit
+        elif self.commit_every_n_eats > 0:
+            should_commit = (self._eat_save_counter % self.commit_every_n_eats == 0)
+        else:
+            should_commit = self.git_autocommit
         if should_commit:
             source = getattr(self, '_last_source', '')
             new_crystals = getattr(self, '_last_new_crystals', 0)
