@@ -6,10 +6,13 @@ a URL can read the fish. Serves the same engine as the MCP server.
 
     GET  /pfc                — formations (the metacognitive overlay)
     GET  /health             — engine stats
+    GET  /emerge             — emergence metrics (ν, μ, ρ, Ψ, phase)
+    GET  /growth             — R(n) curve, coupling density, dimension entropy
     GET  /fish               — raw fish.md contents
     POST /eat                — feed text (JSON: {"text": "...", "source": "..."})
     POST /taste              — cross-corpus match (JSON: {"text": "...", "top": 5})
     POST /match              — tight recall (JSON: {"text": "...", "top": 3})
+    POST /re-eat             — maintenance cycle (gardener + assessment + growth)
 
     Federation message broker (added 2026-04-29 from .67 protofish):
     POST /msg                — send a DM (JSON: {"from": "...", "to": "...",
@@ -145,6 +148,13 @@ class FishHandler(BaseHTTPRequestHandler):
             else:
                 self._respond(200, json.dumps(result, indent=2),
                     content_type="application/json")
+        elif self.path == "/growth":
+            tracker = getattr(self.engine, "tracker", None)
+            if tracker is None or not tracker.snapshots:
+                self._respond(200,
+                    "No growth data yet. POST /re-eat to run a maintenance cycle first.")
+            else:
+                self._respond(200, tracker.growth_summary())
         elif self.path == "/":
             self._respond(200, (
                 "LiNafish — Your mind. Versioned. Everywhere.\n\n"
@@ -152,10 +162,12 @@ class FishHandler(BaseHTTPRequestHandler):
                 "GET  /pfc           — metacognitive overlay (formations)\n"
                 "GET  /health        — engine stats\n"
                 "GET  /emerge        — emergence metrics (ν, μ, ρ, Ψ, phase)\n"
+                "GET  /growth        — R(n) curve, coupling density, dimension entropy\n"
                 "GET  /fish          — raw fish.md\n"
                 "POST /eat           — feed text {\"text\": \"...\"}\n"
                 "POST /taste         — search {\"text\": \"...\"}\n"
                 "POST /match         — tight recall {\"text\": \"...\"}\n"
+                "POST /re-eat        — maintenance cycle (gardener + assessment + growth)\n"
                 "POST /msg           — federation DM send\n"
                 "GET  /inbox/<id>    — unread for a mind\n"
                 "POST /msg/read      — mark read\n"
@@ -210,6 +222,11 @@ class FishHandler(BaseHTTPRequestHandler):
 
         elif self.path == "/msg/read":
             self._handle_msg_read(body)
+
+        elif self.path == "/re-eat":
+            result = self.engine.re_eat()
+            self._respond(200, json.dumps(result, indent=2),
+                content_type="application/json")
 
         elif self.path == "/shutdown":
             self._respond(200, "Shutting down — nssm will restart.")
