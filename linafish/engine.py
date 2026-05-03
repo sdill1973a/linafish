@@ -89,6 +89,13 @@ except ImportError:
     _crystal_ops = None
     EmergenceMetrics = None
 
+try:
+    from .formation_gardener import FormationGardener
+    HAS_GARDENER = True
+except ImportError:
+    HAS_GARDENER = False
+    FormationGardener = None
+
 
 class FishEngine:
     """The fish. MI x ache math. No keywords. Pure compression.
@@ -275,6 +282,8 @@ class FishEngine:
 
         # Whether pre-assessment has run for this engine instance
         self._pre_assessed = False
+
+        self.gardener = FormationGardener(self) if HAS_GARDENER else None
 
         self._git_init()
         self._load_fish_md()
@@ -1627,6 +1636,17 @@ class FishEngine:
 
         # Rebuild formations to see what survived
         self.rebuild_formations()
+
+        # Gardener pass — runs after rebuild so formation_index is stable.
+        # re_eat() guarantees no concurrent eat() is in flight.
+        garden_summary = None
+        if self.gardener is not None:
+            try:
+                garden_summary = self.gardener.run()
+            except Exception as _ge:
+                import logging as _log
+                _log.getLogger(__name__).warning(f"[gardener] pass failed: {_ge}")
+
         post_formations = {f.name for f in self.formations}
 
         survived = pre_formations & post_formations
@@ -1662,6 +1682,15 @@ class FishEngine:
 
         if formative_result:
             result["formative"] = formative_result
+
+        if garden_summary is not None:
+            result["garden"] = {
+                "grade": garden_summary.get("grade"),
+                "counts": garden_summary.get("counts"),
+                "fp_mean": garden_summary.get("fp_mean"),
+                "oversize_count": garden_summary.get("oversize_count", 0),
+                "contagion_top": garden_summary.get("contagion_top", []),
+            }
 
         # Emergence check — did a phase transition happen this cycle?
         emergence = self._check_emergence()
@@ -2117,6 +2146,18 @@ class FishEngine:
         emergence = self._check_emergence()
         if emergence is not None:
             health_data["emergence"] = emergence
+
+        # Gardener status
+        if self.gardener is not None and self.gardener.last_run_summary:
+            gs = self.gardener.last_run_summary
+            health_data["garden"] = {
+                "grade": gs.get("grade"),
+                "counts": gs.get("counts"),
+                "fp_mean": gs.get("fp_mean"),
+                "oversize_count": gs.get("oversize_count", 0),
+                "contagion_top": gs.get("contagion_top", []),
+                "scanned_at": gs.get("scanned_at"),
+            }
 
         # Assessment data
         if self.assessment_log:
