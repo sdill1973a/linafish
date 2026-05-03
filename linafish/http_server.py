@@ -231,6 +231,9 @@ class FishHandler(BaseHTTPRequestHandler):
         elif self.path == "/shutdown":
             self._respond(200, "Shutting down — nssm will restart.")
             def _do_shutdown():
+                stop = getattr(self.__class__, "_stop_maintenance", None)
+                if stop is not None:
+                    stop.set()
                 try:
                     self.engine.flush_commit("http shutdown endpoint")
                 except Exception as e:
@@ -357,6 +360,53 @@ class FishHandler(BaseHTTPRequestHandler):
             return
 
 
+def _maintenance_loop(engine: "FishEngine", stop_evt: threading.Event,
+                      interval_hours: float) -> None:
+    """Background self-maintenance for HTTP daemon deployments.
+
+    Fires engine.re_eat() on a fixed schedule and emits QLP-notation output
+    so growth is legible in the daemon log without a separate monitor.
+
+    QLP line format (one per cycle):
+        EW.iter{epoch=N}|AI.reflect{phase=X}|KO.diag{grade=Y}|KO.analz{R_n=Z,entropy=W}
+
+    Exits cleanly when stop_evt is set (signal or /shutdown).
+    """
+    epoch = 0
+    interval_secs = int(interval_hours * 3600)
+
+    while not stop_evt.wait(interval_secs):
+        if getattr(engine, "_shutdown_pending", False) or getattr(engine, "_save_in_progress", False):
+            continue
+
+        epoch += 1
+        try:
+            result = engine.re_eat()
+        except Exception as e:
+            print(f"[maintenance] re_eat error epoch={epoch}: {e}",
+                  file=sys.stderr, flush=True)
+            continue
+
+        growth = result.get("growth", {})
+        r_n = growth.get("r_n", 0.0)
+        entropy = growth.get("dimension_entropy", 0.0)
+        stability = growth.get("stability_ratio", 0.5)
+        grade = ("A" if stability >= 0.8 else
+                 "B" if stability >= 0.6 else
+                 "C" if stability >= 0.4 else "D")
+
+        emerge = engine._check_emergence()
+        phase = emerge.get("phase", "broadcast") if emerge else "broadcast"
+
+        qline = (
+            f"EW.iter{{epoch={epoch}}}"
+            f"|AI.reflect{{phase={phase}}}"
+            f"|KO.diag{{grade={grade}}}"
+            f"|KO.analz{{R_n={r_n:.3f},entropy={entropy:.4f}}}"
+        )
+        print(f"[maintenance] {qline}", file=sys.stderr, flush=True)
+
+
 BIND_MAP = {
     "local": "127.0.0.1",
     "localhost": "127.0.0.1",
@@ -369,7 +419,8 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
                name: str = "linafish", port: int = 8900,
                vocab_path: Optional[Path] = None,
                host: Optional[str] = None,
-               bind: str = "local"):
+               bind: str = "local",
+               re_eat_interval_hours: float = 6.0):
     """Serve the fish over HTTP.
 
     ``bind`` is the convenience shorthand mirroring ``converse``:
@@ -380,6 +431,10 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
     ``host`` is a raw override. If set, it takes precedence over ``bind``
     for callers that need an exact interface IP. The plate-15 callers
     that passed ``host="0.0.0.0"`` keep working unchanged.
+
+    ``re_eat_interval_hours`` controls how often the background maintenance
+    thread calls engine.re_eat() (gardener + assessment + GrowthTracker).
+    Set to 0 to disable. Default: 6.0h. Output in QLP notation to stderr.
     """
 
     global _PRIMER
@@ -396,11 +451,14 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
     # rolled over.
     engine = FishEngine(state_dir=state_dir, name=name, commit_every_n_eats=100)
 
+    _stop_maintenance = threading.Event()
+
     def _flush_on_shutdown(signum, frame):
         # Reentrancy-safe: if a _save_state is in progress we cannot commit
         # right now without risking torn-state capture (codex round-2
         # 2026-05-02). Mark intent and let the in-flight save's finally
         # clause handle the commit + exit. If idle, flush + exit here.
+        _stop_maintenance.set()
         engine._shutdown_pending = True
         if not engine._save_in_progress:
             try:
@@ -417,6 +475,18 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
         print(f"  {result['crystals_added']} crystals, {result['formations']} formations", file=sys.stderr)
 
     FishHandler.engine = engine
+    FishHandler._stop_maintenance = _stop_maintenance
+
+    if re_eat_interval_hours > 0:
+        _maint = threading.Thread(
+            target=_maintenance_loop,
+            args=(engine, _stop_maintenance, re_eat_interval_hours),
+            name="linafish-maintenance",
+            daemon=False,
+        )
+        _maint.start()
+        print(f"  Maintenance: every {re_eat_interval_hours:.1f}h "
+              f"(QLP output to stderr)", file=sys.stderr)
 
     resolved_host = host if host else BIND_MAP.get(bind, bind)
     if bind == "wan" and not host:
