@@ -103,6 +103,13 @@ except ImportError:
     HAS_TRACKER = False
     GrowthTracker = None
 
+try:
+    from .feedback import FeedbackLoop
+    HAS_FEEDBACK = True
+except ImportError:
+    HAS_FEEDBACK = False
+    FeedbackLoop = None
+
 
 class FishEngine:
     """The fish. MI x ache math. No keywords. Pure compression.
@@ -296,6 +303,14 @@ class FishEngine:
         if self.tracker is not None:
             _tp = self.state_dir / f"{name}_growth.json"
             self.tracker.load(_tp)
+
+        # FeedbackLoop: which formations get used by taste/match queries.
+        # Closes the access-IS-integration loop flagged in PR #21 review:
+        # without this, the fish never learns from its own usage.
+        self.feedback = (
+            FeedbackLoop(state_path=self.state_dir / f"{name}_feedback.json")
+            if HAS_FEEDBACK else None
+        )
 
         self._git_init()
         self._load_fish_md()
@@ -1938,6 +1953,7 @@ class FishEngine:
         scores.sort(key=lambda x: x[0], reverse=True)
 
         matches = []
+        top_crystal_ids = set()
         for g, c in scores[:top]:
             matches.append({
                 "id": c.id,
@@ -1947,6 +1963,8 @@ class FishEngine:
                 "relevance": round(float(g), 4),
                 "keywords": list(c.keywords) if c.keywords else [],
             })
+            top_crystal_ids.add(c.id)
+        self._record_feedback_hits(top_crystal_ids)
 
         return {
             "ok": True,
@@ -2108,11 +2126,34 @@ class FishEngine:
             return "No strong matches."
 
         results = []
+        top_crystal_ids = set()
         for g, c in scores[:top]:
             results.append(f"[{g:.3f}] {', '.join(c.keywords)}")
             results.append(f"  {c.text[:300]}\n")
+            top_crystal_ids.add(c.id)
+        self._record_feedback_hits(top_crystal_ids)
 
         return "\n".join(results)
+
+    def _record_feedback_hits(self, top_crystal_ids: set) -> None:
+        """Map top-hit crystals to their formations and record the usage signal.
+
+        Closes the access-IS-integration loop. Each unique formation that
+        contains at least one top-hit crystal gets a single hit() call —
+        the formation was useful for this query. THX flagged the gap in
+        PR #21 review: taste()/match() were returning answers without ever
+        recording which formations did the work.
+        """
+        if self.feedback is None or not top_crystal_ids or not self.formations:
+            return
+        seen = set()
+        for f in self.formations:
+            members = set(getattr(f, "members", None) or getattr(f, "member_ids", []))
+            if members & top_crystal_ids:
+                fname = getattr(f, "name", None)
+                if fname and fname not in seen:
+                    self.feedback.hit(fname, helpful=True)
+                    seen.add(fname)
 
     # -------------------------------------------------------------------
     # HEALTH / STATUS
