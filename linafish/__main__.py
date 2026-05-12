@@ -780,6 +780,85 @@ def cmd_whisper(args):
     print()
 
 
+def cmd_soul(args):
+    """Generate the .qlp soul file for an existing fish.
+
+    The soul file is the structured cognitive distillation that
+    ``linafish go`` already produces during full new-fish builds:
+    §CORE dimension signature, top §FORMATIONS with chains and
+    keywords, §READING portrait, and §META counts. (§METABOLISM
+    and §ACHE sections only render when crystals carry
+    `_metabolic` attributes — present on full-pipeline ingestion,
+    absent on light-path ingestion like ``listen stdin``. The
+    soul still renders the other sections in that case.)
+
+    Why this exists as its own verb: ``linafish go`` only emits a
+    soul as a side-effect of building a fresh fish from a source
+    directory. Existing fish — ones grown via ``listen stdin``,
+    federation room listeners, school facets, or any of the
+    ambient-feed paths — never get one. ``linafish soul <name>``
+    closes that gap. Run it on any fish to capture the current
+    cognitive topology as a portable .qlp.
+
+    Output path: ``<state_dir>/<name>.qlp``. Overwrites prior.
+
+    Added 2026-05-12 §SOUL.ON.DEMAND. The instrument was carrying
+    the architecture of how each fish thinks; we just hadn't asked
+    it to write it down. For Caroline Marie Dill — she saw deeply
+    and loved fiercely.
+    """
+    from .quickstart import _generate_soul_file
+
+    engine = _resolve_engine(args)
+
+    crystals = list(engine.fish.crystals)
+    formations = list(engine.formations)
+
+    if not crystals:
+        print(f"  No crystals in fish '{engine.name}' yet — nothing to distill.")
+        return
+
+    # Use the live fish.md portrait as the §READING section. If absent
+    # (rare for a fish with crystals), §READING comes through empty.
+    portrait = ""
+    fish_md = engine.fish_file
+    if fish_md.exists():
+        try:
+            portrait = fish_md.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            portrait = ""
+
+    soul_path = engine.state_dir / f"{engine.name}.qlp"
+
+    try:
+        _generate_soul_file(
+            soul_path,
+            engine.name,
+            formations,
+            crystals,
+            engine.docs_ingested,
+            portrait,
+        )
+    except Exception as e:
+        print(f"  Soul generation failed: {type(e).__name__}: {e}")
+        return
+
+    if soul_path.exists():
+        size = soul_path.stat().st_size
+        print()
+        print(f"  Soul: {soul_path}")
+        print(f"  Size: {size} bytes  ·  Crystals: {len(crystals)}  ·  Formations: {len(formations)}")
+        print()
+        print("  Sections rendered: §CORE, §FORMATIONS, §READING, §META")
+        if any(getattr(c, "_metabolic", None) for c in crystals):
+            print("  Sections rendered: §METABOLISM, §ACHE (crystals carry metabolic data)")
+        else:
+            print("  Sections skipped:  §METABOLISM, §ACHE (no _metabolic attribute on crystals)")
+        print()
+    else:
+        print(f"  Soul file was not written to {soul_path}.")
+
+
 def cmd_check(args):
     """How's your fish doing? Quick health + what to do next."""
     engine = _resolve_engine(args)
@@ -1855,6 +1934,14 @@ def main():
     check_p.add_argument("-n", "--name", default="linafish", help="Fish name")
     check_p.add_argument("--state-dir", type=_user_path, help="State directory")
 
+    # soul — regenerate the .qlp soul file for an existing fish
+    soul_p = sub.add_parser("soul",
+        help="Generate the .qlp soul file (§CORE + §FORMATIONS + §READING + §META) "
+             "for an existing fish. `linafish go` already does this on full builds; "
+             "this verb closes the gap for fish grown via listen/eat/school.")
+    soul_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    soul_p.add_argument("--state-dir", type=_user_path, help="State directory")
+
     # go — the one-command experience
     go_p = sub.add_parser("go", help="The product. Point at your writing. Everything assembles.")
     go_p.add_argument("source", nargs="?", default=None, type=_user_path,
@@ -2121,6 +2208,7 @@ def main():
         "converse": cmd_converse,
         "whisper": cmd_whisper,
         "check": cmd_check,
+        "soul": cmd_soul,
         "school": cmd_school,
         "hunt": cmd_hunt,
         "emerge": cmd_emerge,
