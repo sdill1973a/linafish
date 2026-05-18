@@ -1687,6 +1687,42 @@ def cmd_doctor(args):
             print(f"  (PyPI check failed: {e})")
         print()
 
+    # -- Fish locks --
+    # Scan for stale lockfiles held by dead PIDs (parallel to the
+    # .git/index.lock catch every git tool ships). See linafish.locks
+    # for the doctrine. Default: print one-line summary + warnings only;
+    # --scan-locks prints per-lock detail; --fix-locks offers interactive
+    # removal of stale ones.
+    from .locks import scan_locks, remove_lock
+    state_root = Path(args.state_dir) if getattr(args, "state_dir", None) else None
+    locks = scan_locks(state_root=state_root)
+    stale = [e for e in locks if e.stale]
+    print(f"Fish locks: {len(locks)} found, {len(stale)} stale")
+    if getattr(args, "scan_locks", False) and locks:
+        for e in locks:
+            mark = "[!]" if e.stale else "[+]"
+            pid_label = (
+                "alive" if e.pid_alive is True
+                else "dead" if e.pid_alive is False
+                else "indeterminate"
+            )
+            print(
+                f"  {mark} {e.path}  "
+                f"(age {e.age_seconds}s, pid {e.pid} {pid_label})"
+            )
+    if stale and not getattr(args, "fix_locks", False):
+        for e in stale:
+            print(
+                f"  [!] stale: {e.path} "
+                f"(age {e.age_seconds}s, pid {e.pid} dead) "
+                f"— rerun with --fix-locks to remove"
+            )
+    if getattr(args, "fix_locks", False) and stale:
+        for e in stale:
+            ok, msg = remove_lock(Path(e.path))
+            print(f"  {'[+]' if ok else '[!]'} {msg}")
+    print()
+
     # -- Modes available --
     # Tells the user which 'legs' of the linafish system are currently
     # usable and what concrete command would unlock a missing one. Same
@@ -2240,6 +2276,10 @@ def main():
     doctor_p.add_argument("--state-dir", type=_user_path, help="Fish state directory (default ~/.linafish)")
     doctor_p.add_argument("--check-updates", action="store_true",
                           help="Also check PyPI for a newer version")
+    doctor_p.add_argument("--scan-locks", action="store_true",
+                          help="Print per-lock detail in the Fish locks section (not just summary)")
+    doctor_p.add_argument("--fix-locks", action="store_true",
+                          help="Remove stale fish locks (held by dead PIDs). Skips live ones.")
 
     school_p = sub.add_parser("school", help="The river and the nets. One stream, N fish.")
     school_p.add_argument("action", choices=["init", "eat", "refeed", "status", "docket", "add"],
