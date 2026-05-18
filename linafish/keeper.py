@@ -211,7 +211,10 @@ def invoke_keeper(
           - name, full_name, purpose, crystals (KeeperInfo fields)
           - persona: one-line cognitive summary (top formation interpretation)
             or "" if no formations yet
-          - hits: list of {source, terms_match, excerpt} from recall
+          - recall: formatted multi-line string of top-N hits (the same
+            output shape `linafish recall` produces). A future enhancement
+            may add a `hits: list[dict]` field once engine.recall gains
+            a structured-return mode; until then `recall` is the string.
     """
     info = info_keeper(name, state_root)
     if info is None:

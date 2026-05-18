@@ -48,6 +48,14 @@ class DepositDecision:
 
 # Default doctrine-marker patterns. Generic English phrases that flag
 # rule-locking, canon-declaring, or section-tagging turns.
+#
+# **Caveat for users:** the `\b(don'?t|always|never)\b` pattern is broad
+# — ordinary English sentences like "I always enjoy coffee" or "I don't
+# eat dairy" will trip it. The default set is tuned for journal/work
+# corpora where these words usually signal a real rule-lock; for casual
+# chat-heavy corpora you'll want to override with a narrower pattern
+# (e.g. `\b(never again|always remember|don'?t do)\b`) via
+# `--doctrine-marker` or by passing `doctrine_markers=` to classify().
 DEFAULT_DOCTRINE_MARKERS = [
     r"\bnew rule\b",
     r"\bfrom now on\b",

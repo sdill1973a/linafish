@@ -111,15 +111,36 @@ def _api_request(
     return json.loads(raw)
 
 
-def search_recent_pages(token: str, page_size: int = SEARCH_PAGE_SIZE) -> list[dict]:
-    """Use Notion /v1/search to list recently-edited pages."""
-    body = {
-        "filter": {"property": "object", "value": "page"},
-        "sort": {"direction": "descending", "timestamp": "last_edited_time"},
-        "page_size": page_size,
-    }
-    result = _api_request("POST", "/search", token, body=body)
-    return result.get("results", [])
+def search_recent_pages(
+    token: str,
+    page_size: int = SEARCH_PAGE_SIZE,
+    max_pages: int = 1000,
+) -> list[dict]:
+    """Use Notion /v1/search to list recently-edited pages.
+
+    Paginates via ``next_cursor`` / ``has_more`` so workspaces with many
+    recently-edited pages don't silently lose data past the first
+    response. Cap at ``max_pages`` to bound runtime on pathological
+    histories (default 1000 = 40 calls at page_size=25).
+    """
+    out: list[dict] = []
+    cursor: Optional[str] = None
+    while len(out) < max_pages:
+        body: dict = {
+            "filter": {"property": "object", "value": "page"},
+            "sort": {"direction": "descending", "timestamp": "last_edited_time"},
+            "page_size": page_size,
+        }
+        if cursor:
+            body["start_cursor"] = cursor
+        result = _api_request("POST", "/search", token, body=body)
+        out.extend(result.get("results", []))
+        if not result.get("has_more"):
+            break
+        cursor = result.get("next_cursor")
+        if not cursor:
+            break
+    return out[:max_pages]
 
 
 def _extract_page_title(page: dict) -> str:
@@ -133,10 +154,32 @@ def _extract_page_title(page: dict) -> str:
     return "(untitled)"
 
 
-def _fetch_page_blocks(token: str, page_id: str) -> list[dict]:
-    """Pull all top-level blocks for a page."""
-    result = _api_request("GET", f"/blocks/{page_id}/children?page_size=100", token)
-    return result.get("results", [])
+def _fetch_page_blocks(
+    token: str,
+    page_id: str,
+    max_blocks: int = 5000,
+) -> list[dict]:
+    """Pull all top-level blocks for a page.
+
+    Paginates via ``next_cursor`` / ``has_more`` so long pages (>100
+    top-level blocks — common for meeting notes, status pages) aren't
+    silently truncated. Cap at ``max_blocks`` to bound runtime (default
+    5000 = 50 calls at page_size=100).
+    """
+    out: list[dict] = []
+    cursor: Optional[str] = None
+    while len(out) < max_blocks:
+        path = f"/blocks/{page_id}/children?page_size=100"
+        if cursor:
+            path += f"&start_cursor={cursor}"
+        result = _api_request("GET", path, token)
+        out.extend(result.get("results", []))
+        if not result.get("has_more"):
+            break
+        cursor = result.get("next_cursor")
+        if not cursor:
+            break
+    return out[:max_blocks]
 
 
 def _blocks_to_text(blocks: list[dict]) -> str:
@@ -210,13 +253,29 @@ def pull_notion(
     if state_path is None:
         state_path = _default_state_path(state_root)
     state = _load_state(state_path)
+    # Guard against corrupted / hand-edited state where "pages" is absent
+    # or non-dict. Per codex review P1.
+    pages_state = state.get("pages")
+    if not isinstance(pages_state, dict):
+        state["pages"] = {}
 
-    pages = search_recent_pages(token, page_size=page_size)
-    seen = len(pages)
     deposited = 0
     skipped = 0
     failed = 0
     errors: list[str] = []
+
+    try:
+        pages = search_recent_pages(token, page_size=page_size)
+    except (urllib.error.HTTPError, urllib.error.URLError, Exception) as e:
+        # Initial /search failure — return a structured result with the
+        # error rather than letting the stack trace blow the CLI up.
+        # Per codex review P1.
+        return NotionBridgeResult(
+            pages_seen=0, pages_deposited=0,
+            pages_skipped_unchanged=0, pages_failed=1,
+            errors=[f"/search failed: {type(e).__name__}: {e}"],
+        )
+    seen = len(pages)
 
     if not pages:
         return NotionBridgeResult(

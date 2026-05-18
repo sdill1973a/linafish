@@ -246,3 +246,126 @@ def test_pull_notion_raises_when_token_missing(monkeypatch, tmp_path: Path):
     monkeypatch.delenv("NOTION_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="Notion token not found"):
         pull_notion(state_root=tmp_path)
+
+
+# ----- pagination + error-handling tests (codex review P0 + P1 fixes) -----
+
+def test_search_recent_pages_paginates(monkeypatch):
+    """Codex P0: /search must follow has_more / next_cursor across pages."""
+    from linafish.bridges.notion import search_recent_pages
+    calls = {"n": 0}
+    page_1 = {"results": [{"id": f"p-{i}"} for i in range(25)], "has_more": True, "next_cursor": "cursor-2"}
+    page_2 = {"results": [{"id": f"p-{i}"} for i in range(25, 40)], "has_more": False}
+    pages = [page_1, page_2]
+    def fake_api(method, path, token, body=None, timeout=30):
+        idx = calls["n"]
+        calls["n"] += 1
+        if idx == 1:
+            assert body and body.get("start_cursor") == "cursor-2", "second call must use the cursor"
+        return pages[idx]
+    with patch("linafish.bridges.notion._api_request", side_effect=fake_api):
+        result = search_recent_pages("fake-token")
+    assert len(result) == 40
+    assert calls["n"] == 2
+
+
+def test_search_recent_pages_respects_max_pages(monkeypatch):
+    """Pagination caps at max_pages to bound runtime on pathological histories."""
+    from linafish.bridges.notion import search_recent_pages
+    one_page = {"results": [{"id": f"p-{i}"} for i in range(25)], "has_more": True, "next_cursor": "next"}
+    with patch("linafish.bridges.notion._api_request", return_value=one_page):
+        result = search_recent_pages("fake-token", max_pages=30)
+    assert len(result) == 30  # capped before pulling more
+
+
+def test_fetch_page_blocks_paginates():
+    """Codex P1: /blocks/{id}/children must follow pagination too."""
+    from linafish.bridges.notion import _fetch_page_blocks
+    calls = {"n": 0}
+    page_1 = {"results": [{"type": "paragraph"} for _ in range(100)], "has_more": True, "next_cursor": "blk-cursor-2"}
+    page_2 = {"results": [{"type": "paragraph"} for _ in range(50)], "has_more": False}
+    pages = [page_1, page_2]
+    def fake_api(method, path, token, body=None, timeout=30):
+        idx = calls["n"]
+        calls["n"] += 1
+        if idx == 1:
+            assert "start_cursor=blk-cursor-2" in path, "second call must include the cursor"
+        return pages[idx]
+    with patch("linafish.bridges.notion._api_request", side_effect=fake_api):
+        result = _fetch_page_blocks("fake-token", "page-id")
+    assert len(result) == 150
+    assert calls["n"] == 2
+
+
+def test_pull_notion_recovers_from_corrupt_state_pages_field(tmp_path: Path, monkeypatch):
+    """Codex P1: corrupt state file (no 'pages' key) must not crash pull_notion."""
+    monkeypatch.setenv("NOTION_API_KEY", "fake-token")
+    state_path = tmp_path / "bridges" / "notion-state.json"
+    state_path.parent.mkdir(parents=True)
+    # Hand-written state without 'pages' field at all
+    state_path.write_text('{"some_other_field": "value"}', encoding="utf-8")
+    with patch("linafish.bridges.notion._api_request", return_value={"results": []}):
+        result = pull_notion(state_root=tmp_path, dry_run=True)
+    assert result.pages_seen == 0
+
+
+def test_pull_notion_recovers_when_pages_is_not_dict(tmp_path: Path, monkeypatch):
+    """Codex P1: state with 'pages' as wrong type must not crash."""
+    monkeypatch.setenv("NOTION_API_KEY", "fake-token")
+    state_path = tmp_path / "bridges" / "notion-state.json"
+    state_path.parent.mkdir(parents=True)
+    state_path.write_text('{"pages": []}', encoding="utf-8")  # list, not dict
+    with patch("linafish.bridges.notion._api_request", return_value={"results": []}):
+        result = pull_notion(state_root=tmp_path, dry_run=True)
+    assert result.pages_seen == 0
+
+
+def test_pull_notion_wraps_search_http_errors(tmp_path: Path, monkeypatch):
+    """Codex P1: HTTP error on /search returns NotionBridgeResult, doesn't crash."""
+    import urllib.error
+    monkeypatch.setenv("NOTION_API_KEY", "fake-token")
+    def boom(method, path, token, body=None, timeout=30):
+        raise urllib.error.HTTPError(
+            url="https://api.notion.com/v1/search",
+            code=429, msg="Too Many Requests", hdrs={}, fp=None,
+        )
+    with patch("linafish.bridges.notion._api_request", side_effect=boom):
+        result = pull_notion(state_root=tmp_path, dry_run=True)
+    assert result.pages_seen == 0
+    assert result.pages_failed == 1
+    assert len(result.errors) == 1
+    assert "/search failed" in result.errors[0]
+
+
+def test_pull_notion_non_dry_run_persists_state_and_calls_engine(tmp_path: Path, monkeypatch):
+    """Codex P1: actually exercise the live-deposit path (engine.eat + state save)."""
+    monkeypatch.setenv("NOTION_API_KEY", "fake-token")
+    fake_page = {
+        "id": "page-1",
+        "last_edited_time": "2026-05-18T10:00:00.000Z",
+        "properties": {"Name": {"type": "title", "title": [{"plain_text": "P1"}]}}
+    }
+    def fake_api(method, path, token, body=None, timeout=30):
+        if path == "/search":
+            return {"results": [fake_page]}
+        return {"results": [{"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "body"}]}}]}
+
+    # Patch FishEngine at the lookup site
+    eaten: list[str] = []
+    class FakeEngine:
+        def __init__(self, name, state_dir):
+            self.name = name
+        def eat(self, text):
+            eaten.append(text)
+
+    with patch("linafish.bridges.notion._api_request", side_effect=fake_api), \
+         patch("linafish.engine.FishEngine", FakeEngine):
+        result = pull_notion(state_root=tmp_path, fish_name="testfish")
+
+    # Live path: engine.eat was called once
+    assert len(eaten) == 1
+    assert "[notion 2026-05-18 P1]" in eaten[0]
+    # State persisted: pages[page-1] = last_edited_time
+    assert result.pages_deposited == 1
+    state = _load_state(tmp_path / "bridges" / "notion-state.json")
+    assert state["pages"]["page-1"] == "2026-05-18T10:00:00.000Z"
