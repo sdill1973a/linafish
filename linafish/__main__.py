@@ -889,6 +889,44 @@ def cmd_check(args):
     print(f"    linafish history              — see how I've grown")
 
 
+def cmd_bridge(args):
+    """Pull-from-external-source verbs.
+
+    Subcommands (via positional `target`):
+      notion [--token X] [--fish NAME] [--full] [--dry-run]
+    """
+    if args.target == "notion":
+        from .bridges.notion import pull_notion
+        try:
+            result = pull_notion(
+                token=args.token,
+                fish_name=args.fish or "notion",
+                state_root=Path(args.state_dir) if args.state_dir else None,
+                full=getattr(args, "full", False),
+                dry_run=getattr(args, "dry_run", False),
+            )
+        except RuntimeError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error: {type(e).__name__}: {e}")
+            sys.exit(1)
+        print(f"Notion bridge ({'dry-run' if args.dry_run else 'live'}):")
+        print(f"  pages seen:                {result.pages_seen}")
+        print(f"  pages deposited:           {result.pages_deposited}")
+        print(f"  pages skipped (unchanged): {result.pages_skipped_unchanged}")
+        print(f"  pages failed:              {result.pages_failed}")
+        if result.errors:
+            print("  Errors:")
+            for e in result.errors:
+                print(f"    - {e}")
+        return
+
+    print(f"Unknown bridge target: {args.target}")
+    print(f"Available: notion")
+    sys.exit(2)
+
+
 def cmd_style(args):
     """Named voices to think with.
 
@@ -2320,6 +2358,18 @@ def main():
     check_p.add_argument("-n", "--name", default="linafish", help="Fish name")
     check_p.add_argument("--state-dir", type=_user_path, help="State directory")
 
+    # bridge — pull from an external source into a fish
+    bridge_p = sub.add_parser(
+        "bridge",
+        help="Pull from external sources (notion, ...) into a fish."
+    )
+    bridge_p.add_argument("target", choices=["notion"], help="Bridge target")
+    bridge_p.add_argument("--token", help="Auth token (overrides env var)")
+    bridge_p.add_argument("--fish", default=None, help="Target fish name (default: bridge target name)")
+    bridge_p.add_argument("--full", action="store_true", help="Ignore state; re-deposit every page")
+    bridge_p.add_argument("--dry-run", action="store_true", help="Scan and report; don't deposit")
+    bridge_p.add_argument("--state-dir", type=_user_path, help="State directory (default ~/.linafish)")
+
     # style — named voices to think with
     style_p = sub.add_parser(
         "style",
@@ -2679,6 +2729,7 @@ def main():
         "whisper": cmd_whisper,
         "check": cmd_check,
         "classify": cmd_classify,
+        "bridge": cmd_bridge,
         "daily": cmd_daily,
         "keeper": cmd_keeper,
         "style": cmd_style,
