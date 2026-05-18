@@ -889,6 +889,100 @@ def cmd_check(args):
     print(f"    linafish history              — see how I've grown")
 
 
+def cmd_keeper(args):
+    """Focused single-purpose sub-fish you invoke by name.
+
+    Subcommands (via positional `action`):
+      init NAME 'purpose' [--seed PATH]   create a keeper
+      invoke NAME 'theme' [--top N]       query a keeper
+      list                                list all keepers
+      info NAME                           show one keeper's info
+
+    Keepers live at ~/.linafish/<name>-keeper/. The -keeper suffix is
+    the marker (so `linafish keeper list` knows what to scan). Feed
+    with: linafish listen stdin -n <name>-keeper < material.md
+    """
+    from .keeper import (
+        info_keeper,
+        init_keeper,
+        invoke_keeper,
+        list_keepers,
+    )
+
+    state_root = Path(args.state_dir) if getattr(args, "state_dir", None) else None
+
+    if args.action == "init":
+        if not args.name or not args.text:
+            print("Error: linafish keeper init NAME 'purpose' [--seed PATH]")
+            sys.exit(2)
+        seed = Path(args.seed).expanduser() if args.seed else None
+        try:
+            kinfo = init_keeper(args.name, args.text, seed_path=seed, state_root=state_root)
+        except FileNotFoundError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        print(f"Created keeper: {kinfo.full_name}")
+        print(f"  Purpose: {kinfo.purpose}")
+        print(f"  State:   {kinfo.state_dir}")
+        print(f"  Crystals: {kinfo.crystals}")
+        print()
+        print(f"Feed:    linafish listen stdin -n {kinfo.full_name} < material.md")
+        print(f"Invoke:  linafish keeper invoke {kinfo.name} '<theme>'")
+        return
+
+    if args.action == "list":
+        keepers = list_keepers(state_root=state_root)
+        if not keepers:
+            print("No keepers found.")
+            print("Create one: linafish keeper init <name> '<purpose>'")
+            return
+        print(f"{'Name':<20} {'Crystals':>10}  Purpose")
+        print("-" * 60)
+        for k in keepers:
+            print(f"{k.name:<20} {k.crystals:>10}  {k.purpose[:40]}")
+        return
+
+    if args.action == "info":
+        if not args.name:
+            print("Error: linafish keeper info NAME")
+            sys.exit(2)
+        kinfo = info_keeper(args.name, state_root=state_root)
+        if kinfo is None:
+            print(f"No keeper named '{args.name}' found.")
+            sys.exit(1)
+        print(f"Keeper:   {kinfo.full_name}")
+        print(f"Purpose:  {kinfo.purpose}")
+        print(f"State:    {kinfo.state_dir}")
+        print(f"Crystals: {kinfo.crystals}")
+        return
+
+    if args.action == "invoke":
+        if not args.name or not args.text:
+            print("Error: linafish keeper invoke NAME 'theme' [--top N]")
+            sys.exit(2)
+        try:
+            result = invoke_keeper(
+                args.name, args.text,
+                top=args.top or 5,
+                state_root=state_root,
+            )
+        except FileNotFoundError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        print(f"Keeper: {result['full_name']} ({result['crystals']} crystals)")
+        if result["purpose"]:
+            print(f"Purpose: {result['purpose']}")
+        print()
+        if result["persona"]:
+            print(f"Persona: {result['persona']}")
+            print()
+        print(result["recall"])
+        return
+
+    print(f"Unknown action: {args.action}")
+    sys.exit(2)
+
+
 def cmd_classify(args):
     """Score a (user_turn, assistant_turn) pair for deposit-worthiness.
 
@@ -2044,6 +2138,24 @@ def main():
     check_p.add_argument("-n", "--name", default="linafish", help="Fish name")
     check_p.add_argument("--state-dir", type=_user_path, help="State directory")
 
+    # keeper — focused single-purpose sub-fish
+    keeper_p = sub.add_parser(
+        "keeper",
+        help="Focused single-purpose sub-fish: init / invoke / list / info."
+    )
+    keeper_p.add_argument(
+        "action", choices=["init", "invoke", "list", "info"],
+        help="What to do with the keeper."
+    )
+    keeper_p.add_argument("name", nargs="?", help="Keeper short name (e.g. 'phoenix')")
+    keeper_p.add_argument(
+        "text", nargs="?",
+        help="For init: one-line purpose. For invoke: theme query."
+    )
+    keeper_p.add_argument("--seed", type=_user_path, help="For init: seed material (file or dir) to absorb")
+    keeper_p.add_argument("--top", type=int, default=5, help="For invoke: max recall hits (default 5)")
+    keeper_p.add_argument("--state-dir", type=_user_path, help="State directory (default ~/.linafish)")
+
     # classify — score a turn pair for deposit-worthiness
     classify_p = sub.add_parser(
         "classify",
@@ -2350,6 +2462,7 @@ def main():
         "whisper": cmd_whisper,
         "check": cmd_check,
         "classify": cmd_classify,
+        "keeper": cmd_keeper,
         "school": cmd_school,
         "hunt": cmd_hunt,
         "emerge": cmd_emerge,
