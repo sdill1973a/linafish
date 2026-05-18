@@ -889,6 +889,94 @@ def cmd_check(args):
     print(f"    linafish history              — see how I've grown")
 
 
+def cmd_style(args):
+    """Named voices to think with.
+
+    Subcommands (via positional `action`):
+      add NAME 'description' [--voice-from PATH]    create a style
+      invoke NAME 'theme' [--top N]                 query a style
+      list                                          list all styles
+      info NAME                                     show one style
+    """
+    from .style import (
+        add_style,
+        info_style,
+        invoke_style,
+        list_styles,
+    )
+
+    state_root = Path(args.state_dir) if getattr(args, "state_dir", None) else None
+
+    if args.action == "add":
+        if not args.name or not args.text:
+            print("Error: linafish style add NAME 'description' [--voice-from PATH]")
+            sys.exit(2)
+        voice = Path(args.voice_from).expanduser() if args.voice_from else None
+        try:
+            sinfo = add_style(args.name, args.text, voice_from=voice, state_root=state_root)
+        except FileNotFoundError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        print(f"Created style: {sinfo.name}")
+        print(f"  Description: {sinfo.description}")
+        print(f"  State:       {sinfo.state_dir}")
+        print(f"  Crystals:    {sinfo.crystals}")
+        print()
+        print(f"Feed more:  linafish listen stdin -n {sinfo.name} "
+              f"--state-dir {sinfo.state_dir.parent}")
+        print(f"Invoke:     linafish style invoke {sinfo.name} '<theme>'")
+        return
+
+    if args.action == "list":
+        styles = list_styles(state_root=state_root)
+        if not styles:
+            print("No styles defined.")
+            print("Create one: linafish style add <name> '<description>'")
+            return
+        print(f"{'Name':<20} {'Crystals':>10}  Description")
+        print("-" * 60)
+        for s in styles:
+            print(f"{s.name:<20} {s.crystals:>10}  {s.description[:40]}")
+        return
+
+    if args.action == "info":
+        if not args.name:
+            print("Error: linafish style info NAME")
+            sys.exit(2)
+        sinfo = info_style(args.name, state_root=state_root)
+        if sinfo is None:
+            print(f"No style named '{args.name}' found.")
+            sys.exit(1)
+        print(f"Style:       {sinfo.name}")
+        print(f"Description: {sinfo.description}")
+        print(f"State:       {sinfo.state_dir}")
+        print(f"Crystals:    {sinfo.crystals}")
+        return
+
+    if args.action == "invoke":
+        if not args.name or not args.text:
+            print("Error: linafish style invoke NAME 'theme' [--top N]")
+            sys.exit(2)
+        try:
+            result = invoke_style(
+                args.name, args.text,
+                top=args.top or 5,
+                state_root=state_root,
+            )
+        except FileNotFoundError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        print(f"Style: {result['name']} ({result['crystals']} crystals)")
+        if result["description"]:
+            print(f"Description: {result['description']}")
+        print()
+        print(result["recall"])
+        return
+
+    print(f"Unknown action: {args.action}")
+    sys.exit(2)
+
+
 def cmd_daily(args):
     """Per-day fish — calendar-indexed cognitive snapshots.
 
@@ -2232,6 +2320,21 @@ def main():
     check_p.add_argument("-n", "--name", default="linafish", help="Fish name")
     check_p.add_argument("--state-dir", type=_user_path, help="State directory")
 
+    # style — named voices to think with
+    style_p = sub.add_parser(
+        "style",
+        help="Named voices to think with: add / invoke / list / info."
+    )
+    style_p.add_argument("action", choices=["add", "invoke", "list", "info"])
+    style_p.add_argument("name", nargs="?", help="Style name (e.g. 'wyoming', 'annie-dillard')")
+    style_p.add_argument(
+        "text", nargs="?",
+        help="For add: one-line description. For invoke: theme query."
+    )
+    style_p.add_argument("--voice-from", type=_user_path, help="For add: seed material")
+    style_p.add_argument("--top", type=int, default=5, help="For invoke: max hits (default 5)")
+    style_p.add_argument("--state-dir", type=_user_path, help="State directory (default ~/.linafish)")
+
     # daily — per-day fish (calendar-indexed snapshots)
     daily_p = sub.add_parser(
         "daily",
@@ -2578,6 +2681,7 @@ def main():
         "classify": cmd_classify,
         "daily": cmd_daily,
         "keeper": cmd_keeper,
+        "style": cmd_style,
         "school": cmd_school,
         "hunt": cmd_hunt,
         "emerge": cmd_emerge,
