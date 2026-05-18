@@ -889,6 +889,82 @@ def cmd_check(args):
     print(f"    linafish history              — see how I've grown")
 
 
+def cmd_classify(args):
+    """Score a (user_turn, assistant_turn) pair for deposit-worthiness.
+
+    Use as a gate in front of `linafish listen stdin -n <fish>` so the
+    corpus doesn't bloat with trivial chitchat. Each turn pair gets a
+    score from three signals (doctrine markers, high-value tokens,
+    length) and a routing tag. Above --threshold (default 1.5) the
+    decision is to deposit.
+
+    Two modes:
+      • Args mode: linafish classify --user "..." --assistant "..."
+      • JSONL stdin mode: linafish classify --jsonl <<< '{"user":"...","assistant":"..."}'
+
+    Output: DepositDecision as JSON (one per input).
+
+    Configurable via repeatable flags:
+      --doctrine-marker PATTERN   (regex; defaults to a generic set)
+      --hvt TOKEN                 (substring; default empty)
+      --routing-tag NAME=PATTERN  (regex; tag name=pattern; repeatable)
+      --target-fish NAME          (where to deposit; default 'linafish')
+      --threshold FLOAT           (deposit gate; default 1.5)
+    """
+    from .classifier import (
+        DEFAULT_DOCTRINE_MARKERS,
+        DEPOSIT_THRESHOLD,
+        classify,
+        decision_as_dict,
+    )
+
+    # Build per-invocation config
+    markers = list(args.doctrine_marker) if args.doctrine_marker else DEFAULT_DOCTRINE_MARKERS
+    hvts = list(args.hvt) if args.hvt else []
+    routing_tags: dict[str, list[str]] = {}
+    for spec in (args.routing_tag or []):
+        if "=" not in spec:
+            print(f"  [warn] --routing-tag '{spec}' missing '='; skipped")
+            continue
+        name, pattern = spec.split("=", 1)
+        routing_tags.setdefault(name, []).append(pattern)
+    threshold = args.threshold if args.threshold is not None else DEPOSIT_THRESHOLD
+    target = args.target_fish or "linafish"
+
+    def classify_pair(user_turn: str, assistant_turn: str) -> dict:
+        d = classify(
+            user_turn,
+            assistant_turn,
+            doctrine_markers=markers,
+            high_value_tokens=hvts,
+            routing_tags=routing_tags,
+            target_fish_name=target,
+            deposit_threshold=threshold,
+        )
+        return decision_as_dict(d)
+
+    if args.jsonl:
+        for line in sys.stdin:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError as e:
+                print(json.dumps({"_error": f"jsonl parse: {e}", "input": line[:200]}))
+                continue
+            u = obj.get("user", "") or obj.get("user_turn", "")
+            a = obj.get("assistant", "") or obj.get("assistant_turn", "")
+            print(json.dumps(classify_pair(u, a)))
+    else:
+        u = args.user or ""
+        a = args.assistant or ""
+        if not (u or a):
+            print("Error: provide --user and/or --assistant, or use --jsonl mode")
+            sys.exit(2)
+        print(json.dumps(classify_pair(u, a), indent=2))
+
+
 def cmd_listen(args):
     """Listen to a source. The fish sits in the stream."""
     engine = _resolve_engine(args)
@@ -1932,6 +2008,38 @@ def main():
     check_p.add_argument("-n", "--name", default="linafish", help="Fish name")
     check_p.add_argument("--state-dir", type=_user_path, help="State directory")
 
+    # classify — score a turn pair for deposit-worthiness
+    classify_p = sub.add_parser(
+        "classify",
+        help="Score a (user, assistant) turn pair for fish-eat-worthiness."
+    )
+    classify_p.add_argument("--user", help="User turn text")
+    classify_p.add_argument("--assistant", help="Assistant turn text")
+    classify_p.add_argument(
+        "--jsonl", action="store_true",
+        help='Batch mode: read {"user":"...","assistant":"..."} JSON lines from stdin'
+    )
+    classify_p.add_argument(
+        "--doctrine-marker", action="append", default=None,
+        help="Regex pattern flagging doctrine-locks (repeatable; default: generic set)"
+    )
+    classify_p.add_argument(
+        "--hvt", action="append", default=None,
+        help="High-value token to score per hit (repeatable; default: none)"
+    )
+    classify_p.add_argument(
+        "--routing-tag", action="append", default=None,
+        help="NAME=PATTERN — assign routing_tag if pattern matches (repeatable)"
+    )
+    classify_p.add_argument(
+        "--target-fish", default=None,
+        help="Fish name to put in DepositDecision.target_fish (default: 'linafish')"
+    )
+    classify_p.add_argument(
+        "--threshold", type=float, default=None,
+        help="Deposit score gate (default: 1.5)"
+    )
+
     # go — the one-command experience
     go_p = sub.add_parser("go", help="The product. Point at your writing. Everything assembles.")
     go_p.add_argument("source", nargs="?", default=None, type=_user_path,
@@ -2201,6 +2309,7 @@ def main():
         "converse": cmd_converse,
         "whisper": cmd_whisper,
         "check": cmd_check,
+        "classify": cmd_classify,
         "school": cmd_school,
         "hunt": cmd_hunt,
         "emerge": cmd_emerge,
