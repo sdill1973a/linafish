@@ -889,6 +889,100 @@ def cmd_check(args):
     print(f"    linafish history              — see how I've grown")
 
 
+def cmd_daily(args):
+    """Per-day fish — calendar-indexed cognitive snapshots.
+
+    Subcommands (via positional `action`):
+      build [--date YYYY-MM-DD] [--source PATH]... [--pattern GLOB]... [--force]
+      list                                              show all daily fish
+      info DATE                                         show one date's state
+    """
+    from .daily import (
+        build_daily_fish,
+        list_daily_fish,
+        today_iso,
+        _daily_dir,
+        _read_state,
+    )
+
+    state_root = Path(args.state_dir) if getattr(args, "state_dir", None) else None
+
+    if args.action == "build":
+        date_iso = args.date or today_iso()
+        sources = [Path(s).expanduser() for s in (args.source or [])]
+        if not sources:
+            print("Error: --source PATH required (file or dir to scan for date-matched content)")
+            sys.exit(2)
+        patterns = list(args.pattern) if args.pattern else None
+        try:
+            result = build_daily_fish(
+                date_iso=date_iso,
+                sources=sources,
+                patterns=patterns,
+                state_root=state_root,
+                force=getattr(args, "force", False),
+                fish_name_prefix=args.name_prefix or "day",
+            )
+        except Exception as e:
+            print(f"Error: {type(e).__name__}: {e}")
+            sys.exit(1)
+        if result.skipped_unchanged:
+            print(
+                f"daily fish for {result.date} unchanged "
+                f"({result.parts_count} parts, {result.crystals} crystals)"
+            )
+            print(f"  --force to rebuild")
+        elif result.crystals == 0:
+            print(f"daily fish for {result.date}: no matching content found")
+            print(f"  Sources scanned: {len(sources)}")
+        else:
+            print(f"daily fish built for {result.date}:")
+            print(f"  fish_dir: {result.fish_dir}")
+            print(f"  parts:    {result.parts_count}")
+            print(f"  crystals: {result.crystals}")
+            print(f"  digest:   {result.seed_digest}")
+        return
+
+    if args.action == "list":
+        entries = list_daily_fish(state_root=state_root)
+        if not entries:
+            print("No daily fish found.")
+            print("Build one: linafish daily build --source <path>")
+            return
+        print(f"{'Date':<12} {'Crystals':>10} {'Parts':>7}  Built UTC")
+        print("-" * 60)
+        for e in entries:
+            print(
+                f"{e['date']:<12} {e['crystals']:>10} {e['parts_count']:>7}  "
+                f"{e['built_at_utc'][:19]}"
+            )
+        return
+
+    if args.action == "info":
+        if not args.date:
+            print("Error: linafish daily info YYYY-MM-DD")
+            sys.exit(2)
+        ddir = _daily_dir(args.date, state_root)
+        if not ddir.exists():
+            print(f"No daily fish for {args.date}.")
+            sys.exit(1)
+        state = _read_state(ddir)
+        if not state:
+            print(f"Directory {ddir} exists but no state file — built with --force?")
+            return
+        print(f"Daily fish: {state.get('date')}")
+        print(f"  fish_name:    {state.get('fish_name', '(unknown)')}")
+        print(f"  fish_dir:     {ddir}")
+        print(f"  crystals:     {state.get('crystals', 0)}")
+        print(f"  parts_count:  {state.get('parts_count', 0)}")
+        print(f"  seed_digest:  {state.get('seed_digest', '')}")
+        print(f"  built_at_utc: {state.get('built_at_utc', '')}")
+        return
+
+    print(f"Unknown action: {args.action}")
+    sys.exit(2)
+
+
 def cmd_keeper(args):
     """Focused single-purpose sub-fish you invoke by name.
 
@@ -2138,6 +2232,26 @@ def main():
     check_p.add_argument("-n", "--name", default="linafish", help="Fish name")
     check_p.add_argument("--state-dir", type=_user_path, help="State directory")
 
+    # daily — per-day fish (calendar-indexed snapshots)
+    daily_p = sub.add_parser(
+        "daily",
+        help="Per-day fish: build / list / info — calendar-indexed cognitive snapshots."
+    )
+    daily_p.add_argument("action", choices=["build", "list", "info"])
+    daily_p.add_argument("date", nargs="?", help="For info: YYYY-MM-DD")
+    daily_p.add_argument("--date", dest="date", help="For build: target date (default: today UTC)")
+    daily_p.add_argument(
+        "--source", action="append", default=None,
+        help="File or dir to scan for date-matched content (repeatable; required for build)"
+    )
+    daily_p.add_argument(
+        "--pattern", action="append", default=None,
+        help="Glob pattern; {date} substitutes (repeatable; default: *{date}*.md / *{date}*.txt)"
+    )
+    daily_p.add_argument("--force", action="store_true", help="Rebuild even if seed digest unchanged")
+    daily_p.add_argument("--name-prefix", default=None, help="Fish name prefix (default 'day')")
+    daily_p.add_argument("--state-dir", type=_user_path, help="State directory (default ~/.linafish)")
+
     # keeper — focused single-purpose sub-fish
     keeper_p = sub.add_parser(
         "keeper",
@@ -2462,6 +2576,7 @@ def main():
         "whisper": cmd_whisper,
         "check": cmd_check,
         "classify": cmd_classify,
+        "daily": cmd_daily,
         "keeper": cmd_keeper,
         "school": cmd_school,
         "hunt": cmd_hunt,
