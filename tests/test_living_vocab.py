@@ -160,3 +160,23 @@ def test_seal_survives_reload():
         e2 = _make_engine(tmp)
         assert e2.fish.sealed is True
         assert e2.eat(_GROWTH_DOCS[1], source="t").get("sealed") is True
+
+
+import subprocess
+
+
+def test_linafish_seal_cli():
+    """`linafish seal` seals a fish; a reloaded engine sees it sealed."""
+    with tempfile.TemporaryDirectory() as tmp:
+        e = _make_engine(tmp)
+        e.eat(_GROWTH_DOCS[0], source="t")
+        r = subprocess.run(
+            [sys.executable, "-m", "linafish", "seal",
+             "-n", "testfish", "--state-dir", tmp],
+            capture_output=True, text=True,
+            cwd=str(Path(__file__).resolve().parent.parent),
+        )
+        assert r.returncode == 0, r.stderr
+        assert "sealed" in r.stdout.lower()
+        reloaded = _make_engine(tmp)
+        assert reloaded.fish.sealed is True
