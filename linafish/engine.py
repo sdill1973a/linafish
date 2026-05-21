@@ -609,7 +609,12 @@ class FishEngine:
         is left exactly as it was; nothing is re-vectorized. The
         unified-lens edition (revectorize_all) remains available later
         as a separate, deliberate act — seal never forces it.
+
+        Idempotent: cessation happens once. Sealing an already-sealed
+        fish is a no-op — the original `sealed_at` moment is preserved.
         """
+        if self.fish.sealed:
+            return
         from datetime import datetime, timezone
         self.fish.sealed = True
         self.fish.sealed_at = datetime.now(timezone.utc).isoformat()

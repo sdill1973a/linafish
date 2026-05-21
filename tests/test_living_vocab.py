@@ -1,5 +1,6 @@
 """Tests for the living-vocabulary feature (Phases 1-3)."""
 import sys
+import time
 import tempfile
 from pathlib import Path
 
@@ -180,3 +181,19 @@ def test_linafish_seal_cli():
         assert "sealed" in r.stdout.lower()
         reloaded = _make_engine(tmp)
         assert reloaded.fish.sealed is True
+
+
+def test_seal_idempotent_preserves_sealed_at():
+    """A second seal() must not overwrite the original cessation moment.
+
+    Cessation happens once. seal() called again — directly, not just via
+    the CLI guard — must be a no-op and preserve the first sealed_at.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        e = _make_engine(tmp)
+        e.eat(_GROWTH_DOCS[0], source="t")
+        e.seal()
+        first = e.fish.sealed_at
+        time.sleep(0.002)
+        e.seal()  # second call — must be a no-op
+        assert e.fish.sealed_at == first
