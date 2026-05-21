@@ -432,6 +432,26 @@ class MIVectorizer:
         scored.sort(key=lambda x: (-x[1], x[0]))
         return [t for t, _ in scored[:size]]
 
+    def extend_vocab(self, current_vocab: List[str], size: int = 100,
+                     min_idf: float = 1.0, max_doc_pct: float = 0.5,
+                     d: float = None, seed_terms: frozenset = None,
+                     seed_weight: float = 2.0) -> List[str]:
+        """Append-only vocab growth — the living-vocabulary path.
+
+        Existing terms keep their EXACT positions; newly-qualifying terms
+        are appended at the end. Positions never move, so crystal vectors
+        built against an earlier vocab stay valid: gamma()/coupling_angle()
+        zip-truncate on the shared prefix. The result may exceed ``size``
+        as the vocab grows over the fish's life — that is intended;
+        diminishment (a later phase) governs effective weight, not a cap.
+        """
+        fresh = self.get_vocab(size=size, min_idf=min_idf,
+                               max_doc_pct=max_doc_pct, d=d,
+                               seed_terms=seed_terms, seed_weight=seed_weight)
+        present = set(current_vocab)
+        additions = [t for t in fresh if t not in present]
+        return list(current_vocab) + additions
+
     def vectorize(self, text: str, vocab: List[str] = None) -> List[float]:
         """Compute MI vector for a text against the learned vocabulary.
 
