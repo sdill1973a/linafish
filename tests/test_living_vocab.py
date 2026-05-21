@@ -55,3 +55,20 @@ def test_extend_vocab_from_empty_equals_get_vocab():
     """With an empty current vocab, extend_vocab == get_vocab (first eat)."""
     v = _vectorizer(_TIE_DOCS)
     assert v.extend_vocab([], size=20, d=4.0) == v.get_vocab(size=20, d=4.0)
+
+
+def _make_engine(state_dir, **kw):
+    return FishEngine(state_dir=Path(state_dir), name="testfish",
+                      git_autocommit=False, **kw)
+
+
+def test_living_vocab_attr_defaults_false_and_persists():
+    """living_vocab defaults False; once True it survives a reload."""
+    with tempfile.TemporaryDirectory() as tmp:
+        e1 = _make_engine(tmp)
+        assert e1.fish.living_vocab is False
+        e1.fish.living_vocab = True
+        e1.fish._save_state()
+        # New engine on the same state dir must load living_vocab=True.
+        e2 = _make_engine(tmp)
+        assert e2.fish.living_vocab is True
