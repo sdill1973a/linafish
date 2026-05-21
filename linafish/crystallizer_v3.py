@@ -427,7 +427,9 @@ class MIVectorizer:
                         score *= seed_weight
                     scored.append((token, score))
 
-        scored.sort(key=lambda x: -x[1])
+        # Deterministic tie-break: equal scores order by token, so the
+        # vocab depends only on the stats, never on doc-feed order.
+        scored.sort(key=lambda x: (-x[1], x[0]))
         return [t for t, _ in scored[:size]]
 
     def vectorize(self, text: str, vocab: List[str] = None) -> List[float]:
