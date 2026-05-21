@@ -118,3 +118,18 @@ def test_enable_living_vocab_persists():
         assert e1.fish.living_vocab is True
         e2 = _make_engine(tmp)  # reload — must still be living
         assert e2.fish.living_vocab is True
+
+
+def test_sealed_attrs_default_and_persist():
+    """sealed defaults False; once set it survives reload — even with crystals."""
+    with tempfile.TemporaryDirectory() as tmp:
+        e1 = _make_engine(tmp)
+        assert e1.fish.sealed is False
+        assert e1.fish.sealed_at is None
+        e1.eat(_GROWTH_DOCS[0], source="t")  # put a crystal on disk
+        e1.fish.sealed = True
+        e1.fish.sealed_at = "2026-05-20T00:00:00+00:00"
+        e1.fish._save_state()
+        e2 = _make_engine(tmp)  # reload
+        assert e2.fish.sealed is True
+        assert e2.fish.sealed_at == "2026-05-20T00:00:00+00:00"

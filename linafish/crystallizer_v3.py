@@ -819,6 +819,11 @@ class UniversalFish:
         # recomputed every load/learn), `living_vocab` persists: once a
         # fish is living, it stays living across reloads.
         self.living_vocab = False
+        # `sealed`: the deliberate final freeze at cessation. Durable —
+        # set once, never cleared by load or learn. A sealed fish does
+        # not eat or grow. `sealed_at` records the moment.
+        self.sealed = False
+        self.sealed_at = None
         self.crystals: List[Crystal] = []
         self.pending: List[dict] = []  # queued for next re-eat
         self.epoch = 0  # how many times the fish has re-eaten
@@ -888,6 +893,8 @@ class UniversalFish:
                 self.frozen = state.get('frozen', False)
                 self.vocab = state.get('vocab', [])
                 self.living_vocab = state.get('living_vocab', False)
+                self.sealed = state.get('sealed', False)
+                self.sealed_at = state.get('sealed_at', None)
             elif state is not None:
                 logging.getLogger(__name__).warning(
                     "UniversalFish._load_state: %s did not contain a JSON object; using defaults",
@@ -966,6 +973,8 @@ class UniversalFish:
                 'frozen': self.frozen,
                 'vocab': self.vocab,
                 'living_vocab': self.living_vocab,
+                'sealed': self.sealed,
+                'sealed_at': self.sealed_at,
                 'doc_count': self.vectorizer.doc_count,
                 'crystal_count': len(self.crystals),
                 'pending_count': len(self.pending),
