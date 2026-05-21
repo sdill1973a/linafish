@@ -591,6 +591,17 @@ def cmd_absorb(args):
               f"{result.get('formations', '?')} formations")
 
 
+def cmd_live(args):
+    """Turn a fish's vocabulary living (append-only growth)."""
+    engine = _resolve_engine(args)
+    if engine.fish.living_vocab:
+        print(f"  Fish '{engine.name}' is already living.")
+        return
+    engine.enable_living_vocab()
+    print(f"  Fish '{engine.name}' is now living — its vocabulary will "
+          f"grow append-only and never desync its crystals.")
+
+
 def cmd_revectorize(args):
     """Rebuild vocab and re-vectorize all crystals (the digest-gap fix)."""
     # Allow --subtract-centroid to flow into engine construction
@@ -1835,6 +1846,14 @@ def main():
     revec_p.add_argument("--subtract-centroid", action="store_true",
                          help="Subtract mean embedding before coupling (single-voice corpora)")
 
+    # live — turn a fish's vocabulary living (append-only growth)
+    live_p = sub.add_parser(
+        "live",
+        help="Turn a fish's vocabulary living — append-only growth",
+    )
+    live_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    live_p.add_argument("--state-dir", type=_user_path, help="State directory")
+
     # converse — two fish, one conversation
     conv_p = sub.add_parser("converse", help="Two fish, one conversation. Crystal exchange over HTTP.")
     conv_p.add_argument("-n", "--name", default="linafish", help="Fish name")
@@ -2118,6 +2137,7 @@ def main():
         "ask": cmd_ask,
         "absorb": cmd_absorb,
         "revectorize": cmd_revectorize,
+        "live": cmd_live,
         "converse": cmd_converse,
         "whisper": cmd_whisper,
         "check": cmd_check,

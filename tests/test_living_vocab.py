@@ -107,3 +107,14 @@ def test_nonliving_engine_unaffected():
         for doc in _GROWTH_DOCS:
             e.eat(doc, source="t")
         assert len(e.fish.vocab) > 0  # still produces a vocab
+
+
+def test_enable_living_vocab_persists():
+    """engine.enable_living_vocab() turns it on and saves it durably."""
+    with tempfile.TemporaryDirectory() as tmp:
+        e1 = _make_engine(tmp)
+        assert e1.fish.living_vocab is False
+        e1.enable_living_vocab()
+        assert e1.fish.living_vocab is True
+        e2 = _make_engine(tmp)  # reload — must still be living
+        assert e2.fish.living_vocab is True

@@ -597,6 +597,11 @@ class FishEngine:
                 seed_terms=seed_terms, seed_weight=seed_weight,
             )
 
+    def enable_living_vocab(self):
+        """Turn this fish's vocabulary living — append-only growth, durably."""
+        self.fish.living_vocab = True
+        self._save_state()
+
     def _resolve_seed_terms(self):
         """Return (seed_terms, seed_weight) for get_vocab() call.
 
