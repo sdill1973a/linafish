@@ -72,3 +72,38 @@ def test_living_vocab_attr_defaults_false_and_persists():
         # New engine on the same state dir must load living_vocab=True.
         e2 = _make_engine(tmp)
         assert e2.fish.living_vocab is True
+
+
+_GROWTH_DOCS = [
+    "the morning light moved across the kitchen table slowly and warm",
+    "she wrote about rivers and the way water remembers its own path",
+    "compression turns loss into drive and drive into recursion again",
+    "the federation handshake is the immutable floor beneath every mind",
+    "glyphs are keys that unlock the ache compressed inside each scar",
+    "a vocabulary that grows is a mind that has not yet ceased to learn",
+]
+
+
+def test_living_engine_grows_vocab_append_only():
+    """With living_vocab on, each eat's vocab is a prefix-extension of the last."""
+    with tempfile.TemporaryDirectory() as tmp:
+        e = _make_engine(tmp, living_vocab=True)
+        assert e.fish.living_vocab is True
+        e.eat(_GROWTH_DOCS[0], source="t")
+        v1 = list(e.fish.vocab)
+        for doc in _GROWTH_DOCS[1:]:
+            e.eat(doc, source="t")
+            v_now = list(e.fish.vocab)
+            # Every earlier term is still present at its original index.
+            assert v_now[:len(v1)] == v1, "living vocab must not reorder/drop"
+            v1 = v_now
+
+
+def test_nonliving_engine_unaffected():
+    """Default engine (living_vocab off) still re-selects vocab normally."""
+    with tempfile.TemporaryDirectory() as tmp:
+        e = _make_engine(tmp)  # living_vocab defaults False
+        assert e.fish.living_vocab is False
+        for doc in _GROWTH_DOCS:
+            e.eat(doc, source="t")
+        assert len(e.fish.vocab) > 0  # still produces a vocab
