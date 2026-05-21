@@ -602,6 +602,19 @@ class FishEngine:
         self.fish.living_vocab = True
         self._save_state()
 
+    def seal(self):
+        """Seal the fish — the deliberate final freeze at cessation.
+
+        Records the moment and halts all future growth. A sealed fish
+        is left exactly as it was; nothing is re-vectorized. The
+        unified-lens edition (revectorize_all) remains available later
+        as a separate, deliberate act — seal never forces it.
+        """
+        from datetime import datetime, timezone
+        self.fish.sealed = True
+        self.fish.sealed_at = datetime.now(timezone.utc).isoformat()
+        self._save_state()
+
     def _resolve_seed_terms(self):
         """Return (seed_terms, seed_weight) for get_vocab() call.
 
@@ -1329,6 +1342,11 @@ class FishEngine:
         if not text or len(text.strip()) < 10:
             return {"crystals_added": 0, "total_crystals": len(self.fish.crystals)}
 
+        if self.fish.sealed:
+            return {"crystals_added": 0,
+                    "total_crystals": len(self.fish.crystals),
+                    "sealed": True}
+
         # Pre-assess on first eat if not already done
         if not self._pre_assessed and HAS_ASSESSMENT:
             self.pre_assess([text])
@@ -1447,6 +1465,12 @@ class FishEngine:
                 "batch_size": 0,
             }
 
+        if self.fish.sealed:
+            return {"crystals_added": 0,
+                    "total_crystals": len(self.fish.crystals),
+                    "formations": len(self.formations),
+                    "batch_size": 0, "sealed": True}
+
         # Pre-assess on the full batch (first eat only).
         # The assessment gets the whole corpus at once — much better
         # signal than the single-text pre-assess path in eat().
@@ -1537,6 +1561,11 @@ class FishEngine:
 
         if not chunks:
             return {"crystals_added": 0, "total_crystals": len(self.fish.crystals), "formations": 0}
+
+        if self.fish.sealed:
+            return {"crystals_added": 0,
+                    "total_crystals": len(self.fish.crystals),
+                    "formations": len(self.formations), "sealed": True}
 
         texts = [c.text for c in chunks if c.text and len(c.text.strip()) > 10]
         total = len(texts)

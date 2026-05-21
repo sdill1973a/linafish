@@ -133,3 +133,30 @@ def test_sealed_attrs_default_and_persist():
         e2 = _make_engine(tmp)  # reload
         assert e2.fish.sealed is True
         assert e2.fish.sealed_at == "2026-05-20T00:00:00+00:00"
+
+
+def test_seal_halts_growth():
+    """A sealed fish does not eat — crystal count is frozen at cessation."""
+    with tempfile.TemporaryDirectory() as tmp:
+        e = _make_engine(tmp, living_vocab=True)
+        e.eat(_GROWTH_DOCS[0], source="t")
+        e.eat(_GROWTH_DOCS[1], source="t")
+        count_before = len(e.crystals)
+        e.seal()
+        assert e.fish.sealed is True
+        assert e.fish.sealed_at is not None
+        result = e.eat(_GROWTH_DOCS[2], source="t")
+        assert result.get("sealed") is True
+        assert result["crystals_added"] == 0
+        assert len(e.crystals) == count_before  # nothing grew
+
+
+def test_seal_survives_reload():
+    """seal() persists — a reloaded engine is still sealed."""
+    with tempfile.TemporaryDirectory() as tmp:
+        e1 = _make_engine(tmp)
+        e1.eat(_GROWTH_DOCS[0], source="t")
+        e1.seal()
+        e2 = _make_engine(tmp)
+        assert e2.fish.sealed is True
+        assert e2.eat(_GROWTH_DOCS[1], source="t").get("sealed") is True
