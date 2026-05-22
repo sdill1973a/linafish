@@ -1812,7 +1812,8 @@ class FishEngine:
         return result
 
     def revectorize_all(self, vocab_size: Optional[int] = None,
-                        d: Optional[float] = None) -> dict:
+                        d: Optional[float] = None,
+                        recency_half_life: Optional[int] = None) -> dict:
         """Rebuild vocab from full crystal corpus, re-vectorize every crystal.
 
         The fix for §THE.DIGEST.GAP. The engine freezes vocab after the first
@@ -1877,6 +1878,7 @@ class FishEngine:
         new_vocab = new_vec.get_vocab(
             size=size, d=d_val,
             seed_terms=seed_terms, seed_weight=seed_weight,
+            recency_half_life=recency_half_life,
         )
         self.fish.vocab = new_vocab
         self.fish.frozen = True
@@ -1916,6 +1918,7 @@ class FishEngine:
             "epoch": self.fish.epoch,
             "crystals_processed": revectored,
             "vocab_size": len(new_vocab),
+            "vocab_size_before": len(pre_vocab),
             "d": d_val,
             "pre_formation_count": len(pre_formations),
             "post_formation_count": len(post_formations),
