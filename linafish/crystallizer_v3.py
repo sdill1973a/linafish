@@ -305,6 +305,9 @@ class MIVectorizer:
         self.pair_counts = Counter()        # co-occurrence counts
         self.doc_count = 0                  # total documents seen
         self.token_doc_counts = Counter()   # how many docs contain each token
+        # Phase 5 — per-token recency: the doc_count value when each token
+        # was last fed. Drives use-recency decay at compaction time.
+        self.token_last_doc = {}
 
     def tokenize(self, text: str) -> List[str]:
         """Default tokenizer: lowercase alpha tokens.
@@ -325,6 +328,7 @@ class MIVectorizer:
             self.token_counts[t] += 1
         for t in token_set:
             self.token_doc_counts[t] += 1
+            self.token_last_doc[t] = self.doc_count
 
         # Update co-occurrence (within window of 10 tokens)
         window = 10
@@ -499,6 +503,7 @@ class MIVectorizer:
             'pair_counts': {f"{k[0]}|{k[1]}": v for k, v in self.pair_counts.most_common(100000)},
             'doc_count': self.doc_count,
             'token_doc_counts': dict(self.token_doc_counts.most_common()),
+            'token_last_doc': dict(self.token_last_doc),
         }
         _atomic_write_json(path, data)
 
@@ -536,6 +541,7 @@ class MIVectorizer:
         })
         self.doc_count = data.get('doc_count', 0)
         self.token_doc_counts = Counter(data.get('token_doc_counts', {}))
+        self.token_last_doc = data.get('token_last_doc', {})
 
     def ache_relevance(self, text: str) -> float:
         """How much unresolved tension (prediction error) this text carries.
