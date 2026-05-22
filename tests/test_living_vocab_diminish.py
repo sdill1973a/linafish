@@ -200,3 +200,20 @@ def test_compact_default_half_life_runs():
         _feed_rerank_corpus(e)
         result = e.compact()
         assert result.get("revectorized") is True
+
+
+def test_linafish_compact_cli():
+    """`linafish compact` runs against a state dir and reports the result."""
+    import subprocess
+    with tempfile.TemporaryDirectory() as tmp:
+        e = _make_engine(tmp, living_vocab=True, vocab_size=5)
+        _feed_shrink_corpus(e)
+        e.fish._save_state()   # ensure crystals + state are on disk
+        r = subprocess.run(
+            [sys.executable, "-m", "linafish", "compact",
+             "-n", "testfish", "--state-dir", tmp, "--half-life", "2"],
+            capture_output=True, text=True,
+            cwd=str(Path(__file__).resolve().parent.parent),
+        )
+        assert r.returncode == 0, r.stderr
+        assert "compact" in r.stdout.lower()
