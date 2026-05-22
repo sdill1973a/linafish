@@ -427,8 +427,30 @@ class MIVectorizer:
                         score *= seed_weight
                     scored.append((token, score))
 
-        scored.sort(key=lambda x: -x[1])
+        # Deterministic tie-break: equal scores order by token, so the
+        # vocab depends only on the stats, never on doc-feed order.
+        scored.sort(key=lambda x: (-x[1], x[0]))
         return [t for t, _ in scored[:size]]
+
+    def extend_vocab(self, current_vocab: List[str], size: int = 100,
+                     min_idf: float = 1.0, max_doc_pct: float = 0.5,
+                     d: float = None, seed_terms: frozenset = None,
+                     seed_weight: float = 2.0) -> List[str]:
+        """Append-only vocab growth — the living-vocabulary path.
+
+        Existing terms keep their EXACT positions; newly-qualifying terms
+        are appended at the end. Positions never move, so crystal vectors
+        built against an earlier vocab stay valid: gamma()/coupling_angle()
+        zip-truncate on the shared prefix. The result may exceed ``size``
+        as the vocab grows over the fish's life — that is intended;
+        diminishment (a later phase) governs effective weight, not a cap.
+        """
+        fresh = self.get_vocab(size=size, min_idf=min_idf,
+                               max_doc_pct=max_doc_pct, d=d,
+                               seed_terms=seed_terms, seed_weight=seed_weight)
+        present = set(current_vocab)
+        additions = [t for t in fresh if t not in present]
+        return list(current_vocab) + additions
 
     def vectorize(self, text: str, vocab: List[str] = None) -> List[float]:
         """Compute MI vector for a text against the learned vocabulary.
@@ -793,6 +815,15 @@ class UniversalFish:
         self.vectorizer = MIVectorizer()
         self.vocab: List[str] = []
         self.frozen = False
+        # Durable living-vocabulary mode. Unlike `frozen` (transient —
+        # recomputed every load/learn), `living_vocab` persists: once a
+        # fish is living, it stays living across reloads.
+        self.living_vocab = False
+        # `sealed`: the deliberate final freeze at cessation. Durable —
+        # set once, never cleared by load or learn. A sealed fish does
+        # not eat or grow. `sealed_at` records the moment.
+        self.sealed = False
+        self.sealed_at = None
         self.crystals: List[Crystal] = []
         self.pending: List[dict] = []  # queued for next re-eat
         self.epoch = 0  # how many times the fish has re-eaten
@@ -861,6 +892,9 @@ class UniversalFish:
                 self.epoch = state.get('epoch', 0)
                 self.frozen = state.get('frozen', False)
                 self.vocab = state.get('vocab', [])
+                self.living_vocab = state.get('living_vocab', False)
+                self.sealed = state.get('sealed', False)
+                self.sealed_at = state.get('sealed_at', None)
             elif state is not None:
                 logging.getLogger(__name__).warning(
                     "UniversalFish._load_state: %s did not contain a JSON object; using defaults",
@@ -938,6 +972,9 @@ class UniversalFish:
                 'epoch': self.epoch,
                 'frozen': self.frozen,
                 'vocab': self.vocab,
+                'living_vocab': self.living_vocab,
+                'sealed': self.sealed,
+                'sealed_at': self.sealed_at,
                 'doc_count': self.vectorizer.doc_count,
                 'crystal_count': len(self.crystals),
                 'pending_count': len(self.pending),

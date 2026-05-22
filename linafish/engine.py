@@ -143,7 +143,8 @@ class FishEngine:
                  git_autocommit: bool = True,
                  dedupe: bool = False,
                  addressed_formations: bool = True,
-                 commit_every_n_eats: int = 0):
+                 commit_every_n_eats: int = 0,
+                 living_vocab: bool = False):
         self.name = name
         self.state_dir = state_dir or Path.home() / ".linafish"
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -222,6 +223,13 @@ class FishEngine:
         # First and only load — against name-scoped paths, never
         # against the shared defaults.
         self.fish._load_state()
+
+        # living_vocab: durable per-fish append-only-growth mode. The
+        # kwarg can turn it ON (and it persists via _save_state); it
+        # never forces it off — a fish already living on disk stays
+        # living regardless of how the engine is constructed.
+        if living_vocab:
+            self.fish.living_vocab = True
 
         self.formations: List[Formation] = []
         self.docs_ingested = 0
@@ -569,6 +577,48 @@ class FishEngine:
     # This preserves the crystallizer_v3 API while letting assessment
     # tune which seeds matter. When get_vocab gains per-term weight
     # support, this adapter becomes a passthrough.
+
+    def _rebuild_vocab(self):
+        """Rebuild self.fish.vocab from current vectorizer stats.
+
+        In living_vocab mode the vocab is EXTENDED (existing terms keep
+        their positions, new terms append) so crystal vectors never
+        desync. Otherwise it is re-selected from scratch (legacy).
+        """
+        seed_terms, seed_weight = self._resolve_seed_terms()
+        if self.fish.living_vocab:
+            self.fish.vocab = self.fish.vectorizer.extend_vocab(
+                self.fish.vocab, size=self.vocab_size, d=self.d,
+                seed_terms=seed_terms, seed_weight=seed_weight,
+            )
+        else:
+            self.fish.vocab = self.fish.vectorizer.get_vocab(
+                size=self.vocab_size, d=self.d,
+                seed_terms=seed_terms, seed_weight=seed_weight,
+            )
+
+    def enable_living_vocab(self):
+        """Turn this fish's vocabulary living — append-only growth, durably."""
+        self.fish.living_vocab = True
+        self._save_state()
+
+    def seal(self):
+        """Seal the fish — the deliberate final freeze at cessation.
+
+        Records the moment and halts all future growth. A sealed fish
+        is left exactly as it was; nothing is re-vectorized. The
+        unified-lens edition (revectorize_all) remains available later
+        as a separate, deliberate act — seal never forces it.
+
+        Idempotent: cessation happens once. Sealing an already-sealed
+        fish is a no-op — the original `sealed_at` moment is preserved.
+        """
+        if self.fish.sealed:
+            return
+        from datetime import datetime, timezone
+        self.fish.sealed = True
+        self.fish.sealed_at = datetime.now(timezone.utc).isoformat()
+        self._save_state()
 
     def _resolve_seed_terms(self):
         """Return (seed_terms, seed_weight) for get_vocab() call.
@@ -1297,6 +1347,11 @@ class FishEngine:
         if not text or len(text.strip()) < 10:
             return {"crystals_added": 0, "total_crystals": len(self.fish.crystals)}
 
+        if self.fish.sealed:
+            return {"crystals_added": 0,
+                    "total_crystals": len(self.fish.crystals),
+                    "sealed": True}
+
         # Pre-assess on first eat if not already done
         if not self._pre_assessed and HAS_ASSESSMENT:
             self.pre_assess([text])
@@ -1306,12 +1361,7 @@ class FishEngine:
 
         # Phase 2: Freeze and crystallize (assessment-informed seeds)
         if not self.fish.frozen:
-            seed_terms, seed_weight = self._resolve_seed_terms()
-            self.fish.vocab = self.fish.vectorizer.get_vocab(
-                size=self.vocab_size, d=self.d,
-                seed_terms=seed_terms,
-                seed_weight=seed_weight,
-            )
+            self._rebuild_vocab()
             self.fish.frozen = True
             self.fish.epoch += 1
 
@@ -1420,6 +1470,12 @@ class FishEngine:
                 "batch_size": 0,
             }
 
+        if self.fish.sealed:
+            return {"crystals_added": 0,
+                    "total_crystals": len(self.fish.crystals),
+                    "formations": len(self.formations),
+                    "batch_size": 0, "sealed": True}
+
         # Pre-assess on the full batch (first eat only).
         # The assessment gets the whole corpus at once — much better
         # signal than the single-text pre-assess path in eat().
@@ -1431,12 +1487,7 @@ class FishEngine:
 
         # Phase 2: Freeze and rebuild vocab once
         if not self.fish.frozen:
-            seed_terms, seed_weight = self._resolve_seed_terms()
-            self.fish.vocab = self.fish.vectorizer.get_vocab(
-                size=self.vocab_size, d=self.d,
-                seed_terms=seed_terms,
-                seed_weight=seed_weight,
-            )
+            self._rebuild_vocab()
             self.fish.frozen = True
             self.fish.epoch += 1
 
@@ -1516,6 +1567,11 @@ class FishEngine:
         if not chunks:
             return {"crystals_added": 0, "total_crystals": len(self.fish.crystals), "formations": 0}
 
+        if self.fish.sealed:
+            return {"crystals_added": 0,
+                    "total_crystals": len(self.fish.crystals),
+                    "formations": len(self.formations), "sealed": True}
+
         texts = [c.text for c in chunks if c.text and len(c.text.strip()) > 10]
         total = len(texts)
 
@@ -1531,12 +1587,10 @@ class FishEngine:
         self.fish.learn(texts)
 
         # Phase 2: Freeze with assessment-informed d and seeds
+        # seed_terms/seed_weight kept defined here for the seed_label log
+        # below; _rebuild_vocab re-resolves them internally for the rebuild.
         seed_terms, seed_weight = self._resolve_seed_terms()
-        self.fish.vocab = self.fish.vectorizer.get_vocab(
-            size=self.vocab_size, d=self.d,
-            seed_terms=seed_terms,
-            seed_weight=seed_weight,
-        )
+        self._rebuild_vocab()
         self.fish.frozen = True
         self.fish.epoch += 1
 

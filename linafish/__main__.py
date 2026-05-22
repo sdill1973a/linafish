@@ -591,6 +591,30 @@ def cmd_absorb(args):
               f"{result.get('formations', '?')} formations")
 
 
+def cmd_live(args):
+    """Turn a fish's vocabulary living (append-only growth)."""
+    engine = _resolve_engine(args)
+    if engine.fish.living_vocab:
+        print(f"  Fish '{engine.name}' is already living.")
+        return
+    engine.enable_living_vocab()
+    print(f"  Fish '{engine.name}' is now living — its vocabulary will "
+          f"grow append-only and never desync its crystals.")
+
+
+def cmd_seal(args):
+    """Seal a fish — the deliberate final freeze. The fish stops growing."""
+    engine = _resolve_engine(args)
+    if engine.fish.sealed:
+        print(f"  Fish '{engine.name}' is already sealed "
+              f"(at {engine.fish.sealed_at}).")
+        return
+    engine.seal()
+    print(f"  Fish '{engine.name}' sealed at {engine.fish.sealed_at} — "
+          f"epoch {engine.fish.epoch}, {len(engine.crystals)} crystals. "
+          f"It will not grow again.")
+
+
 def cmd_revectorize(args):
     """Rebuild vocab and re-vectorize all crystals (the digest-gap fix)."""
     # Allow --subtract-centroid to flow into engine construction
@@ -1835,6 +1859,22 @@ def main():
     revec_p.add_argument("--subtract-centroid", action="store_true",
                          help="Subtract mean embedding before coupling (single-voice corpora)")
 
+    # live — turn a fish's vocabulary living (append-only growth)
+    live_p = sub.add_parser(
+        "live",
+        help="Turn a fish's vocabulary living — append-only growth",
+    )
+    live_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    live_p.add_argument("--state-dir", type=_user_path, help="State directory")
+
+    # seal — the deliberate final freeze at cessation
+    seal_p = sub.add_parser(
+        "seal",
+        help="Seal a fish — the deliberate final freeze at cessation",
+    )
+    seal_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    seal_p.add_argument("--state-dir", type=_user_path, help="State directory")
+
     # converse — two fish, one conversation
     conv_p = sub.add_parser("converse", help="Two fish, one conversation. Crystal exchange over HTTP.")
     conv_p.add_argument("-n", "--name", default="linafish", help="Fish name")
@@ -2118,6 +2158,8 @@ def main():
         "ask": cmd_ask,
         "absorb": cmd_absorb,
         "revectorize": cmd_revectorize,
+        "live": cmd_live,
+        "seal": cmd_seal,
         "converse": cmd_converse,
         "whisper": cmd_whisper,
         "check": cmd_check,
