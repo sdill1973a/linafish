@@ -644,6 +644,32 @@ def cmd_revectorize(args):
     print(f"  Epoch: {result['epoch']}")
 
 
+def cmd_compact(args):
+    """Compact a living fish — drop disused vocab, restore eat speed."""
+    engine = _resolve_engine(args)
+    n = len(engine.crystals)
+    print(f"  Fish: {engine.name} ({n} crystals, "
+          f"living={engine.fish.living_vocab})")
+    if n == 0:
+        print("  Empty fish. Nothing to do.")
+        return
+    half_life = getattr(args, "half_life", None)
+    vocab_before = len(engine.fish.vocab)
+    print(f"  Vocab before: {vocab_before} terms. Compacting "
+          f"(recency half-life: {half_life if half_life else 'default'})...")
+    result = engine.compact(recency_half_life=half_life)
+    if result.get("compacted") is False:
+        print(f"  Skipped: {result.get('reason', 'unknown')}")
+        return
+    if not result.get("revectorized"):
+        print(f"  Skipped: {result.get('reason', 'unknown')}")
+        return
+    print(f"  Done. Vocab: {vocab_before} -> {result['vocab_size']} terms.")
+    print(f"  Formations: {result['pre_formation_count']} -> "
+          f"{result['post_formation_count']}")
+    print(f"  Epoch: {result['epoch']}")
+
+
 def cmd_converse(args):
     """Two fish, one conversation."""
     from .converse import serve_converse
@@ -1875,6 +1901,17 @@ def main():
     seal_p.add_argument("-n", "--name", default="linafish", help="Fish name")
     seal_p.add_argument("--state-dir", type=_user_path, help="State directory")
 
+    # compact — drop disused vocab from a living fish (living-vocab phase 5)
+    compact_p = sub.add_parser(
+        "compact",
+        help="Compact a living fish — drop disused vocab, restore eat speed",
+    )
+    compact_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    compact_p.add_argument("--state-dir", type=_user_path, help="State directory")
+    compact_p.add_argument("--half-life", type=int, default=None,
+                           help="Documents a term goes unused for its vocab "
+                                "score to halve (default: 500)")
+
     # converse — two fish, one conversation
     conv_p = sub.add_parser("converse", help="Two fish, one conversation. Crystal exchange over HTTP.")
     conv_p.add_argument("-n", "--name", default="linafish", help="Fish name")
@@ -2160,6 +2197,7 @@ def main():
         "revectorize": cmd_revectorize,
         "live": cmd_live,
         "seal": cmd_seal,
+        "compact": cmd_compact,
         "converse": cmd_converse,
         "whisper": cmd_whisper,
         "check": cmd_check,

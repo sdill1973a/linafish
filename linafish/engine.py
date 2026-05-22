@@ -111,6 +111,13 @@ except ImportError:
     FeedbackLoop = None
 
 
+# Phase 5 — default recency half-life for compaction: a term unused for
+# this many documents has its vocab score halved. Tunable per call /
+# per CLI invocation; this is the fallback. See
+# notes_2026-05-22_living_vocabulary_phase5_design.md.
+DEFAULT_RECENCY_HALF_LIFE = 500
+
+
 class FishEngine:
     """The fish. MI x ache math. No keywords. Pure compression.
 
@@ -1812,7 +1819,8 @@ class FishEngine:
         return result
 
     def revectorize_all(self, vocab_size: Optional[int] = None,
-                        d: Optional[float] = None) -> dict:
+                        d: Optional[float] = None,
+                        recency_half_life: Optional[int] = None) -> dict:
         """Rebuild vocab from full crystal corpus, re-vectorize every crystal.
 
         The fix for §THE.DIGEST.GAP. The engine freezes vocab after the first
@@ -1877,6 +1885,7 @@ class FishEngine:
         new_vocab = new_vec.get_vocab(
             size=size, d=d_val,
             seed_terms=seed_terms, seed_weight=seed_weight,
+            recency_half_life=recency_half_life,
         )
         self.fish.vocab = new_vocab
         self.fish.frozen = True
@@ -1916,6 +1925,7 @@ class FishEngine:
             "epoch": self.fish.epoch,
             "crystals_processed": revectored,
             "vocab_size": len(new_vocab),
+            "vocab_size_before": len(pre_vocab),
             "d": d_val,
             "pre_formation_count": len(pre_formations),
             "post_formation_count": len(post_formations),
@@ -1925,6 +1935,38 @@ class FishEngine:
             "vocab_sample": new_vocab[:15],
             "vocab_changed": sorted(set(new_vocab) - set(pre_vocab))[:10],
         }
+
+    def compact(self, recency_half_life: int = None) -> dict:
+        """Compact a living fish's vocabulary — drop disused terms, restore speed.
+
+        Phase 5 of the living-vocabulary build. `living_vocab` mode grows
+        the vocab append-only (Phase 2) — coherent, but unbounded; an
+        unbounded vocab means ever-longer mi_vectors and ever-slower eats
+        (measured: 7.6x slowdown over 300 eats). Compaction is the
+        counter-motion: rebuild the whole fish against a recency-weighted,
+        size-capped vocab, so terms unused for a long time fall out of the
+        working set.
+
+        Nothing is erased — a dropped term keeps its counts in the
+        vectorizer; if it recurs, the next compaction re-admits it. This
+        reuses `revectorize_all`: every crystal is rebuilt together, so
+        vocab positions stay globally consistent — no desync.
+
+        A sealed fish is never compacted — it is left exactly as it was.
+
+        Args:
+            recency_half_life: a term unused for this many documents has
+                its vocab score halved. None -> DEFAULT_RECENCY_HALF_LIFE.
+
+        Returns:
+            the `revectorize_all` result dict (with `vocab_size_before`),
+            or `{"compacted": False, "reason": "sealed"}` for a sealed fish.
+        """
+        if self.fish.sealed:
+            return {"compacted": False, "reason": "sealed"}
+        if recency_half_life is None:
+            recency_half_life = DEFAULT_RECENCY_HALF_LIFE
+        return self.revectorize_all(recency_half_life=recency_half_life)
 
     # -------------------------------------------------------------------
     # QUERY METHODS
