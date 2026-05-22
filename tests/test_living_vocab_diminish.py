@@ -131,15 +131,18 @@ def _feed_rerank_corpus(engine):
 
 
 def _feed_shrink_corpus(engine):
-    """24 eats. Each of the first 18 carries a unique stale word (one
-    doc each — doc-frequency 1); the last 6 carry the recurring
-    'freshword' (doc-frequency 6 of 24). Every distinctive term stays
-    under the 50% stranger-mode ubiquity cutoff. The living vocab grows
-    well past a small vocab_size; compaction must drop the stale ones."""
-    for word in _STALE_WORDS:
-        engine.eat(f"{word} {word} {word} matter signal pattern", source="t")
+    """24 eats. Each of the first 18 introduces a unique word at a
+    steadily rising frequency, so every new word lands in the top-vocab
+    of its own eat (in every d-mode) and the append-only living vocab
+    grows one term per eat. The last 6 eats hammer the recurring, recent
+    'freshword'. The grown vocab far exceeds a small vocab_size, so
+    compaction must shrink it — and recency decides which terms survive."""
+    for i, word in enumerate(_STALE_WORDS):
+        reps = " ".join([word] * (i + 3))
+        engine.eat(f"{reps} matter signal pattern", source="t")
     for _ in range(6):
-        engine.eat("freshword freshword freshword matter signal pattern", source="t")
+        engine.eat("freshword freshword freshword freshword freshword "
+                   "matter signal pattern", source="t")
 
 
 def test_revectorize_all_recency_half_life_demotes_stale_term():
@@ -159,3 +162,41 @@ def test_revectorize_all_recency_half_life_demotes_stale_term():
         e.revectorize_all(recency_half_life=3)
         vd = e.fish.vocab
         assert vd.index("freshword") < vd.index("fadeword")
+
+
+def test_compact_shrinks_disused_vocab_and_keeps_vectors_valid():
+    """compact() drops disused terms, shrinks the vocab, crystals stay coupleable."""
+    with tempfile.TemporaryDirectory() as tmp:
+        # Small vocab_size so the grown living vocab clearly exceeds it.
+        e = _make_engine(tmp, living_vocab=True, vocab_size=5)
+        _feed_shrink_corpus(e)
+        vocab_before = len(e.fish.vocab)
+        assert vocab_before > 5          # extend_vocab grew it past the cap
+        result = e.compact(recency_half_life=2)
+        assert result.get("revectorized") is True
+        assert len(e.fish.vocab) <= 5            # capped by compaction
+        assert len(e.fish.vocab) < vocab_before  # it shrank
+        assert "freshword" in e.fish.vocab       # the recent term survived
+        cs = [c for c in e.fish.crystals if c.mi_vector]
+        assert len(cs) >= 2
+        g = gamma(cs[0].mi_vector, cs[-1].mi_vector)  # still finite
+        assert 0.0 <= g <= 1.0
+
+
+def test_compact_skips_sealed_fish():
+    """A sealed fish is never compacted — left exactly as it was."""
+    with tempfile.TemporaryDirectory() as tmp:
+        e = _make_engine(tmp, living_vocab=True)
+        e.eat("alpha bravo charlie matter signal pattern thread", source="t")
+        e.seal()
+        result = e.compact(recency_half_life=2)
+        assert result == {"compacted": False, "reason": "sealed"}
+
+
+def test_compact_default_half_life_runs():
+    """compact() with no half-life uses the module default and still runs."""
+    with tempfile.TemporaryDirectory() as tmp:
+        e = _make_engine(tmp, living_vocab=True)
+        _feed_rerank_corpus(e)
+        result = e.compact()
+        assert result.get("revectorized") is True
