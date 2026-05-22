@@ -359,10 +359,31 @@ class MIVectorizer:
 
         return math.log2(p_joint / (p_t1 * p_t2))
 
+    def _recency_factor(self, token: str, recency_half_life) -> float:
+        """Score multiplier in (0, 1] from how long ago `token` was fed.
+
+        None / <= 0 -> 1.0 (recency off — backward compatible). A token
+        unknown to token_last_doc -> 1.0 (safe default for a vocabulary
+        loaded from a pre-Phase-5 state file). Otherwise a token last
+        seen `staleness` documents ago is scaled by 0.5**(staleness/H):
+        unused for one half-life -> halved, two -> quartered. The token's
+        counts are never touched — diminishment is a scoring lens, not
+        erasure. Use re-summons it: a re-fed token's staleness resets.
+        """
+        if not recency_half_life or recency_half_life <= 0:
+            return 1.0
+        if token not in self.token_last_doc:
+            return 1.0
+        staleness = self.doc_count - self.token_last_doc[token]
+        if staleness <= 0:
+            return 1.0
+        return 0.5 ** (staleness / recency_half_life)
+
     def get_vocab(self, size: int = 100, min_idf: float = 1.0,
                   max_doc_pct: float = 0.5, d: float = None,
                   seed_terms: frozenset = None,
-                  seed_weight: float = 2.0) -> List[str]:
+                  seed_weight: float = 2.0,
+                  recency_half_life: int = None) -> List[str]:
         """Build vocabulary. D-ADAPTIVE. Grammar-seeded.
 
         d controls mode:
@@ -402,6 +423,7 @@ class MIVectorizer:
                 score = freq * freq
                 if token in seeds:
                     score *= seed_weight
+                score *= self._recency_factor(token, recency_half_life)
                 scored.append((token, score))
 
         elif d is not None and d <= 5:
@@ -415,6 +437,7 @@ class MIVectorizer:
                 score = alpha * freq + (1 - alpha) * idf * freq
                 if token in seeds:
                     score *= seed_weight
+                score *= self._recency_factor(token, recency_half_life)
                 scored.append((token, score))
 
         else:
@@ -429,6 +452,7 @@ class MIVectorizer:
                     score = idf * idf * math.log2(freq + 1)
                     if token in seeds:
                         score *= seed_weight
+                    score *= self._recency_factor(token, recency_half_life)
                     scored.append((token, score))
 
         # Deterministic tie-break: equal scores order by token, so the
