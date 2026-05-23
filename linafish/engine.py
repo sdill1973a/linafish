@@ -1873,14 +1873,43 @@ class FishEngine:
         pre_formations = {f.name for f in self.formations}
         pre_vocab = list(self.fish.vocab)
 
+        # Progress logging — revectorize_all on a large fish is opaque
+        # for hours without this. Caller can suppress by redirecting
+        # stdout. See fix/revectorize-progress-logging-2026-05-23 for
+        # the §TINKER.5/23 receipt that motivated this (anchor-writing
+        # 11.6K crystals → 5h+ silent runtime → invisible-but-alive).
+        import time as _time
+        _t0 = _time.monotonic()
+        n_total = len(crystals)
+        log_every = max(1, n_total // 20)
+
+        def _progress(msg, count=None, total=None):
+            elapsed = _time.monotonic() - _t0
+            if count is not None and total:
+                pct = (100 * count // total) if total else 0
+                rate = count / elapsed if elapsed > 0 else 0
+                remaining = (total - count) / rate if rate > 0 else 0
+                print(f"  [revec {elapsed:6.1f}s] {msg} "
+                      f"({count}/{total}, {pct}%, "
+                      f"~{remaining:.0f}s remaining)", flush=True)
+            else:
+                print(f"  [revec {elapsed:6.1f}s] {msg}", flush=True)
+
         # Phase 1: Fresh vectorizer, re-learn from all crystal texts
+        _progress(f"Phase 1: re-feeding {n_total} crystals into fresh vectorizer")
         new_vec = MIVectorizer()
+        fed = 0
         for c in crystals:
             if c.text and len(c.text.strip()) > 10:
                 new_vec.feed(c.text)
+                fed += 1
+                if fed % log_every == 0:
+                    _progress("Phase 1: re-feeding", fed, n_total)
+        _progress(f"Phase 1 done: {fed} crystals re-fed")
         self.fish.vectorizer = new_vec
 
         # Phase 2: Re-freeze vocab from refreshed stats
+        _progress("Phase 2: refreezing vocab from refreshed co-occurrence stats")
         seed_terms, seed_weight = self._resolve_seed_terms()
         new_vocab = new_vec.get_vocab(
             size=size, d=d_val,
@@ -1890,8 +1919,10 @@ class FishEngine:
         self.fish.vocab = new_vocab
         self.fish.frozen = True
         self.fish.epoch += 1
+        _progress(f"Phase 2 done: vocab_size={len(new_vocab)}")
 
         # Phase 3: Re-vectorize every crystal against new vocab
+        _progress(f"Phase 3: re-vectorizing {n_total} crystals against new vocab")
         revectored = 0
         for c in crystals:
             if not c.text:
@@ -1902,19 +1933,26 @@ class FishEngine:
                 c.resonance = c.mi_vector
                 c.couplings = []  # force recompute in rebuild_formations
                 revectored += 1
+                if revectored % log_every == 0:
+                    _progress("Phase 3: re-vectorizing", revectored, n_total)
             except Exception:
                 # Preserve stale vector if revec fails for this crystal;
                 # caller can inspect counts to detect partial failures.
                 pass
+        _progress(f"Phase 3 done: {revectored} crystals re-vectorized")
 
         # Phase 4: Rebuild formations against new vectors
+        _progress(f"Phase 4: rebuilding formations (full recouple over {n_total} crystals)")
         self.rebuild_formations()
         post_formations = {f.name for f in self.formations}
+        _progress(f"Phase 4 done: {len(post_formations)} formations")
 
         # Phase 5: Persist — do not autocommit regardless of engine flag;
         # revectorize is a bulk rewrite and the caller decides when to commit.
+        _progress("Phase 5: persisting state")
         self.fish._save_state()
         self._save_state(commit=False)
+        _progress(f"All phases complete in {_time.monotonic() - _t0:.1f}s")
 
         survived = pre_formations & post_formations
         dissolved = pre_formations - post_formations
