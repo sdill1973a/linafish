@@ -308,6 +308,13 @@ class MIVectorizer:
         # Phase 5 — per-token recency: the doc_count value when each token
         # was last fed. Drives use-recency decay at compaction time.
         self.token_last_doc = {}
+        # Cached sum of token_counts.values() — load-bearing perf win.
+        # mi() is called O(vocab × tokens-per-doc) times per vectorize()
+        # call; without this cache the sum was being recomputed every
+        # invocation (40K+ times per crystal × 11K crystals = catastrophic
+        # under revectorize). Invalidated whenever feed() mutates counts.
+        # See §TINKER.5/23 root-cause finding 2026-05-23.
+        self._total_tokens_cache = None
 
     def tokenize(self, text: str) -> List[str]:
         """Default tokenizer: lowercase alpha tokens.
@@ -330,6 +337,9 @@ class MIVectorizer:
             self.token_doc_counts[t] += 1
             self.token_last_doc[t] = self.doc_count
 
+        # Invalidate the cached total — token_counts has changed.
+        self._total_tokens_cache = None
+
         # Update co-occurrence (within window of 10 tokens)
         window = 10
         for i, t1 in enumerate(tokens):
@@ -346,7 +356,12 @@ class MIVectorizer:
         if joint == 0:
             return 0.0
 
-        total = sum(self.token_counts.values())
+        # Cached total — invalidated by feed(). Without this cache the
+        # sum is recomputed on every mi() call, which is catastrophic
+        # under vectorize()'s O(vocab × tokens) inner loop.
+        if self._total_tokens_cache is None:
+            self._total_tokens_cache = sum(self.token_counts.values())
+        total = self._total_tokens_cache
         if total == 0:
             return 0.0
 
@@ -566,6 +581,9 @@ class MIVectorizer:
         self.doc_count = data.get('doc_count', 0)
         self.token_doc_counts = Counter(data.get('token_doc_counts', {}))
         self.token_last_doc = data.get('token_last_doc', {})
+        # Re-seed mutation: invalidate the cached total so the next
+        # mi() call computes from the freshly-loaded counts.
+        self._total_tokens_cache = None
 
     def ache_relevance(self, text: str) -> float:
         """How much unresolved tension (prediction error) this text carries.
