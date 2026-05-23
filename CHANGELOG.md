@@ -10,6 +10,64 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [1.4.0] — 2026-05-23
+
+**Minor release. The living vocabulary lands (Phases 1–5 — grow, seal, diminish), six new CLI verbs from the omnibus build (`classify`, `doctor` lock-scan, `keeper`, `daily`, `style`, `bridge notion`), and a corrected version string after the broken 1.3.0 wheel.**
+
+> **Vocabulary used below.** Carried forward from 1.3.0: *crystal* = one ingested writing chunk; *formation* = a recurring cognitive pattern across crystals; *fish* = a state-dir holding crystals + formation summary, versioned in git. New for 1.4: a *living fish* has an append-only vocabulary (`extend_vocab` per eat) instead of being frozen after the initial build; a *sealed fish* is permanently frozen at a "cessation moment" recorded on disk. The *diminish* motion is `FishEngine.compact()` — downscales tokens that haven't been seen for many docs, mirroring synaptic downscaling during sleep.
+
+### Why 1.4, not 1.3.1
+
+1.3.0 on PyPI was a broken release: the wheel's `linafish/__init__.py` still reported `__version__ = "1.2.1"` even though the package metadata advertised 1.3.0. 1.4.0 corrects the version string AND adds a substantial feature surface (living vocabulary + 6 new verbs), so a minor bump is the honest semver call. 1.3.0 has been yanked from PyPI; existing installs continue to work but `pip install linafish` resolves to 1.4.0.
+
+### Added — Living vocabulary (Phases 1–5)
+
+Frozen fish were a load-bearing simplification — vocab fixed at build time, eats restricted to known tokens. That made the math clean and the perf predictable, but it meant a fish couldn't grow with its author. New material accumulated but new VOCABULARY (the actual words the author started using) was invisible after the initial build.
+
+The living vocabulary adds three motions:
+
+- **Grow (`linafish live -n <name>`)** — turns a frozen fish living. New eats extend the vocabulary; new tokens become part of the fish's coupling math going forward. `MIVectorizer.extend_vocab` is the append-only primitive (deterministic tie-break per Phase 1 fix). Living state is durable in `v3_state.json` — `living_vocab: true`.
+
+- **Seal (`linafish seal -n <name>`)** — permanently freezes a living fish at a cessation moment, recorded as `sealed_at` in `v3_state.json`. Sealed fish reject further eats with a `SealedFishError`. `seal()` is idempotent; the cessation moment is recorded once. Use case: an author's literary corpus after their final work — the fish keeps thinking with what was, doesn't pretend new is arriving.
+
+- **Diminish (`linafish compact -n <name>`)** — `FishEngine.compact()` revectorizes the corpus with a recency-half-life decay. Tokens that haven't been seen for many docs get downweighted; long-unused tokens fade. Nothing is erased — the crystals remain — but the vocab the fish surfaces with shifts toward what's currently active. Half-life is configurable (`--half-life`); default tracks the corpus's natural turnover.
+
+Recency tracking lives in `MIVectorizer.token_last_doc` (durable). `get_vocab` applies `_recency_factor` to candidate tokens. `revectorize_all(recency_half_life=...)` is the engine-side primitive.
+
+Tests: 23 new tests across `test_vocab_growth.py`, `test_seal.py`, `test_compact.py`. All green at 267/267 total.
+
+### Added — Six omnibus verbs
+
+The 5/18 omnibus build cycle (`build/1.4-omnibus-2026-05-18`) ported six adjacent codebase patterns into linafish proper:
+
+- **`linafish classify`** — turn-level deposit classifier. Regex DOCTRINE_MARKERS + HIGH_VALUE_TOKENS + length signal + DEPOSIT_THRESHOLD score. Emits a `DepositDecision` JSON record (target fish + routing tag + confidence). Args mode (`--user "..." --assistant "..."`), JSONL batch mode (`--jsonl`), and custom config mode (`--hvt TOKEN --routing-tag NAME=PATTERN`). Default target fish is `linafish` (portable); author-specific HVT defaults are opt-in. Wires the substrate-side `deposit_classifier.py` from `anchor-chat-ui/sidecar/`. 16 tests.
+
+- **`linafish doctor --scan-locks` / `--fix-locks`** — fish-lock scanner. Walks `~/.linafish/` (and arbitrary `--state-dir`), inspects `.lock` files, classifies each as fresh/old-dead/old-indeterminate/very-old-indeterminate/old-alive based on PID liveness + age. `--fix-locks` offers interactive stale-lock removal. 23 tests. Real-world catch on first invocation: two stale `mi_vectorizer.json.lock` files held since 5/15 by dead PIDs neither the runtime helper nor `linafish doctor` had previously flagged.
+
+- **`linafish keeper init|invoke`** — focused single-purpose sub-fish verb. Wraps the keeper subagent pattern (`anchor-keeper`, `phoenix-keeper`, etc.) into a portable verb that any user can build. `init` creates the keeper state-dir + portrait scaffold; `invoke` runs the keeper's standard query against the queryable substrate. Tests cover init idempotency + invoke happy-path.
+
+- **`linafish daily`** — per-day calendar-indexed fish. Generalizes the runtime-side `make_daily_fish.py`. Reads matching `*{date}*.md` and `*{date}*.txt` files from configured roots (user-defined patterns, no Anchor-shaped defaults), builds a per-day fish at `~/.linafish/daily/YYYY-MM-DD/`. Idempotent via `seed_digest` (sha1 of concatenated seed contents); `--force` overrides; missing-content state recorded explicitly. `linafish daily list` enumerates built days. 20 tests.
+
+- **`linafish style add|<name>`** — named voices to think with. Wraps the runtime-side `fed.py` keeper pattern (vienna / wyoming / stillness) into a portable, user-extensible verb. `style add <name> --description "..." --tone "..."` registers a new style; `linafish style <name> "<theme>"` invokes it (pulls theme-relevant crystals + frames them in the style's voice). User-defined styles live in `~/.linafish/styles/`. Tests cover register + invoke + invalid-style errors.
+
+- **`linafish bridge notion`** — Notion → fish sync. Ports the runtime-side `notion_to_fish.py` into a portable verb. Reads from a Notion database (env-var-configured page IDs + token), classifies each page via `linafish classify`, deposits into the configured target fish. Idempotent via per-page sha hashes in `~/.linafish/bridge_notion_state.json`. Cursor-based pagination per the codex review fixes (was previously offset-based, broke on >100-page databases).
+
+### Fixed
+
+- **`__version__` string matches package version.** The 1.3.0 PyPI wheel shipped with `linafish/__init__.py` still hardcoded to `"1.2.1"` — installers saw `pip show linafish` report `1.3.0` while `import linafish; linafish.__version__` returned `1.2.1`. Source of the bug: the version string in `__init__.py` was not part of the `pyproject.toml` release process. Fixed by updating both files in this release; the build script is being updated separately to read from one source of truth.
+
+- **`seal()` is idempotent.** Initial Phase 3 implementation re-recorded `sealed_at` on every call. Fixed: cessation moment is set once, subsequent calls are no-ops. Test: `test_seal.py::test_seal_idempotent`.
+
+- **Codex review fixes (`6834c2f`):** Notion bridge pagination, state-file guard, HTTP error wrapping, doc clarifications. From gpt-5-codex review of the omnibus on 5/18.
+
+### Migration
+
+No breaking changes. All 1.3.0 CLI verbs and engine APIs remain byte-compatible. New verbs are additive; living-vocabulary defaults to OFF (existing fish stay frozen unless `linafish live` is explicitly invoked).
+
+If your code constructs `FishEngine` directly and you want the living motion, pass `living_vocab=True` to the constructor (or call `engine.live()` on an existing instance).
+
+---
+
 ## [1.3.0] — 2026-05-02
 
 **Minor release. Three production-scale fixes, a new periodic-commit policy for HTTP/converse daemons, and a CLI auto-detect helper for the read-side verbs.**
