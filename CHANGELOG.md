@@ -10,6 +10,26 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [1.5.0] — 2026-05-23
+
+**Patch-shape release with one new feature. Visibility for the long-running `revectorize_all` (printed in stdout, not silent for hours), name-resolution for `status`/`taste` (the fresh-user-bug fix), and the new `linafish soul <name>` CLI verb that closes the §SOUL.ON.DEMAND gap from May 12. Two patches surfaced from the §TINKER.5/23 audit + one feature finally landing after sitting on a branch for 11 days.**
+
+### Added
+
+- **`linafish soul <name>` — regenerate the .qlp soul file on demand.** `linafish go` already produces a soul file during full builds; this verb closes the gap for fish grown via `listen stdin` / `eat` / `school` ingestion, where the structured §CORE + §FORMATIONS + §READING + §META distillation was never generated. Useful when vocab refreshes (revectorize / compact) shift formation centroids — the soul should be re-rendered to match. `--name` and `--state-dir` flags; output drops in the fish's state-dir as `<name>.qlp`. Originally built on `build/soul-on-demand-2026-05-12` on 5/12; landed in 1.5 after sitting deferred.
+
+### Fixed
+
+- **`linafish status <name>` / `linafish taste <name>` resolve by name, not just path.** Fresh-user bug: a user runs `linafish go ./writing` then naturally tries `linafish status writing` to inspect the fish they just created — and got a naked Python `FileNotFoundError` stack trace. `recall`, `ask`, `doctor`, `check`, `whisper` all resolve fish by name; `status` and `taste` were the outliers requiring a path. Both now accept a fish name and resolve against `~/.linafish/<name>.fish.md` (flat root) or `~/.linafish/school/<name>/<name>.fish.md` (nested), with a friendly multi-line error pointing at `linafish doctor` when neither shape matches. Path-based invocation still works for backward compatibility.
+
+- **`revectorize_all` progress logging.** The §TINKER.5/23 receipt: a revectorize on a 11K-crystal fish ran 5+ hours with zero stdout output. The existing CLI printed "Re-learning vectorizer..." and then waited silently. Now per-phase progress prints with elapsed seconds + estimated time remaining (per ~5% of crystals during Phases 1 + 3, entry/exit headers for Phases 2 + 4 + 5, total wall time at completion). Output gated on `n_total // 20` so small fish stay quiet. Pure visibility — no semantic change. Companion analysis at `notes_2026-05-23_revectorize_perf_plan.md` in the runtime repo names two queued deeper fixes (token cache, skip Phase 1 re-feed when living-vocab is active) for proper Selene-window arcs.
+
+### Doctrine companion
+
+- **Refactor Selene-window discipline.** `linafish refactor` operations (`revectorize`, `compact`, `seal`+`live` cycles, soul regen across the family) take the fish service offline for minutes to hours. The right register for these is *watching, not shipping* — schedule them or run them in `/open selene` mode, not as gold-register ad-hoc commands. The rule lives in the runtime repo at `.claude/rules/linafish-refactor-selene-window.md`; the corresponding `protected_vocab` companion (Olorina-routed seed from Captain) gates safe scheduled `compact()` going forward. Both are doctrine work, not linafish code — but they shape how the verbs in this release should be invoked.
+
+---
+
 ## [1.4.0] — 2026-05-23
 
 **Minor release. The living vocabulary lands (Phases 1–5 — grow, seal, diminish), six new CLI verbs from the omnibus build (`classify`, `doctor` lock-scan, `keeper`, `daily`, `style`, `bridge notion`), and a corrected version string after the broken 1.3.0 wheel.**
