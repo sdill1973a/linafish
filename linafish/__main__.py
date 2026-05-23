@@ -124,11 +124,38 @@ def cmd_eat(args):
             pass  # Portrait is bonus, not critical
 
 
+def _resolve_fish_md_path(arg):
+    """Resolve a status/taste arg to a .fish.md path.
+
+    Accepts either:
+      - Path to a .fish.md file (canonical / backward-compat)
+      - Fish name; resolves to <name>.fish.md at the default state-dir
+        (flat root ~/.linafish/<name>.fish.md, then nested school layout)
+
+    Returns the resolved Path if found, or None if neither shape matches.
+    """
+    p = Path(arg)
+    if p.exists() and p.is_file():
+        return p
+    default_state = Path.home() / ".linafish"
+    flat = default_state / f"{arg}.fish.md"
+    if flat.exists():
+        return flat
+    nested = default_state / "school" / arg / f"{arg}.fish.md"
+    if nested.exists():
+        return nested
+    return None
+
+
 def cmd_taste(args):
     """Preview what a fish knows."""
-    fish_path = Path(args.fish)
-    if not fish_path.exists():
-        print(f"Error: {fish_path} not found")
+    fish_path = _resolve_fish_md_path(args.fish)
+    if fish_path is None:
+        print(f"Error: could not find fish '{args.fish}'.")
+        print(f"  Tried as path: '{args.fish}'")
+        print(f"  Tried as name: ~/.linafish/{args.fish}.fish.md")
+        print(f"  Tried as name: ~/.linafish/school/{args.fish}/{args.fish}.fish.md")
+        print(f"  Run 'linafish doctor' to see available fish.")
         sys.exit(1)
     content = fish_path.read_text(encoding="utf-8")
     # Windows consoles use cp1252 by default; curly quotes and other Unicode
@@ -195,7 +222,14 @@ def cmd_ask(args):
 
 def cmd_status(args):
     """Show fish stats."""
-    fish_path = Path(args.fish)
+    fish_path = _resolve_fish_md_path(args.fish)
+    if fish_path is None:
+        print(f"Error: could not find fish '{args.fish}'.")
+        print(f"  Tried as path: '{args.fish}'")
+        print(f"  Tried as name: ~/.linafish/{args.fish}.fish.md")
+        print(f"  Tried as name: ~/.linafish/school/{args.fish}/{args.fish}.fish.md")
+        print(f"  Run 'linafish doctor' to see available fish.")
+        sys.exit(1)
     content = fish_path.read_text(encoding="utf-8")
     formations = content.count("** (")
     lines = len(content.split("\n"))
