@@ -115,7 +115,11 @@ linafish = "linafish.__main__:main"
 include = ["linafish*"]
 
 [tool.setuptools.package-data]
-linafish = ["data/*.md", "data/AGENTS.md"]
+# Explicit list — wildcard `data/*.md` previously swept in session work product
+# (morning_briefing.md + overnight_research_notes.md were Anchor-side research
+# notes that had no business in a published wheel). Only ship intentional
+# public-facing docs. Add files here explicitly when promoting to wheel.
+linafish = ["data/AGENTS.md", "data/ai_primer.md"]
 
 [tool.pytest.ini_options]
 # Skip tests/archive/ during collection. Files in archive/ are kept as
