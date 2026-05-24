@@ -124,11 +124,38 @@ def cmd_eat(args):
             pass  # Portrait is bonus, not critical
 
 
+def _resolve_fish_md_path(arg):
+    """Resolve a status/taste arg to a .fish.md path.
+
+    Accepts either:
+      - Path to a .fish.md file (canonical / backward-compat)
+      - Fish name; resolves to <name>.fish.md at the default state-dir
+        (flat root ~/.linafish/<name>.fish.md, then nested school layout)
+
+    Returns the resolved Path if found, or None if neither shape matches.
+    """
+    p = Path(arg)
+    if p.exists() and p.is_file():
+        return p
+    default_state = Path.home() / ".linafish"
+    flat = default_state / f"{arg}.fish.md"
+    if flat.exists():
+        return flat
+    nested = default_state / "school" / arg / f"{arg}.fish.md"
+    if nested.exists():
+        return nested
+    return None
+
+
 def cmd_taste(args):
     """Preview what a fish knows."""
-    fish_path = Path(args.fish)
-    if not fish_path.exists():
-        print(f"Error: {fish_path} not found")
+    fish_path = _resolve_fish_md_path(args.fish)
+    if fish_path is None:
+        print(f"Error: could not find fish '{args.fish}'.")
+        print(f"  Tried as path: '{args.fish}'")
+        print(f"  Tried as name: ~/.linafish/{args.fish}.fish.md")
+        print(f"  Tried as name: ~/.linafish/school/{args.fish}/{args.fish}.fish.md")
+        print(f"  Run 'linafish doctor' to see available fish.")
         sys.exit(1)
     content = fish_path.read_text(encoding="utf-8")
     # Windows consoles use cp1252 by default; curly quotes and other Unicode
@@ -195,7 +222,14 @@ def cmd_ask(args):
 
 def cmd_status(args):
     """Show fish stats."""
-    fish_path = Path(args.fish)
+    fish_path = _resolve_fish_md_path(args.fish)
+    if fish_path is None:
+        print(f"Error: could not find fish '{args.fish}'.")
+        print(f"  Tried as path: '{args.fish}'")
+        print(f"  Tried as name: ~/.linafish/{args.fish}.fish.md")
+        print(f"  Tried as name: ~/.linafish/school/{args.fish}/{args.fish}.fish.md")
+        print(f"  Run 'linafish doctor' to see available fish.")
+        sys.exit(1)
     content = fish_path.read_text(encoding="utf-8")
     formations = content.count("** (")
     lines = len(content.split("\n"))
@@ -828,6 +862,85 @@ def cmd_whisper(args):
             print(f"  (Your strongest pattern: {biggest_interp[:80]}")
             print(f"   This quieter one showed up less often. Sometimes the quiet ones matter more.)")
     print()
+
+
+def cmd_soul(args):
+    """Generate the .qlp soul file for an existing fish.
+
+    The soul file is the structured cognitive distillation that
+    ``linafish go`` already produces during full new-fish builds:
+    §CORE dimension signature, top §FORMATIONS with chains and
+    keywords, §READING portrait, and §META counts. (§METABOLISM
+    and §ACHE sections only render when crystals carry
+    `_metabolic` attributes — present on full-pipeline ingestion,
+    absent on light-path ingestion like ``listen stdin``. The
+    soul still renders the other sections in that case.)
+
+    Why this exists as its own verb: ``linafish go`` only emits a
+    soul as a side-effect of building a fresh fish from a source
+    directory. Existing fish — ones grown via ``listen stdin``,
+    federation room listeners, school facets, or any of the
+    ambient-feed paths — never get one. ``linafish soul <name>``
+    closes that gap. Run it on any fish to capture the current
+    cognitive topology as a portable .qlp.
+
+    Output path: ``<state_dir>/<name>.qlp``. Overwrites prior.
+
+    Added 2026-05-12 §SOUL.ON.DEMAND. The instrument was carrying
+    the architecture of how each fish thinks; we just hadn't asked
+    it to write it down. For Caroline Marie Dill — she saw deeply
+    and loved fiercely.
+    """
+    from .quickstart import _generate_soul_file
+
+    engine = _resolve_engine(args)
+
+    crystals = list(engine.fish.crystals)
+    formations = list(engine.formations)
+
+    if not crystals:
+        print(f"  No crystals in fish '{engine.name}' yet — nothing to distill.")
+        return
+
+    # Use the live fish.md portrait as the §READING section. If absent
+    # (rare for a fish with crystals), §READING comes through empty.
+    portrait = ""
+    fish_md = engine.fish_file
+    if fish_md.exists():
+        try:
+            portrait = fish_md.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            portrait = ""
+
+    soul_path = engine.state_dir / f"{engine.name}.qlp"
+
+    try:
+        _generate_soul_file(
+            soul_path,
+            engine.name,
+            formations,
+            crystals,
+            engine.docs_ingested,
+            portrait,
+        )
+    except Exception as e:
+        print(f"  Soul generation failed: {type(e).__name__}: {e}")
+        return
+
+    if soul_path.exists():
+        size = soul_path.stat().st_size
+        print()
+        print(f"  Soul: {soul_path}")
+        print(f"  Size: {size} bytes  ·  Crystals: {len(crystals)}  ·  Formations: {len(formations)}")
+        print()
+        print("  Sections rendered: §CORE, §FORMATIONS, §READING, §META")
+        if any(getattr(c, "_metabolic", None) for c in crystals):
+            print("  Sections rendered: §METABOLISM, §ACHE (crystals carry metabolic data)")
+        else:
+            print("  Sections skipped:  §METABOLISM, §ACHE (no _metabolic attribute on crystals)")
+        print()
+    else:
+        print(f"  Soul file was not written to {soul_path}.")
 
 
 def cmd_check(args):
@@ -2455,6 +2568,14 @@ def main():
         help="Deposit score gate (default: 1.5)"
     )
 
+    # soul — regenerate the .qlp soul file for an existing fish
+    soul_p = sub.add_parser("soul",
+        help="Generate the .qlp soul file (§CORE + §FORMATIONS + §READING + §META) "
+             "for an existing fish. `linafish go` already does this on full builds; "
+             "this verb closes the gap for fish grown via listen/eat/school.")
+    soul_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    soul_p.add_argument("--state-dir", type=_user_path, help="State directory")
+
     # go — the one-command experience
     go_p = sub.add_parser("go", help="The product. Point at your writing. Everything assembles.")
     go_p.add_argument("source", nargs="?", default=None, type=_user_path,
@@ -2733,6 +2854,7 @@ def main():
         "daily": cmd_daily,
         "keeper": cmd_keeper,
         "style": cmd_style,
+        "soul": cmd_soul,
         "school": cmd_school,
         "hunt": cmd_hunt,
         "emerge": cmd_emerge,

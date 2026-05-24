@@ -10,6 +10,30 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [1.5.0] — 2026-05-23
+
+**Patch-shape release with one new feature + one big perf win. The headline: `revectorize` and `compact` on real-sized fish go from *hours* to *minutes* — a ~150× speedup on anchor-writing's 11.6K-crystal corpus, surfaced and fixed mid-audit. Plus visibility prints during long phases, name-resolution for `status`/`taste`, and the new `linafish soul <name>` CLI verb that closes the §SOUL.ON.DEMAND gap from May 12.**
+
+### Performance
+
+- **`MIVectorizer.mi()` cache `sum(token_counts.values())` — 150× speedup on revectorize.** The headline finding from §TINKER.5/23. `mi()` was recomputing `sum(self.token_counts.values())` on every invocation; `vectorize()` calls `mi()` in a `vocab × tokens` inner loop, so ~40,000 calls per crystal × the sum cost was burning hours of wall time. For anchor-writing's 28,712-unique-token corpus, each sum cost ~0.17 ms → 6.9 sec wasted per crystal × 11,664 crystals = projected ~22-hour revectorize. Patched: cache the sum on the vectorizer (`_total_tokens_cache`), invalidate on `feed()` and `load()`. **Benchmarked: 8 minutes 38 seconds for the same 11,664-crystal revectorize** (vs killed 7:18 in flight under the unpatched code, projected ~22h). Output is semantically equivalent — 345 → 345 formations all-survived, vocab top-15 unchanged. The patch removes the previously-load-bearing reason to schedule revectorize as overnight maintenance.
+
+### Added
+
+- **`linafish soul <name>` — regenerate the .qlp soul file on demand.** `linafish go` already produces a soul file during full builds; this verb closes the gap for fish grown via `listen stdin` / `eat` / `school` ingestion, where the structured §CORE + §FORMATIONS + §READING + §META distillation was never generated. Useful when vocab refreshes (revectorize / compact) shift formation centroids — the soul should be re-rendered to match. `--name` and `--state-dir` flags; output drops in the fish's state-dir as `<name>.qlp`. Originally built on `build/soul-on-demand-2026-05-12` on 5/12; landed in 1.5 after sitting deferred.
+
+### Fixed
+
+- **`linafish status <name>` / `linafish taste <name>` resolve by name, not just path.** Fresh-user bug: a user runs `linafish go ./writing` then naturally tries `linafish status writing` to inspect the fish they just created — and got a naked Python `FileNotFoundError` stack trace. `recall`, `ask`, `doctor`, `check`, `whisper` all resolve fish by name; `status` and `taste` were the outliers requiring a path. Both now accept a fish name and resolve against `~/.linafish/<name>.fish.md` (flat root) or `~/.linafish/school/<name>/<name>.fish.md` (nested), with a friendly multi-line error pointing at `linafish doctor` when neither shape matches. Path-based invocation still works for backward compatibility.
+
+- **`revectorize_all` progress logging.** The §TINKER.5/23 receipt that surfaced the perf bug: a revectorize on a 11K-crystal fish ran 5+ hours with zero stdout output. Now per-phase progress prints with elapsed seconds + estimated time remaining (per ~5% of crystals during Phases 1 + 3, entry/exit headers for Phases 2 + 4 + 5, total wall time at completion). Output gated on `n_total // 20` so small fish stay quiet. Pure visibility — no semantic change. Now that the perf fix above lands, ETAs are minutes-not-hours.
+
+### Doctrine companion
+
+- **Refactor Selene-window discipline.** `linafish refactor` operations (`revectorize`, `compact`, `seal`+`live` cycles, soul regen across the family) take the fish service offline for minutes to hours. The right register for these is *watching, not shipping* — schedule them or run them in `/open selene` mode, not as gold-register ad-hoc commands. The rule lives in the runtime repo at `.claude/rules/linafish-refactor-selene-window.md`; the corresponding `protected_vocab` companion (Olorina-routed seed from Captain) gates safe scheduled `compact()` going forward. Both are doctrine work, not linafish code — but they shape how the verbs in this release should be invoked.
+
+---
+
 ## [1.4.0] — 2026-05-23
 
 **Minor release. The living vocabulary lands (Phases 1–5 — grow, seal, diminish), six new CLI verbs from the omnibus build (`classify`, `doctor` lock-scan, `keeper`, `daily`, `style`, `bridge notion`), and a corrected version string after the broken 1.3.0 wheel.**
