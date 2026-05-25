@@ -33,6 +33,14 @@ from typing import Optional
 from urllib.parse import urlparse, parse_qs
 
 from .engine import FishEngine
+from .http_server import (
+    _messages_file,
+    _gen_msg_id,
+    _load_messages,
+    _save_messages,
+    _append_message,
+    _MESSAGES_LOCK,
+)
 
 
 BIND_MAP = {
@@ -80,8 +88,13 @@ class ConverseHandler(BaseHTTPRequestHandler):
                     "GET  /minds  — list source minds",
                     "GET  /pfc  — formations",
                     "GET  /health  — stats",
+                    "GET  /emerge  — emergence metrics (ν, μ, ρ, Ψ, phase)",
+                    "GET  /growth  — R(n) curve, coupling density, dimension entropy",
+                    "GET  /inbox/<mind_id>  — unread DMs for a mind",
                     "POST /eat  — feed text",
                     "POST /taste  — semantic search",
+                    "POST /msg  — federation DM send",
+                    "POST /msg/read  — mark read",
                 ],
             }, indent=2), "application/json")
 
@@ -109,6 +122,29 @@ class ConverseHandler(BaseHTTPRequestHandler):
 
         elif parsed.path == "/health":
             self._respond(200, self.engine.health(), "application/json")
+
+        elif parsed.path == "/emerge":
+            result = self.engine._check_emergence()
+            if result is None:
+                self._respond(200, json.dumps({
+                    "signal": False,
+                    "reason": "no cognitive-op data or no formations",
+                }), "application/json")
+            else:
+                self._respond(200, json.dumps(result, indent=2), "application/json")
+
+        elif parsed.path == "/growth":
+            tracker = getattr(self.engine, "tracker", None)
+            if tracker is None or not tracker.snapshots:
+                self._respond(
+                    200,
+                    "No growth data yet. POST /re-eat to run a maintenance cycle first.",
+                )
+            else:
+                self._respond(200, tracker.growth_summary())
+
+        elif parsed.path.startswith("/inbox/"):
+            self._handle_inbox(parsed)
 
         else:
             self._respond(404, "Not found")
@@ -169,8 +205,120 @@ class ConverseHandler(BaseHTTPRequestHandler):
             else:
                 self._respond(200, self.engine.taste(text, top=top))
 
+        elif parsed.path == "/msg":
+            self._handle_msg_send(body)
+
+        elif parsed.path == "/msg/read":
+            self._handle_msg_read(body)
+
         else:
             self._respond(404, "Not found")
+
+    # --- Federation DM endpoints (port from FishHandler) ----------------------
+
+    def _handle_inbox(self, parsed):
+        """GET /inbox/<mind_id>?limit=20&since=ts — unread messages for a mind."""
+        mind_id = parsed.path[len("/inbox/"):]
+        if not mind_id:
+            self._respond(400, json.dumps({"error": "missing mind_id"}),
+                          "application/json")
+            return
+
+        qs = parse_qs(parsed.query)
+        try:
+            limit = int(qs.get("limit", ["20"])[0])
+        except (ValueError, IndexError):
+            limit = 20
+        since = qs.get("since", [None])[0]
+
+        msgs_path = _messages_file(self.engine)
+        msgs = _load_messages(msgs_path)
+        filtered = [m for m in msgs
+                    if m.get("to") == mind_id and not m.get("read", False)]
+        if since:
+            filtered = [m for m in filtered if m.get("ts", "") > since]
+        filtered.sort(key=lambda m: m.get("ts", ""), reverse=True)
+        filtered = filtered[:limit]
+
+        self._respond(
+            200,
+            json.dumps({"messages": filtered, "count": len(filtered)}),
+            "application/json",
+        )
+
+    def _handle_msg_send(self, body: dict):
+        """POST /msg — send a DM, also crystallize via fish.eat()."""
+        sender = body.get("from", "")
+        recipient = body.get("to", "")
+        text = body.get("text", "")
+        protocol = body.get("protocol", "fish-dm")
+
+        if not sender or not recipient or not text:
+            self._respond(
+                400,
+                json.dumps({"error": "from, to, and text are required"}),
+                "application/json",
+            )
+            return
+
+        ts = datetime.now(timezone.utc).isoformat()
+        msg_id = _gen_msg_id()
+
+        crystallized = False
+        try:
+            result = self.engine.eat(text, source=f"dm:{sender}->{recipient}")
+            crystallized = result.get("crystals_added", 0) > 0
+        except Exception as e:
+            print(f"DM crystallize error: {e}", flush=True)
+
+        msg = {
+            "id": msg_id,
+            "ts": ts,
+            "from": sender,
+            "to": recipient,
+            "text": text,
+            "protocol": protocol,
+            "read": False,
+            "crystallized": crystallized,
+        }
+
+        _append_message(_messages_file(self.engine), msg)
+
+        self._respond(
+            200,
+            json.dumps({"status": "sent", "ts": ts, "id": msg_id}),
+            "application/json",
+        )
+
+    def _handle_msg_read(self, body: dict):
+        """POST /msg/read — mark messages as read for a mind."""
+        mind_id = body.get("mind_id", "")
+        ids = body.get("ids", [])
+
+        if not mind_id or not ids:
+            self._respond(
+                400,
+                json.dumps({"error": "mind_id and ids are required"}),
+                "application/json",
+            )
+            return
+
+        ids_set = set(ids)
+        msgs_path = _messages_file(self.engine)
+
+        with _MESSAGES_LOCK:
+            msgs = _load_messages(msgs_path)
+            marked = 0
+            for m in msgs:
+                if (m.get("id") in ids_set
+                        and m.get("to") == mind_id
+                        and not m.get("read", False)):
+                    m["read"] = True
+                    marked += 1
+            if marked > 0:
+                _save_messages(msgs_path, msgs)
+
+        self._respond(200, json.dumps({"marked": marked}), "application/json")
 
     def _get_crystals(self, since: str = None, mind: str = None) -> list:
         """Return crystals, optionally filtered by time and source mind."""
