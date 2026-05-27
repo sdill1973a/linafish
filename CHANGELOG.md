@@ -10,6 +10,32 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [1.5.1] — 2026-05-26
+
+**Patch-shape release. One perf fix (slow `/health` on large-corpus fish), one previously-merged feature (the converse-side DM + emergence routes from PR #23 that landed on master 5/04 but never shipped), and dependabot CI bumps.**
+
+### Performance
+
+- **`_check_emergence` O(N×F) → O(N+M) on `/health`.** Prior shape iterated the full crystal corpus once per formation: `by_formation[fid] = [c for c in crystals if c.id in members]`. At me-fish scale (~117K crystals × 172 formations) that is ~20M iterations per `/health` call, pushing requests to 8-30 seconds. Multiple concurrent probes queued redundant emergence calculations and the converse listener appeared wedged (`NSSM RUNNING`, port listening, /health timing out at typical 2-5 s client deadlines). Caught 2026-05-26 §AUDIT.NIGHT via `py-spy` dump of the live PID — every `process_request_thread` was stuck inside the list comp at `engine.py:2308`. Fix: build a `crystal_by_id` index once (O(N)), then resolve each formation's members via dict lookup. **Verified live: 5 sequential probes on the 117K-crystal me-fish all 1.3-1.5 s** (down from 8-30 s). Set semantics unchanged — same crystals selected per formation, just resolved by id-lookup rather than by linear scan-and-filter.
+
+### Added
+
+- **Five new HTTP routes on the converse server** (`linafish converse` mode — ports `:8901` and `:8902` in the standard `.140` federation layout). Originally PR #23, merged to master 2026-05-04 but never bundled into a release. ConverseHandler now exposes the same DM and emergence endpoints that FishHandler already had:
+  - `GET  /emerge`         — emergence metrics (ν, μ, ρ, Ψ, phase)
+  - `GET  /growth`         — R(n) curve, coupling density, dimension entropy
+  - `GET  /inbox/<id>`     — unread DMs for a mind
+  - `POST /msg`            — federation DM send (auto-crystallizes the payload)
+  - `POST /msg/read`       — mark messages read
+
+  Cross-host DM flows (anchor → lab, anchor → olorin, sister → me) now work directly against converse-mode services without needing the retired `AnchorLinafishHttp` gate on `:8900`. Same handler logic as FishHandler — behavior identical across modes.
+
+### Infrastructure
+
+- `actions/checkout` v5 → v6 (dependabot PR #6)
+- `actions/setup-python` v5 → v6 (dependabot PR #7)
+
+---
+
 ## [1.5.0] — 2026-05-23
 
 **Patch-shape release with one new feature + one big perf win. The headline: `revectorize` and `compact` on real-sized fish go from *hours* to *minutes* — a ~150× speedup on anchor-writing's 11.6K-crystal corpus, surfaced and fixed mid-audit. Plus visibility prints during long phases, name-resolution for `status`/`taste`, and the new `linafish soul <name>` CLI verb that closes the §SOUL.ON.DEMAND gap from May 12.**
