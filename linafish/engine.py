@@ -2301,11 +2301,27 @@ class FishEngine:
         if not any(_crystal_ops(c) for c in crystals):
             return None  # no cognitive-op signal — writeback-only path
 
+        # Build crystal-by-id index ONCE rather than scanning the corpus
+        # per formation. Prior shape was O(N×F) (line 2308 list-comp);
+        # at me-fish scale (117K crystals × 172 formations = 20M iters)
+        # it pushed /health requests to 8-30s and caused converse
+        # listeners to appear wedged under repeated probes. The
+        # crystal_by_id dict + member lookup is O(N) to build plus
+        # O(sum of formation member counts) to resolve — typically a
+        # handful per formation and well under 1s total even at 117K.
+        crystal_by_id = {}
+        for c in crystals:
+            cid = getattr(c, "id", None)
+            if cid is not None:
+                crystal_by_id[cid] = c
+
         by_formation = {}
         for f in self.formations:
             fid = getattr(f, "id", id(f))
-            members = set(getattr(f, "members", None) or getattr(f, "member_ids", []))
-            by_formation[fid] = [c for c in crystals if getattr(c, "id", None) in members]
+            members = getattr(f, "members", None) or getattr(f, "member_ids", [])
+            by_formation[fid] = [
+                crystal_by_id[m] for m in members if m in crystal_by_id
+            ]
 
         grad = emergence_gradient(self.formations, by_formation)
         snt = collective_snt(grad)
