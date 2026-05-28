@@ -203,9 +203,9 @@ def absorb(engine: FishEngine, source: str) -> dict:
     if source.startswith("http://") or source.startswith("https://"):
         return absorb_http(engine, source)
     elif source.startswith("jsonl:"):
-        return absorb_jsonl(engine, Path(source[5:]))
+        return absorb_jsonl(engine, Path(source[6:]))  # strip "jsonl:" (6 chars)
     elif source.startswith("faiss:"):
-        return absorb_faiss(engine, Path(source[5:]))
+        return absorb_faiss(engine, Path(source[6:]))  # strip "faiss:" (6 chars)
     else:
         # Auto-detect from extension
         path = Path(source)
