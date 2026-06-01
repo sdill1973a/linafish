@@ -10,6 +10,40 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [1.5.3] — 2026-05-31
+
+**Release-hygiene fix: version is now single-sourced so `pip show` and
+`import linafish; linafish.__version__` can never disagree again. Supersedes
+the mislabeled 1.5.2 wheel.**
+
+### Fixed
+
+- **The recurring version-string drift, fixed at the root.** `1.5.2` shipped
+  with `pyproject.toml` advertising `1.5.2` while `linafish/__init__.py` still
+  hardcoded `__version__ = "1.5.1"` — so `pip show linafish` reported `1.5.2`
+  while `linafish --version` and `import linafish; linafish.__version__`
+  reported `1.5.1`. This is the **exact** defect that shipped `1.3.0` (see the
+  1.4.0 note below), where the fix was promised — *"the build script is being
+  updated separately to read from one source of truth"* — but never landed.
+  Two independent literals with no link drift apart on every release that
+  forgets to hand-sync them.
+
+  **Root fix:** `linafish/__init__.py:__version__` is now the **one** source of
+  truth. `pyproject.toml` declares `dynamic = ["version"]` and reads the value
+  at build time via `[tool.setuptools.dynamic] version = {attr =
+  "linafish.__version__"}`. setuptools (≥68) resolves it by AST without
+  importing the package, so it's safe and deterministic. There is no longer a
+  static `version =` in `pyproject.toml` to forget. The two can never disagree
+  because there is only one.
+
+### Included from 1.5.2 (which had no changelog entry)
+
+- **`absorb` scheme-prefix off-by-one.** `source[5:]` → `source[6:]` in
+  `absorb.py` — the colon after a scheme prefix is now stripped correctly when
+  ingesting FAISS/JSONL/HTTP RAG sources.
+
+---
+
 ## [1.5.1] — 2026-05-26
 
 **Patch-shape release. One perf fix (slow `/health` on large-corpus fish), one previously-merged feature (the converse-side DM + emergence routes from PR #23 that landed on master 5/04 but never shipped), and dependabot CI bumps.**
