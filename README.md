@@ -230,13 +230,13 @@ New in v1.1 — the fish gets a brain:
 ```bash
 # School — distributed cognition across domains
 linafish school init             # Create a school of sub-fish
-linafish school add captain -d 2.0 --centroid  # Add a domain fish
+linafish school add history -d 2.0 --centroid  # Add a domain fish
 linafish school eat "Today I realized..."      # Feed all members at once
 
 # Converse — two fish, one conversation
-linafish converse --mind anchor --port 8901          # Local
-linafish converse --mind anchor --bind lan            # Home network
-linafish converse --mind anchor --bind wan --token X  # Internet
+linafish converse --mind writing --port 8901          # Local
+linafish converse --mind writing --bind lan            # Home network
+linafish converse --mind writing --bind wan --token X  # Internet
 
 # Absorb — bring in your existing AI memory
 linafish absorb old_data.jsonl       # Previous data

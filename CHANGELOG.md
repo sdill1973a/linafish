@@ -50,18 +50,18 @@ the mislabeled 1.5.2 wheel.**
 
 ### Performance
 
-- **`_check_emergence` O(N×F) → O(N+M) on `/health`.** Prior shape iterated the full crystal corpus once per formation: `by_formation[fid] = [c for c in crystals if c.id in members]`. At me-fish scale (~117K crystals × 172 formations) that is ~20M iterations per `/health` call, pushing requests to 8-30 seconds. Multiple concurrent probes queued redundant emergence calculations and the converse listener appeared wedged (`NSSM RUNNING`, port listening, /health timing out at typical 2-5 s client deadlines). Caught 2026-05-26 §AUDIT.NIGHT via `py-spy` dump of the live PID — every `process_request_thread` was stuck inside the list comp at `engine.py:2308`. Fix: build a `crystal_by_id` index once (O(N)), then resolve each formation's members via dict lookup. **Verified live: 5 sequential probes on the 117K-crystal me-fish all 1.3-1.5 s** (down from 8-30 s). Set semantics unchanged — same crystals selected per formation, just resolved by id-lookup rather than by linear scan-and-filter.
+- **`_check_emergence` O(N×F) → O(N+M) on `/health`.** Prior shape iterated the full crystal corpus once per formation: `by_formation[fid] = [c for c in crystals if c.id in members]`. At large-fish scale (~117K crystals × ~170 formations) that is ~20M iterations per `/health` call, pushing requests to 8-30 seconds. Multiple concurrent probes queued redundant emergence calculations and the converse listener appeared wedged (`NSSM RUNNING`, port listening, /health timing out at typical 2-5 s client deadlines). Caught 2026-05-26 during an audit via a profiler dump of the live process — every `process_request_thread` was stuck inside the list comp at `engine.py:2308`. Fix: build a `crystal_by_id` index once (O(N)), then resolve each formation's members via dict lookup. **Verified live: 5 sequential probes on a ~117K-crystal production fish all 1.3-1.5 s** (down from 8-30 s). Set semantics unchanged — same crystals selected per formation, just resolved by id-lookup rather than by linear scan-and-filter.
 
 ### Added
 
-- **Five new HTTP routes on the converse server** (`linafish converse` mode — ports `:8901` and `:8902` in the standard `.140` federation layout). Originally PR #23, merged to master 2026-05-04 but never bundled into a release. ConverseHandler now exposes the same DM and emergence endpoints that FishHandler already had:
+- **Five new HTTP routes on the converse server** (`linafish converse` mode — the converse ports in a typical federation layout). Originally PR #23, merged to master 2026-05-04 but never bundled into a release. ConverseHandler now exposes the same DM and emergence endpoints that FishHandler already had:
   - `GET  /emerge`         — emergence metrics (ν, μ, ρ, Ψ, phase)
   - `GET  /growth`         — R(n) curve, coupling density, dimension entropy
   - `GET  /inbox/<id>`     — unread DMs for a mind
   - `POST /msg`            — federation DM send (auto-crystallizes the payload)
   - `POST /msg/read`       — mark messages read
 
-  Cross-host DM flows (anchor → lab, anchor → olorin, sister → me) now work directly against converse-mode services without needing the retired `AnchorLinafishHttp` gate on `:8900`. Same handler logic as FishHandler — behavior identical across modes.
+  Cross-host DM flows between federation minds now work directly against converse-mode services without needing the retired legacy HTTP gate. Same handler logic as FishHandler — behavior identical across modes.
 
 ### Infrastructure
 
@@ -72,11 +72,11 @@ the mislabeled 1.5.2 wheel.**
 
 ## [1.5.0] — 2026-05-23
 
-**Patch-shape release with one new feature + one big perf win. The headline: `revectorize` and `compact` on real-sized fish go from *hours* to *minutes* — a ~150× speedup on anchor-writing's 11.6K-crystal corpus, surfaced and fixed mid-audit. Plus visibility prints during long phases, name-resolution for `status`/`taste`, and the new `linafish soul <name>` CLI verb that closes the §SOUL.ON.DEMAND gap from May 12.**
+**Patch-shape release with one new feature + one big perf win. The headline: `revectorize` and `compact` on real-sized fish go from *hours* to *minutes* — a ~150× speedup on a ~12K-crystal real-world corpus, surfaced and fixed mid-audit. Plus visibility prints during long phases, name-resolution for `status`/`taste`, and the new `linafish soul <name>` CLI verb that closes the §SOUL.ON.DEMAND gap from May 12.**
 
 ### Performance
 
-- **`MIVectorizer.mi()` cache `sum(token_counts.values())` — 150× speedup on revectorize.** The headline finding from §TINKER.5/23. `mi()` was recomputing `sum(self.token_counts.values())` on every invocation; `vectorize()` calls `mi()` in a `vocab × tokens` inner loop, so ~40,000 calls per crystal × the sum cost was burning hours of wall time. For anchor-writing's 28,712-unique-token corpus, each sum cost ~0.17 ms → 6.9 sec wasted per crystal × 11,664 crystals = projected ~22-hour revectorize. Patched: cache the sum on the vectorizer (`_total_tokens_cache`), invalidate on `feed()` and `load()`. **Benchmarked: 8 minutes 38 seconds for the same 11,664-crystal revectorize** (vs killed 7:18 in flight under the unpatched code, projected ~22h). Output is semantically equivalent — 345 → 345 formations all-survived, vocab top-15 unchanged. The patch removes the previously-load-bearing reason to schedule revectorize as overnight maintenance.
+- **`MIVectorizer.mi()` cache `sum(token_counts.values())` — 150× speedup on revectorize.** The headline finding from a tuning session. `mi()` was recomputing `sum(self.token_counts.values())` on every invocation; `vectorize()` calls `mi()` in a `vocab × tokens` inner loop, so ~40,000 calls per crystal × the sum cost was burning hours of wall time. For a ~29K-unique-token corpus, each sum cost ~0.17 ms → 6.9 sec wasted per crystal × ~12K crystals = projected ~22-hour revectorize. Patched: cache the sum on the vectorizer (`_total_tokens_cache`), invalidate on `feed()` and `load()`. **Benchmarked: 8 minutes 38 seconds for the same ~12K-crystal revectorize** (vs killed 7:18 in flight under the unpatched code, projected ~22h). Output is semantically equivalent — 345 → 345 formations all-survived, vocab top-15 unchanged. The patch removes the previously-load-bearing reason to schedule revectorize as overnight maintenance.
 
 ### Added
 
@@ -86,11 +86,11 @@ the mislabeled 1.5.2 wheel.**
 
 - **`linafish status <name>` / `linafish taste <name>` resolve by name, not just path.** Fresh-user bug: a user runs `linafish go ./writing` then naturally tries `linafish status writing` to inspect the fish they just created — and got a naked Python `FileNotFoundError` stack trace. `recall`, `ask`, `doctor`, `check`, `whisper` all resolve fish by name; `status` and `taste` were the outliers requiring a path. Both now accept a fish name and resolve against `~/.linafish/<name>.fish.md` (flat root) or `~/.linafish/school/<name>/<name>.fish.md` (nested), with a friendly multi-line error pointing at `linafish doctor` when neither shape matches. Path-based invocation still works for backward compatibility.
 
-- **`revectorize_all` progress logging.** The §TINKER.5/23 receipt that surfaced the perf bug: a revectorize on a 11K-crystal fish ran 5+ hours with zero stdout output. Now per-phase progress prints with elapsed seconds + estimated time remaining (per ~5% of crystals during Phases 1 + 3, entry/exit headers for Phases 2 + 4 + 5, total wall time at completion). Output gated on `n_total // 20` so small fish stay quiet. Pure visibility — no semantic change. Now that the perf fix above lands, ETAs are minutes-not-hours.
+- **`revectorize_all` progress logging.** The tuning-session receipt that surfaced the perf bug: a revectorize on a 11K-crystal fish ran 5+ hours with zero stdout output. Now per-phase progress prints with elapsed seconds + estimated time remaining (per ~5% of crystals during Phases 1 + 3, entry/exit headers for Phases 2 + 4 + 5, total wall time at completion). Output gated on `n_total // 20` so small fish stay quiet. Pure visibility — no semantic change. Now that the perf fix above lands, ETAs are minutes-not-hours.
 
 ### Doctrine companion
 
-- **Refactor Selene-window discipline.** `linafish refactor` operations (`revectorize`, `compact`, `seal`+`live` cycles, soul regen across the family) take the fish service offline for minutes to hours. The right register for these is *watching, not shipping* — schedule them or run them in `/open selene` mode, not as gold-register ad-hoc commands. The rule lives in the runtime repo at `.claude/rules/linafish-refactor-selene-window.md`; the corresponding `protected_vocab` companion (Olorina-routed seed from Captain) gates safe scheduled `compact()` going forward. Both are doctrine work, not linafish code — but they shape how the verbs in this release should be invoked.
+- **Refactor maintenance-window discipline.** `linafish refactor` operations (`revectorize`, `compact`, `seal`+`live` cycles, soul regen across the family) take the fish service offline for minutes to hours. Treat them as scheduled maintenance, not ad-hoc commands; a `protected_vocab` companion gates safe scheduled `compact()` going forward. Operational doctrine for running the fish, not linafish code — but it shapes how the verbs in this release should be invoked.
 
 ---
 
@@ -124,15 +124,15 @@ Tests: 23 new tests across `test_vocab_growth.py`, `test_seal.py`, `test_compact
 
 The 5/18 omnibus build cycle (`build/1.4-omnibus-2026-05-18`) ported six adjacent codebase patterns into linafish proper:
 
-- **`linafish classify`** — turn-level deposit classifier. Regex DOCTRINE_MARKERS + HIGH_VALUE_TOKENS + length signal + DEPOSIT_THRESHOLD score. Emits a `DepositDecision` JSON record (target fish + routing tag + confidence). Args mode (`--user "..." --assistant "..."`), JSONL batch mode (`--jsonl`), and custom config mode (`--hvt TOKEN --routing-tag NAME=PATTERN`). Default target fish is `linafish` (portable); author-specific HVT defaults are opt-in. Wires the substrate-side `deposit_classifier.py` from `anchor-chat-ui/sidecar/`. 16 tests.
+- **`linafish classify`** — turn-level deposit classifier. Regex DOCTRINE_MARKERS + HIGH_VALUE_TOKENS + length signal + DEPOSIT_THRESHOLD score. Emits a `DepositDecision` JSON record (target fish + routing tag + confidence). Args mode (`--user "..." --assistant "..."`), JSONL batch mode (`--jsonl`), and custom config mode (`--hvt TOKEN --routing-tag NAME=PATTERN`). Default target fish is `linafish` (portable); author-specific HVT defaults are opt-in. Wires a substrate-side `deposit_classifier.py` from a chat-ui sidecar. 16 tests.
 
 - **`linafish doctor --scan-locks` / `--fix-locks`** — fish-lock scanner. Walks `~/.linafish/` (and arbitrary `--state-dir`), inspects `.lock` files, classifies each as fresh/old-dead/old-indeterminate/very-old-indeterminate/old-alive based on PID liveness + age. `--fix-locks` offers interactive stale-lock removal. 23 tests. Real-world catch on first invocation: two stale `mi_vectorizer.json.lock` files held since 5/15 by dead PIDs neither the runtime helper nor `linafish doctor` had previously flagged.
 
-- **`linafish keeper init|invoke`** — focused single-purpose sub-fish verb. Wraps the keeper subagent pattern (`anchor-keeper`, `phoenix-keeper`, etc.) into a portable verb that any user can build. `init` creates the keeper state-dir + portrait scaffold; `invoke` runs the keeper's standard query against the queryable substrate. Tests cover init idempotency + invoke happy-path.
+- **`linafish keeper init|invoke`** — focused single-purpose sub-fish verb. Wraps the keeper subagent pattern into a portable verb that any user can build. `init` creates the keeper state-dir + portrait scaffold; `invoke` runs the keeper's standard query against the queryable substrate. Tests cover init idempotency + invoke happy-path.
 
 - **`linafish daily`** — per-day calendar-indexed fish. Generalizes the runtime-side `make_daily_fish.py`. Reads matching `*{date}*.md` and `*{date}*.txt` files from configured roots (user-defined patterns, no Anchor-shaped defaults), builds a per-day fish at `~/.linafish/daily/YYYY-MM-DD/`. Idempotent via `seed_digest` (sha1 of concatenated seed contents); `--force` overrides; missing-content state recorded explicitly. `linafish daily list` enumerates built days. 20 tests.
 
-- **`linafish style add|<name>`** — named voices to think with. Wraps the runtime-side `fed.py` keeper pattern (vienna / wyoming / stillness) into a portable, user-extensible verb. `style add <name> --description "..." --tone "..."` registers a new style; `linafish style <name> "<theme>"` invokes it (pulls theme-relevant crystals + frames them in the style's voice). User-defined styles live in `~/.linafish/styles/`. Tests cover register + invoke + invalid-style errors.
+- **`linafish style add|<name>`** — named voices to think with. Wraps a runtime-side keeper pattern (with example named styles) into a portable, user-extensible verb. `style add <name> --description "..." --tone "..."` registers a new style; `linafish style <name> "<theme>"` invokes it (pulls theme-relevant crystals + frames them in the style's voice). User-defined styles live in `~/.linafish/styles/`. Tests cover register + invoke + invalid-style errors.
 
 - **`linafish bridge notion`** — Notion → fish sync. Ports the runtime-side `notion_to_fish.py` into a portable verb. Reads from a Notion database (env-var-configured page IDs + token), classifies each page via `linafish classify`, deposits into the configured target fish. Idempotent via per-page sha hashes in `~/.linafish/bridge_notion_state.json`. Cursor-based pagination per the codex review fixes (was previously offset-based, broke on >100-page databases).
 
@@ -501,7 +501,7 @@ validation.**
 ## [1.1.7] — 2026-04-20
 
 **Patch release. Two real Windows-reproduced bugs caught by running the
-full fleet on .140 — `linafish diff` crashing on non-ASCII fish content,
+the full fleet — `linafish diff` crashing on non-ASCII fish content,
 and converse servers silently stalling under concurrent client load.**
 
 ### Fixed
@@ -540,7 +540,7 @@ and converse servers silently stalling under concurrent client load.**
 ## [1.1.6.1] — 2026-04-17
 
 **Patch release. Fixes a `datetime` import regression in
-`cmd_doctor` caught by THX on .147 in the first hour after 1.1.6
+`cmd_doctor` caught by a peer mind in the first hour after 1.1.6
 shipped.**
 
 ### Fixed
