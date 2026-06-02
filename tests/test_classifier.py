@@ -1,10 +1,10 @@
 """Tests for linafish.classifier — turn-level deposit gating.
 
-Ported from anchor-chat-ui sidecar/tests/test_deposit_classifier.py
-during the 1.4 omnibus port. The generic-defaults change means tests
-that depended on author-specific defaults (caroline / olorina /
-captain) now supply those tokens explicitly — the same shape the
-chat-ui code did, but now opt-in rather than hardcoded.
+Ported from a chat-ui sidecar during the 1.4 omnibus port. The
+generic-defaults change means tests that depended on author-specific
+defaults now supply those tokens explicitly — the same shape the
+chat-ui code did, but now opt-in rather than hardcoded. The tokens
+below are generic example fixtures; the shipped defaults are empty.
 """
 from __future__ import annotations
 
@@ -16,23 +16,23 @@ from linafish.classifier import (
 )
 
 
-# Helpful constants for tests that want to mimic the original anchor-chat-ui
+# Helpful constants for tests that want to mimic the original chat-ui
 # defaults (so the behavior is regression-tested against the seed source).
-HVT_ANCHOR_DEFAULTS = [
-    "caroline",
-    "olorina",
-    "keeper-night",
-    "phoenix",
-    "wyoming",
-    "vienna",
-    "stillness",
+# Generic example tokens — the real product ships these empty.
+HVT_TEST_DEFAULTS = [
+    "lumen",
+    "vega",
+    "topic-a",
+    "topic-b",
+    "topic-c",
+    "topic-d",
+    "topic-e",
 ]
-ROUTING_ANCHOR_DEFAULTS = {
-    # Order matters — later wins (dict iteration order). Sister last so
-    # an olorina+captain co-mention routes sister, matching the chat-ui
-    # behavior.
-    "captain": [r"\b(captain|scott)\b"],
-    "sister": [r"\b(olorina|ollie|sister)\b"],
+ROUTING_TEST_DEFAULTS = {
+    # Order matters — later wins (dict iteration order). Peer last so
+    # a vega+owner co-mention routes peer, matching the chat-ui behavior.
+    "owner": [r"\b(owner|chief)\b"],
+    "peer": [r"\b(vega|ally|peer)\b"],
 }
 
 
@@ -46,15 +46,15 @@ def test_low_density_skips():
 
 def test_weather_skips():
     """Practical-but-low-signal turns skip."""
-    d = classify("what's the weather?", "72 in the green room.")
+    d = classify("what's the weather?", "72 in the office.")
     assert d.deposit is False
     assert d.target_fish == "skip"
 
 
 def test_doctrine_marker_deposits():
     """A 'from now on' phrase trips the doctrine marker and deposits."""
-    user = "from now on never call Reagan Rae — they are not the same person"
-    assistant = "Got it. Reagan is human; Rae is voice-within-Anchor. Locked."
+    user = "from now on never use the legacy path — it is deprecated"
+    assistant = "Got it. Legacy path is off. Locked."
     d = classify(user, assistant)
     assert d.deposit is True
     assert d.target_fish == "linafish"  # default target name
@@ -65,57 +65,57 @@ def test_doctrine_marker_deposits():
 def test_section_tag_deposits():
     """A §SECTION.TAG triggers the doctrine marker."""
     user = "what did we decide?"
-    assistant = "§NEW.DOCTRINE landed: explicit is not porn."
+    assistant = "§NEW.DOCTRINE landed: validate all input."
     d = classify(user, assistant)
     assert d.deposit is True
     assert d.score >= 2.0
 
 
-def test_olorina_with_section_marker_deposits_with_sister_tag():
-    """Olorina + a § marker clears threshold and routes sister when HVT+routing supplied."""
-    user = "what did Olorina say in her last babel?"
-    assistant = "Her last exchange landed at #345 — she acked §3.9. The doctrine moved."
+def test_hvt_with_section_marker_routes_peer():
+    """An HVT + a § marker clears threshold and routes peer when HVT+routing supplied."""
+    user = "what did vega say in the last exchange?"
+    assistant = "The last exchange landed at #345 — it acked §4.2. The doctrine moved."
     d = classify(
         user, assistant,
-        high_value_tokens=HVT_ANCHOR_DEFAULTS,
-        routing_tags=ROUTING_ANCHOR_DEFAULTS,
+        high_value_tokens=HVT_TEST_DEFAULTS,
+        routing_tags=ROUTING_TEST_DEFAULTS,
     )
-    assert d.deposit is True, "olorina + § + doctrine should clear threshold"
-    assert d.routing_tag == "sister"
-    assert any("routing_tag:sister" in r for r in d.reasons)
+    assert d.deposit is True, "hvt + § + doctrine should clear threshold"
+    assert d.routing_tag == "peer"
+    assert any("routing_tag:peer" in r for r in d.reasons)
 
 
 def test_bare_hvt_mention_does_not_deposit():
     """A brief mention of a single HVT alone (1.0) is below threshold — by design."""
-    user = "Olorina online?"
+    user = "vega online?"
     assistant = "Yes."
     d = classify(
         user, assistant,
-        high_value_tokens=HVT_ANCHOR_DEFAULTS,
-        routing_tags=ROUTING_ANCHOR_DEFAULTS,
+        high_value_tokens=HVT_TEST_DEFAULTS,
+        routing_tags=ROUTING_TEST_DEFAULTS,
     )
     assert d.deposit is False, (
         "bare HVT mention should not auto-deposit; threshold protects "
         "the corpus from low-density per-message pollution"
     )
-    assert d.routing_tag == "sister", "tag still attached even when skipping"
+    assert d.routing_tag == "peer", "tag still attached even when skipping"
 
 
-def test_captain_mention_routes_captain_tag_word_boundary():
-    """Captain word-boundary match — 'you' alone does NOT trigger captain tag."""
-    user = "Captain wants the Phase 6 plan tightened."
+def test_owner_mention_routes_owner_tag_word_boundary():
+    """Owner word-boundary match — 'you' alone does NOT trigger owner tag."""
+    user = "owner wants the phase-6 plan tightened."
     assistant = "Reading the spec now, will surface edits."
-    d = classify(user, assistant, routing_tags=ROUTING_ANCHOR_DEFAULTS)
-    assert d.routing_tag == "captain"
+    d = classify(user, assistant, routing_tags=ROUTING_TEST_DEFAULTS)
+    assert d.routing_tag == "owner"
 
 
-def test_you_alone_does_not_trigger_captain_tag():
-    """Word 'you' must not promote routing_tag to captain — that was the original bug."""
+def test_you_alone_does_not_trigger_owner_tag():
+    """Word 'you' must not promote routing_tag to owner — that was the original bug."""
     user = "could you do this?"
     assistant = "yes."
-    d = classify(user, assistant, routing_tags=ROUTING_ANCHOR_DEFAULTS)
+    d = classify(user, assistant, routing_tags=ROUTING_TEST_DEFAULTS)
     assert d.routing_tag == "ambient", (
-        "v1 fix: 'you' alone must NOT route to captain"
+        "v1 fix: 'you' alone must NOT route to owner"
     )
 
 
@@ -138,9 +138,9 @@ def test_doctrine_plus_length_deposits():
 
 def test_two_hvt_hits_deposit_at_threshold():
     """Two HVT hits = 2.0, clears 1.5 threshold."""
-    user = "caroline and phoenix come up in chapter 3"
+    user = "lumen and topic-b come up in chapter 3"
     assistant = "noted, the parallel is structural."
-    d = classify(user, assistant, high_value_tokens=HVT_ANCHOR_DEFAULTS)
+    d = classify(user, assistant, high_value_tokens=HVT_TEST_DEFAULTS)
     assert d.score >= 2.0
     assert d.deposit is True
 
@@ -158,7 +158,7 @@ def test_generic_defaults_have_no_routing_tags():
 
 
 def test_default_target_fish_name():
-    """Default target_fish is 'linafish', not 'anchor-writing' (generalization)."""
+    """Default target_fish is 'linafish', not a specific corpus name (generalization)."""
     user = "from now on always validate"
     assistant = "ok"
     d = classify(user, assistant)
@@ -175,15 +175,15 @@ def test_custom_target_fish_name():
 
 def test_custom_threshold():
     """Custom threshold can gate deposit-vs-skip."""
-    user = "Olorina online?"
+    user = "vega online?"
     assistant = "Yes."
     # With HVT supplied, score = 1.0 (one hit). Default threshold 1.5 → skip.
-    d_default = classify(user, assistant, high_value_tokens=HVT_ANCHOR_DEFAULTS)
+    d_default = classify(user, assistant, high_value_tokens=HVT_TEST_DEFAULTS)
     assert d_default.deposit is False
     # With threshold lowered to 0.9, same input → deposit.
     d_loose = classify(
         user, assistant,
-        high_value_tokens=HVT_ANCHOR_DEFAULTS,
+        high_value_tokens=HVT_TEST_DEFAULTS,
         deposit_threshold=0.9,
     )
     assert d_loose.deposit is True

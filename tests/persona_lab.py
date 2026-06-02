@@ -15,7 +15,7 @@ Usage:
     python tests/persona_lab.py --persona teacher  # run one
     python tests/persona_lab.py --list             # show personas
 
-s93, 2026-04-10. Captain's idea. "Codex can be your objective cold reader."
+s93, 2026-04-10. A reviewer-as-cold-reader idea.
 """
 
 import json

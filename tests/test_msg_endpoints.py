@@ -2,9 +2,9 @@
 
 POST /msg, GET /inbox/<mind_id>, POST /msg/read
 
-Ported from .67 protofish (fish_server.py) on 2026-04-29 as part of the
+Ported from a peer node protofish (fish_server.py) on 2026-04-29 as part of the
 v7 migration §THE.SORT.OUT — federating the message broker so it ships
-with linafish instead of living in a single bespoke Flask app on .67.
+with linafish instead of living in a single bespoke Flask app on a peer node.
 """
 
 import json
@@ -134,7 +134,7 @@ def test_append_skips_invalid_json(tmp_path):
 
 def test_msg_send_minimal(server):
     code, body = _post(f"{server}/msg",
-                       {"from": "anchor", "to": "olorina", "text": "hello sister"})
+                       {"from": "nova", "to": "vega", "text": "hello sister"})
     assert code == 200
     assert body["status"] == "sent"
     assert body["id"].startswith("msg_")
@@ -142,23 +142,23 @@ def test_msg_send_minimal(server):
 
 
 def test_msg_send_missing_fields(server):
-    code, body = _post(f"{server}/msg", {"from": "anchor"})
+    code, body = _post(f"{server}/msg", {"from": "nova"})
     assert code == 400
     assert "required" in body["error"]
 
 
 def test_msg_send_then_inbox_read_lifecycle(server):
-    # Send two messages to olorina, one to thx
+    # Send two messages to vega, one to orbit
     _post(f"{server}/msg",
-          {"from": "anchor", "to": "olorina", "text": "first"})
+          {"from": "nova", "to": "vega", "text": "first"})
     time.sleep(0.01)
     _post(f"{server}/msg",
-          {"from": "anchor", "to": "olorina", "text": "second"})
+          {"from": "nova", "to": "vega", "text": "second"})
     _post(f"{server}/msg",
-          {"from": "anchor", "to": "thx", "text": "for thx"})
+          {"from": "nova", "to": "thx", "text": "for thx"})
 
-    # Inbox for olorina returns 2 unread, newest first
-    code, body = _get(f"{server}/inbox/olorina")
+    # Inbox for vega returns 2 unread, newest first
+    code, body = _get(f"{server}/inbox/vega")
     assert code == 200
     assert body["count"] == 2
     assert body["messages"][0]["text"] == "second"
@@ -169,41 +169,41 @@ def test_msg_send_then_inbox_read_lifecycle(server):
     assert code == 200
     assert body["count"] == 1
 
-    # Mark olorina's first message read
+    # Mark vega's first message read
     first_id = body["messages"][0]["id"]  # whoops that was thx's; refetch
-    code, olorina_inbox = _get(f"{server}/inbox/olorina")
-    target_id = olorina_inbox["messages"][0]["id"]
+    code, vega_inbox = _get(f"{server}/inbox/vega")
+    target_id = vega_inbox["messages"][0]["id"]
     code, body = _post(f"{server}/msg/read",
-                       {"mind_id": "olorina", "ids": [target_id]})
+                       {"mind_id": "vega", "ids": [target_id]})
     assert code == 200
     assert body["marked"] == 1
 
-    # Olorina inbox now shows 1 unread
-    code, body = _get(f"{server}/inbox/olorina")
+    # Vega inbox now shows 1 unread
+    code, body = _get(f"{server}/inbox/vega")
     assert body["count"] == 1
 
 
 def test_inbox_limit(server):
     for i in range(5):
         _post(f"{server}/msg",
-              {"from": "anchor", "to": "olorina", "text": f"msg {i}"})
+              {"from": "nova", "to": "vega", "text": f"msg {i}"})
         time.sleep(0.005)
 
-    code, body = _get(f"{server}/inbox/olorina?limit=2")
+    code, body = _get(f"{server}/inbox/vega?limit=2")
     assert code == 200
     assert body["count"] == 2
 
 
 def test_inbox_since_filter(server):
     code, old_resp = _post(f"{server}/msg",
-                           {"from": "anchor", "to": "olorina", "text": "old"})
+                           {"from": "nova", "to": "vega", "text": "old"})
     cutoff = old_resp["ts"]  # use actual ts as cutoff so lexical compare matches
     time.sleep(0.01)
     _post(f"{server}/msg",
-          {"from": "anchor", "to": "olorina", "text": "new"})
+          {"from": "nova", "to": "vega", "text": "new"})
 
     qs = urllib.parse.urlencode({"since": cutoff})
-    code, body = _get(f"{server}/inbox/olorina?{qs}")
+    code, body = _get(f"{server}/inbox/vega?{qs}")
     assert code == 200
     # Filter is strict greater-than, so "old" (with ts==cutoff) is excluded
     texts = [m["text"] for m in body["messages"]]
@@ -213,39 +213,39 @@ def test_inbox_since_filter(server):
 
 def test_msg_read_validates_mind_id(server):
     _post(f"{server}/msg",
-          {"from": "anchor", "to": "olorina", "text": "test"})
-    code, body = _get(f"{server}/inbox/olorina")
+          {"from": "nova", "to": "vega", "text": "test"})
+    code, body = _get(f"{server}/inbox/vega")
     msg_id = body["messages"][0]["id"]
 
-    # Wrong mind tries to mark olorina's msg read — should not mark
+    # Wrong mind tries to mark vega's msg read — should not mark
     code, body = _post(f"{server}/msg/read",
                        {"mind_id": "imposter", "ids": [msg_id]})
     assert code == 200
     assert body["marked"] == 0
 
-    # Olorina still has unread
-    code, body = _get(f"{server}/inbox/olorina")
+    # Vega still has unread
+    code, body = _get(f"{server}/inbox/vega")
     assert body["count"] == 1
 
 
 def test_msg_read_missing_fields(server):
-    code, body = _post(f"{server}/msg/read", {"mind_id": "olorina"})
+    code, body = _post(f"{server}/msg/read", {"mind_id": "vega"})
     assert code == 400
 
 
 def test_msg_read_idempotent(server):
     _post(f"{server}/msg",
-          {"from": "anchor", "to": "olorina", "text": "test"})
-    code, inbox = _get(f"{server}/inbox/olorina")
+          {"from": "nova", "to": "vega", "text": "test"})
+    code, inbox = _get(f"{server}/inbox/vega")
     msg_id = inbox["messages"][0]["id"]
 
     code, body = _post(f"{server}/msg/read",
-                       {"mind_id": "olorina", "ids": [msg_id]})
+                       {"mind_id": "vega", "ids": [msg_id]})
     assert body["marked"] == 1
 
     # Marking again returns 0 (already read)
     code, body = _post(f"{server}/msg/read",
-                       {"mind_id": "olorina", "ids": [msg_id]})
+                       {"mind_id": "vega", "ids": [msg_id]})
     assert body["marked"] == 0
 
 

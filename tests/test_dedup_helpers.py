@@ -391,7 +391,7 @@ class TestDetectFormationsEndToEnd(unittest.TestCase):
             c = self._make_crystal(
                 f"sub{i}", f"unique substantive thought number {i}",
                 ache=3.5,
-                source_mind="me" if i % 2 == 0 else "captain",
+                source_mind="me" if i % 2 == 0 else "peer",
             )
             crystals.append(c)
         for i in range(20):
@@ -472,7 +472,7 @@ class TestDetectFormationsEndToEnd(unittest.TestCase):
             c = self._make_crystal(
                 f"a{i}", f"substantive thought number {i} with content",
                 ache=4.0,
-                source_mind="me" if i % 2 == 0 else "captain",
+                source_mind="me" if i % 2 == 0 else "peer",
             )
             crystals.append(c)
         # Group B: 6 broadcast crystals, identical body, single mind.

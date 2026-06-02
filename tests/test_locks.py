@@ -110,7 +110,7 @@ def test_scan_missing_dir(tmp_path: Path):
 
 
 def test_scan_finds_top_level_lock(tmp_path: Path):
-    lock = tmp_path / "anchor-writing.lock"
+    lock = tmp_path / "sample-corpus.lock"
     lock.write_text("999999 2026-05-15T16:06:11+00:00")
     # Backdate it so it's clearly stale
     old_ts = time.time() - 3600  # 1h old
@@ -136,7 +136,7 @@ def test_scan_finds_subdir_lock(tmp_path: Path):
 
 
 def test_scan_finds_school_facet_lock(tmp_path: Path):
-    school = tmp_path / "school" / "captain"
+    school = tmp_path / "school" / "facet-a"
     school.mkdir(parents=True)
     lock = school / "mi_vectorizer.json.lock"
     lock.write_text("999999")
@@ -144,7 +144,7 @@ def test_scan_finds_school_facet_lock(tmp_path: Path):
     os.utime(lock, (old_ts, old_ts))
     entries = scan_locks(state_root=tmp_path)
     assert len(entries) == 1
-    assert entries[0].fish_dir == "captain"
+    assert entries[0].fish_dir == "facet-a"
 
 
 def test_scan_fresh_lock_not_flagged_stale(tmp_path: Path):

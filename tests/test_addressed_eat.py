@@ -298,7 +298,7 @@ def test_update_with_no_per_call_keyword_sort():
     Pre-2026-05-01 ``update_with`` called
     ``sorted(self._keyword_counter.most_common(), key=...)`` on every
     invocation. That's O(K log K) per call where K = unique keywords
-    seen so far. The init-time bootstrap walk over .67's 393K-crystal
+    seen so far. The init-time bootstrap walk over a peer node's 393K-crystal
     federation room corpus took 14 minutes solo because the dominant
     formation's vocabulary K grew to ~5-10K and the per-crystal sort
     cost compounded. Past any reasonable maintenance window.

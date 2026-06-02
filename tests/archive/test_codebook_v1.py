@@ -60,7 +60,7 @@ def test_glyph_merge():
     """When the fish eats the same tool from two minds, weights merge."""
     cb = Codebook(name="merge", description="merge test")
     g1 = Glyph(id="CLIPBOARD", layer=1, dense="copy paste", sources=["anchor"], weight=1.5)
-    g2 = Glyph(id="CLIPBOARD", layer=1, dense="copy paste v2", sources=["olorina"], weight=2.0)
+    g2 = Glyph(id="CLIPBOARD", layer=1, dense="copy paste v2", sources=["vega"], weight=2.0)
 
     cb.add_glyph(g1)
     # Simulate merge behavior
@@ -72,4 +72,4 @@ def test_glyph_merge():
     assert len(cb.glyphs) == 1
     assert cb.glyphs["CLIPBOARD"].weight == 2.0
     assert "anchor" in cb.glyphs["CLIPBOARD"].sources
-    assert "olorina" in cb.glyphs["CLIPBOARD"].sources
+    assert "vega" in cb.glyphs["CLIPBOARD"].sources

@@ -7,7 +7,7 @@ Two fixes pinned here:
    ``format=json`` body field. The 1.2.0 bug: ``linafish.guppy.hunt_room``
    posted to ``/taste`` and looked for ``data["matches"]``, but the
    endpoint returned plain text — ``_post_json`` failed parse, hunt_room
-   silently returned 0 every cycle. THX caught this on .67 reattach.
+   silently returned 0 every cycle. THX caught this on a peer node reattach.
 
 2. ``paho-mqtt 2.x`` compatibility — paho 2.0 made
    ``callback_api_version`` a required ``mqtt.Client(...)`` argument.
@@ -42,8 +42,8 @@ def _seed(engine, n=20):
     """Seed the engine with enough varied content to freeze + return matches."""
     patterns = [
         "The federation room is alive and the fish keeps eating crystals from MQTT.",
-        "Captain held the substrate this morning while the cut-over landed cleanly.",
-        "Olorina noticed that the vocabulary had grown beyond the seed planting.",
+        "The operator held the system this morning while the cut-over landed cleanly.",
+        "A reviewer noticed that the vocabulary had grown beyond the seed planting.",
         "Anchor wrote down the three real follow-ups before they could evaporate.",
         "The room learned to notice its own shape under the gardener.",
         "A formation grew out of repeated attention to the same conversational shape.",

@@ -7,9 +7,9 @@ fish.
 
 These three layouts are conventional in real linafish installs:
 
-    ~/.linafish/anchor-writing_crystals.jsonl   (flat root)
+    ~/.linafish/sample-corpus_crystals.jsonl   (flat root)
     ~/.linafish/me/me_crystals.jsonl            (nested by name)
-    ~/.linafish/school/captain/captain_crystals.jsonl   (school facet)
+    ~/.linafish/school/facet-a/facet-a_crystals.jsonl   (school facet)
 
 Without auto-detect, only the flat root resolves correctly. With it, all
 three.
@@ -51,9 +51,9 @@ class TestResolveStateDir(unittest.TestCase):
         self.assertEqual(result_path, Path("/x/y"))
 
     def test_flat_root_when_no_subdir(self):
-        # Flat layout: anchor-writing_crystals.jsonl directly under root.
-        self._touch("anchor-writing_crystals.jsonl")
-        result = _resolve_state_dir("anchor-writing", None, default_root=self.root)
+        # Flat layout: sample-corpus_crystals.jsonl directly under root.
+        self._touch("sample-corpus_crystals.jsonl")
+        result = _resolve_state_dir("sample-corpus", None, default_root=self.root)
         self.assertEqual(result, self.root)
 
     def test_nested_name_subdir(self):
@@ -63,18 +63,18 @@ class TestResolveStateDir(unittest.TestCase):
         self.assertEqual(result, self.root / "me")
 
     def test_school_facet_subdir(self):
-        # School layout: ~/.linafish/school/captain/captain_crystals.jsonl
-        self._touch("school", "captain", "captain_crystals.jsonl")
-        result = _resolve_state_dir("captain", None, default_root=self.root)
-        self.assertEqual(result, self.root / "school" / "captain")
+        # School layout: ~/.linafish/school/facet-a/facet-a_crystals.jsonl
+        self._touch("school", "facet-a", "facet-a_crystals.jsonl")
+        result = _resolve_state_dir("facet-a", None, default_root=self.root)
+        self.assertEqual(result, self.root / "school" / "facet-a")
 
     def test_nested_takes_precedence_over_school(self):
         # If both a top-level subdir AND a school facet exist for the same
         # name, the top-level wins (more specific user intent).
-        self._touch("captain", "captain_crystals.jsonl")
-        self._touch("school", "captain", "captain_crystals.jsonl")
-        result = _resolve_state_dir("captain", None, default_root=self.root)
-        self.assertEqual(result, self.root / "captain")
+        self._touch("facet-a", "facet-a_crystals.jsonl")
+        self._touch("school", "facet-a", "facet-a_crystals.jsonl")
+        result = _resolve_state_dir("facet-a", None, default_root=self.root)
+        self.assertEqual(result, self.root / "facet-a")
 
     def test_unknown_name_falls_back_to_root(self):
         # Name that has no subdir AND no flat file falls back to root —
