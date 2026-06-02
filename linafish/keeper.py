@@ -5,8 +5,8 @@ specific kind of material (a person's identity, a manuscript's
 canon, a relationship's texture, a domain's conventions) and is
 designed to be invoked when that scope is the load-bearing one.
 
-The pattern emerged in Anchor's substrate as anchor-keeper /
-sister-keeper / phoenix-keeper / studio-keeper — each a focused
+The pattern is a focused single-purpose keeper —
+each scoped to one domain — a focused
 fish + a Claude Code subagent definition that queries it. This
 module ships the CLI half of that pattern: any user can `init` a
 keeper from seed material and `invoke` it with a theme query.
@@ -41,9 +41,9 @@ KEEPER_SUFFIX = "-keeper"
 
 @dataclass
 class KeeperInfo:
-    name: str           # e.g. "anchor"  (not "anchor-keeper")
-    full_name: str      # e.g. "anchor-keeper"
-    state_dir: Path     # ~/.linafish/anchor-keeper/
+    name: str           # e.g. "research"  (not "research-keeper")
+    full_name: str      # e.g. "research-keeper"
+    state_dir: Path     # ~/.linafish/research-keeper/
     purpose: str        # one-liner from keeper.md, or ""
     crystals: int       # current crystal count (0 if no fish yet)
 
@@ -51,7 +51,7 @@ class KeeperInfo:
 def _keeper_dir(name: str, state_root: Optional[Path] = None) -> Path:
     """Resolve a keeper's state directory.
 
-    `name` may be "anchor" or "anchor-keeper" — we normalize to add
+    `name` may be "research" or "research-keeper" — we normalize to add
     the -keeper suffix if missing.
     """
     if state_root is None:

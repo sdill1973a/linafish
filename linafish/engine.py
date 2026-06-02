@@ -934,7 +934,7 @@ class FishEngine:
         # (commit 97a4859) by switching to "recouple all when ANY
         # uncoupled crystal exists." Correct, but bought correctness at
         # O(N × window) per single eat — production-fatal at 387K crystals
-        # (~60s per eat, caught 2026-04-29 during .67 v7 cut-over rollback).
+        # (~60s per eat, caught 2026-04-29 during a peer-node v7 cut-over rollback).
         #
         # 2026-04-29 §RECOUPLE.IN.PLACE — incremental path for the common
         # case. The eat / eat_many / eat_path paths all APPEND new crystals
@@ -1876,7 +1876,7 @@ class FishEngine:
         # Progress logging — revectorize_all on a large fish is opaque
         # for hours without this. Caller can suppress by redirecting
         # stdout. See fix/revectorize-progress-logging-2026-05-23 for
-        # the §TINKER.5/23 receipt that motivated this (anchor-writing
+        # the tuning-session receipt that motivated this (a real corpus
         # 11.6K crystals → 5h+ silent runtime → invisible-but-alive).
         import time as _time
         _t0 = _time.monotonic()
@@ -2303,7 +2303,7 @@ class FishEngine:
 
         # Build crystal-by-id index ONCE rather than scanning the corpus
         # per formation. Prior shape was O(N×F) (line 2308 list-comp);
-        # at me-fish scale (117K crystals × 172 formations = 20M iters)
+        # at large-fish scale (~117K crystals × ~170 formations = 20M iters)
         # it pushed /health requests to 8-30s and caused converse
         # listeners to appear wedged under repeated probes. The
         # crystal_by_id dict + member lookup is O(N) to build plus

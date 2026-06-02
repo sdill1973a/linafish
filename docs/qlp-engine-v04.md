@@ -25,7 +25,7 @@ class Moment:
     timestamp: str                     # when
     context: Dict[str, Any] = None     # everything else:
     # - ache_state: current system ache
-    # - relationship_d: distance to author (stranger=6, captain=1)
+    # - relationship_d: distance to author (stranger=6, primary=1)
     # - felt_state: body/house/presence data if available
     # - prior_chain: what cognitive operation preceded this moment
     # - modifiers: ^depth +scope *focus ~flex !urgent from the environment

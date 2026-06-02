@@ -14,7 +14,7 @@ a URL can read the fish. Serves the same engine as the MCP server.
     POST /match              — tight recall (JSON: {"text": "...", "top": 3})
     POST /re-eat             — maintenance cycle (gardener + assessment + growth)
 
-    Federation message broker (added 2026-04-29 from .67 protofish):
+    Federation message broker (added 2026-04-29 from a peer protofish):
     POST /msg                — send a DM (JSON: {"from": "...", "to": "...",
                                                  "text": "...", "protocol": "..."})
     GET  /inbox/<mind_id>    — unread for a mind (?limit=20&since=ts)
@@ -52,7 +52,7 @@ _PRIMER = ""  # loaded at server start
 
 
 # --- Federation message broker (DM) helpers --------------------------------
-# Ported from .67 protofish (fish_server.py) 2026-04-29 §THE.RECEIPTS.ON.THE.WIRE
+# Ported from a peer protofish (fish_server.py) 2026-04-29
 # follow-up. Three endpoints: POST /msg, GET /inbox/<mind_id>, POST /msg/read.
 # State lives in <state_dir>/messages.jsonl (override via LINAFISH_MESSAGES_FILE).
 
@@ -65,7 +65,7 @@ def _messages_file(engine: FishEngine) -> Path:
     Default: <state_dir>/messages.jsonl
     Override: LINAFISH_MESSAGES_FILE env var (absolute path).
 
-    The override is what lets .67 cut over to master http_server while
+    The override is what lets a peer node cut over to master http_server while
     keeping the existing /home/sdill/fish_messages.jsonl as the authoritative
     message log — no migration of historical DMs needed.
     """
@@ -444,7 +444,7 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
 
     # HTTP /eat path uses periodic commit (every 100 eats) instead of per-eat
     # autocommit — per-eat fired a `git commit` that wedged the request loop
-    # (25-30s on .140, indefinite on .67's 393K corpus, diagnosed 2026-05-01).
+    # (25-30s on a mid fish, indefinite on a 393K-crystal corpus, diagnosed 2026-05-01).
     # The N=100 cadence keeps state-dir git history advancing so rollback
     # remains possible (codex round-1 finding 2026-05-02: pure git_autocommit=
     # False stranded daemon history because daemons never call session_end).

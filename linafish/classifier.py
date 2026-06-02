@@ -23,7 +23,7 @@ Routing tags are independent of the deposit decision: every turn gets
 a tag (default "ambient") so downstream wiring can route to per-facet
 fish in a future phase. Tag patterns are caller-supplied.
 
-Origin: ported from anchor-chat-ui Phase 6 Task 53 into linafish 1.4.
+Origin: ported from a chat-ui sidecar into linafish 1.4.
 The decoupling from anchor-specific defaults is the 1.4 generalization.
 
 CLI: `linafish classify --user "..." --assistant "..."` prints
@@ -40,7 +40,7 @@ from typing import Optional
 class DepositDecision:
     """Output of classify(). JSON-serializable via dataclasses.asdict."""
     deposit: bool
-    target_fish: str  # e.g. "anchor-writing" or "skip"
+    target_fish: str  # e.g. "writing" or "skip"
     routing_tag: str
     score: float
     reasons: list[str]

@@ -313,7 +313,7 @@ class MIVectorizer:
         # call; without this cache the sum was being recomputed every
         # invocation (40K+ times per crystal × 11K crystals = catastrophic
         # under revectorize). Invalidated whenever feed() mutates counts.
-        # See §TINKER.5/23 root-cause finding 2026-05-23.
+        # See the tuning-session root-cause finding 2026-05-23.
         self._total_tokens_cache = None
 
     def tokenize(self, text: str) -> List[str]:

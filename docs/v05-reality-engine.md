@@ -44,7 +44,7 @@ Raw text flows in the stream (federated tier). What the fish compresses from it 
 
 ### The Listener
 ```python
-linafish listen --source mqtt://192.168.4.67:1884/room/all
+linafish listen --source mqtt://BROKER_HOST:1884/room/all
 linafish listen --source folder:~/journal --watch
 linafish listen --source webhook --port 8900
 linafish listen --source stdin  # pipe anything

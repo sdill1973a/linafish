@@ -189,7 +189,7 @@ class Formation:
     content_diversity: float = 0.0   # unique_normalized_hashes / crystal_count, in (0, 1]
     compression_score: float = 0.0   # mean_ache * cog_amplitude * trust_weight * content_diversity
                                      # validated 4133x ratio between top substantive and ALL MINDS
-                                     # dominator on me-fish 2026-04-28. Replaces crystal_count as
+                                     # dominator on a production fish 2026-04-28. Replaces crystal_count as
                                      # the surface ranking key — broadcast-regime saturation
                                      # (low ache, low cog_amplitude, low diversity from
                                      # normalized-hash collapse) compresses to ~0; substantive
@@ -966,7 +966,7 @@ def formations_to_codebook_text(
     # cognitive amplitude, trust_weight (cross-mind diversity), and
     # content_diversity (unique-normalized-hash / count — RCP compression-
     # equivalence). Empirical 4133x ratio between top substantive and ALL
-    # MINDS dominator on me-fish 2026-04-28. crystal_count still rendered
+    # MINDS dominator on a production fish 2026-04-28. crystal_count still rendered
     # in the formation header so repetition-as-signal stays visible.
     # `formation_rank_key` (module-level, see above) gives deterministic
     # tie-break and handles None/legacy Formation objects safely.

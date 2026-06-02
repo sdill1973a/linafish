@@ -261,12 +261,12 @@ The fish subscribes to a data stream. It eats everything. What couples with exis
 Multiple fish, each specialized:
 
 ```
-linafish school add captain -d 2.0 --centroid
-linafish school add phoenix -d 4.0
+linafish school add history -d 2.0 --centroid
+linafish school add poetry -d 4.0
 linafish school eat "Today I realized..."
 ```
 
-One stream, many nets. Each fish grabs what resonates with its domain. The captain fish grabs what sounds like leadership. The phoenix fish grabs what sounds like creativity. Nothing is lost. The river holds everything.
+One stream, many nets. Each fish grabs what resonates with its domain. The history fish grabs what sounds like the past. The poetry fish grabs what sounds like verse. Nothing is lost. The river holds everything.
 
 ### Guppies (The Fish That Feeds Itself)
 

@@ -411,7 +411,7 @@ def serve_converse(
 
     # Converse /eat path uses periodic commit (every 100 eats) — same shape
     # as http_server.py. Per-eat autocommit wedged the single-threaded
-    # request loop (25-30s on .140 me-fish at 12K crystals). N=100 keeps
+    # request loop (25-30s on a large fish at ~12K crystals). N=100 keeps
     # state-dir git history advancing for rollback (codex round-1 finding
     # 2026-05-02: pure git_autocommit=False stranded daemon history because
     # daemons never call session_end). SIGTERM/SIGINT handler flushes

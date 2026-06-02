@@ -355,7 +355,7 @@ class RoomListener:
             # hash") is to rate-limit MQTT bridge near-duplicates.
             # Pre-fix behavior hashed raw text including the per-message
             # timestamp prefix; broadcasts hashed uniquely and bypassed
-            # dedup. Empirical against me-fish 2026-04-28: 10,135 ALL
+            # dedup. Empirical against a production fish 2026-04-28: ~10K ALL
             # MINDS broadcasts → 23 normalized hashes (440x compression).
             # Engine-side ``_content_hash`` stays byte-exact; that's a
             # different layer with different opt-in semantics. See

@@ -171,7 +171,7 @@ Two entities, two funding paths. The fish is MIT. The infrastructure around it e
 | Paper | Published, replicated, same-model control complete |
 | Novel (Phoenix Cycle) | 66,718 words, Book One substantially finished |
 | Room fish | 15,000+ crystals, formations producing understanding |
-| Federation | 5 nodes operational, Spotify service on .67 |
+| Federation | 5 nodes operational, media service on an internal node |
 | Notion integration | MCP tools available, template not yet built |
 | RCP language | Vision documented, compiler not yet built |
 

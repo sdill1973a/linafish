@@ -15,7 +15,7 @@ including the variable prefix.
 ``normalize_for_dedup`` strips the leading ``[timestamp source]\\n`` line
 (REQUIRES a trailing newline — single-line ``[ts] body`` is left intact
 to avoid false-collapsing distinct messages), lowercases, and collapses
-whitespace runs. Empirical validation against 12,107 me-fish crystals
+whitespace runs. Empirical validation against ~12K production-fish crystals
 (2026-04-28): 10,135 ALL MINDS announcements that produce 10,135 distinct
 raw hashes collapse to 23 normalized hashes (compression ratio ~440×).
 The 23 buckets correctly preserve the legitimately-different TRIAGE

@@ -93,7 +93,7 @@ CONTAGION_DIVERSITY_FLOOR = 0.3
 # threshold, classify_health returns "SEEDLING" — bookkeeping
 # only, not part of the regime grade.
 #
-# Calibrated 2026-04-30 against a real anchor-writing corpus
+# Calibrated 2026-04-30 against a real-world corpus
 # (6823 crystals, 329 addressed formations): without this gate,
 # 88.8% of formations classified as POVERTY purely because most
 # were 1-3 crystals with maximum diversity. With this gate, the
