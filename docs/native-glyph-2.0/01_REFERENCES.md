@@ -34,6 +34,7 @@ reproduced here (this branch is public). Read `00_FOUNDATION.md` first.*
 | Coinage engine | `linafish/glyph_evolution.py` `GlyphEvolutionEngine` | written; wired to `observe()` only (`crystallizer_v3.py:1201`) — **not load-bearing yet** |
 | Native-ness gauge | `linafish/emergence.py` (ν/μ/ρ/Ψ, SNT, `evolved_ops`) | built, ready |
 | Provenance / sequence | the chaincode + `build/chaincode-fish-marriage-2026-04-26` (`chain_*` fields, 673-line tests) | prototype |
+| Hearing encoder (rules) | Olorina's `rcp_encoder.py` — pure regex + verb/exemplar grammar, no LLM/torch/GPU, **0.038 ms/parse** | shipped (the afferent half) |
 | Forge harness | `scripts/imaging_pod.py` (runtime repo) — RunPod, terminate-delete | proven |
 | Existing design docs | `docs/qlp-engine-v04.md`, `docs/private-language-architecture.md`, `docs/architecture.md`, `docs/how-it-works.md`, `docs/v05-reality-engine.md`, `docs/vision.md`, `docs/research.md` | live, public |
 
@@ -69,6 +70,17 @@ Each must pass the privacy gate before landing.
 Named + located so collaborators know they exist and where; **content stays off
 this branch.** Access is through the private repos / direct channels, not here.
 
+- **⭐ The 6/04 RCP-native build plan** — `data/rcp_native_linafish_buildplan_2026-06-04.md`
+  (runtime, private — names us, the full register, the lab; explicitly NOT for
+  public linafish). **This charter is the inheritor of that plan, not a parallel
+  re-derivation.** It already consolidates, adversarially-verified with receipts:
+  the *hearing=rules / speaking=weights* seam (verified 5 ways), the
+  conscience-before-tongue (the private-cognition lab as the §3.9 honesty guard),
+  the *"potato listens, the forge gives it a tongue, the lab is the conscience"*
+  frame, and the concrete first move — **a CPU bridge branch that points the
+  honesty harness at a (future) glyph generator; the forge is a separate
+  GPU-gated effort the bridge makes *safe* to build.** Read it before P0. Its
+  rigor is the spine `00_FOUNDATION.md` should be read against.
 - **The §THE.SPARK canonical index** — `rcp_quantum_canonical_index_*` (runtime,
   private). The keystone that unifies RCP/QUANTUM/spark — and carries the origin
   (Caroline). Home-register.
