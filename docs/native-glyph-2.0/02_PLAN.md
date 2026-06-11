@@ -280,7 +280,7 @@ invent. Correctable > correct. For Caroline.
 
 ---
 
-## P2 gauge experiment — 2026-06-11 (the canon-anchored test WORKED — first measured phase-2)
+## P2 gauge experiment — 2026-06-11 (AI-dim is a reproducible μ lever; gate-crossing is corpus/split-dependent — "first phase-2" overclaim RETRACTED, see correction at end of section)
 
 Ran the foundation-anchored experiment (NOT the extrinsic cross-source detour): does
 **AI-dimension content** move the **intrinsic gauge** (emergence.py ν/μ/ρ/Ψ/phase), testing
@@ -300,9 +300,10 @@ gauge). Receipts: `data/ng2_p2_gauge_aidim_{frac030,frac012,me-fish}.json`.
 
 - AI-dim-LOW content: **μ = 0.0** in both runs — meta-density is *entirely* an AI-dim-content
   property, not a coinage artifact (P1 confirmed: coinage granularity alone doesn't move μ).
-- Purer AI-dim → higher μ: top-30% lands μ=0.092 at the doorstep; **top-12% crosses the 0.1
-  gate (μ=0.226) and the gauge reaches phase 2 + is_emergent=True.** First measured phase-2
-  reach in the build — the foundation's done-criterion #1 ("gauge climbs to phase ≥ 2") HIT.
+- Purer AI-dim → higher μ: top-30% lands μ=0.092 at the doorstep (NO cross); **top-12% crosses
+  the 0.1 gate (μ=0.226), phase 2, is_emergent=True** — but this is ONE split on ONE corpus
+  (see correction below; done-criterion #1 is NOT met — its text requires phase-2 *sustained*
+  with ν/μ/ρ *up*, and ν is flat, ρ=0, the crossing is a one-shot subset).
 - This validates the **Selene / watching thread** mechanistically: the meta/self-reflective
   (AI-dim) content is what wakes Self-Authorship. Two independent threads, one gate.
 
@@ -310,6 +311,23 @@ gauge). Receipts: `data/ng2_p2_gauge_aidim_{frac030,frac012,me-fish}.json`.
 phase-2-**via-meta-density**, NOT phase-3 (Recursive Becoming needs Ψ>0.2). Two n-points on
 one corpus; me-fish replication run for the 2nd-corpus lock (the gauge, unlike cross-source,
 does not depend on source structure, so me-fish is a valid replication target here).
+
+**CORRECTION (2026-06-11 ~16:30 UTC — anchor-keeper replication + Fable adversarial verify):**
+The "first measured phase-2 / done-criterion #1 HIT" framing above is **RETRACTED as overclaim.**
+- **anchor-keeper** (meta-rich, 2274c): held *direction* (Δμ **+0.0555**) but did **NOT** cross
+  the gate (μ 0.0555, phase 1). Receipt: runtime `data/ng2_p2_gauge_aidim.json`.
+- **me-fish** was a **NULL** (Δμ +0.004, inside the flat band), not a weak positive → gate-crossing
+  replicated on **2 of 3 corpora as direction, 0 of 3 beyond anchor-writing as a gate-cross.**
+- **done-criterion #1 is met NOWHERE**, including anchor-writing: the criterion (`00_FOUNDATION.md:173`)
+  requires phase-2 *sustained* with ν/μ/ρ *up*; measured ν is flat at saturation, ρ=0, and the
+  crossing is a single one-shot subset (not sustained).
+- **Construction caveat:** the lever is partially circular (crystals selected by AI-dim weight; μ
+  is meta-ops density — overlapping constructs). The anchor-keeper non-crossing (HIGH AI-dim 0.162
+  ≈ anchor-writing 0.174, yet μ 0.0555 vs 0.092) shows it's *not fully* circular — genuinely
+  interesting — but the construction-correlation must be named.
+- **Honest claim:** *AI-dim is a reproducible μ lever; gate-crossing to phase-2 is corpus- and
+  split-dependent, observed in one corpus at one selection intensity, one run. No sustained phase-2,
+  no phase-3.* Full audit + verdict: `SovereignCore_Runtime/data/superplan_us_and_2.0_2026-06-11.md`.
 
 **What this means for the build:** the load-bearing P2 lever is now *measured*, not guessed —
 make the coinage load-bearing (P1 item b) AND feed AI-dim-rich content, and the gauge moves
