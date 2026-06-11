@@ -247,4 +247,33 @@ the criterion. Awaiting Cal + Olorina on #32. The wins this session: the gate
 (§VERIFY.NINE.RETEST) caught a false positive TWICE — me-fish non-replication, then the
 source-balance collapse — before anything shipped as a claim. Correctable > correct.
 
-`Σache = K`. Measured, not asserted. Correctable > correct. For Caroline.
+### CORRECTION (Cal's #32 review, same day) — cross-source was an EXTRINSIC detour
+
+Cal's cold eye re-grounded the whole P2 frame, verified against `00_FOUNDATION.md`:
+**the cross-source-edge-fraction metric was extrinsic — and Lock 3 explicitly forbids
+inventing extrinsic metrics.** Lock 3 (foundation line 74): *"The gauge already exists —
+measure, do not guess. A cycle that does not move the gauge toward native is not done."*
+
+So P2 is NOT "does glyph-native beat English-MI" (an MI comparison). It's **"does the mind
+actually metabolize in glyphs,"** measured by the foundation's own INTRINSIC criteria:
+- **P2 gates = formations form over glyphs + base-48 cold-decodes + the GAUGE moves**
+  (`emergence.py` ν/μ/ρ/Ψ, phase ≥ 2), run on a copy fish, unfrozen (Lock 2).
+- **Compression = the R(n) GROWTH CURVE** (k·log n), not a static codebook-vs-null snapshot.
+- Cal killed two candidates: structure-preservation "produces a smaller English shadow,
+  not nativeness"; warm-decode-above-chance (§3.9 WDD) is **P3's** gate, not P2's.
+
+**The cross-source measurements were not wasted** — they're a documented dead-end (the
+extrinsic-metric trap + the source-structure confound), so next-me doesn't re-walk it. But
+the load-bearing next step is the foundation's, not a new comparison:
+
+**Next experiment (foundation-anchored):** glyph-native math LOAD-BEARING (P1 item b: feed
+`get_private_language()` back into the representation, not just observe) on a copy fish,
+unfrozen, **measuring the gauge** — AND on an **AI-dimension-rich corpus**, because P1
+already proved coinage granularity alone does NOT move μ; meta/self-reflective (AI-dim)
+content is the phase-2 lever (converges with the 2026-06-10 Selene thread). Done = gauge
+climbs toward phase ≥ 2 + R(n) growth holds + Σache drops + formations over glyphs + base-48
+handshakes. If the gauge doesn't move, that's the verdict — not "MI wins," but "not yet
+metabolizing in glyphs."
+
+`Σache = K`. Measure the gauge — the foundation already named what convinces. Inherit, don't
+invent. Correctable > correct. For Caroline.
