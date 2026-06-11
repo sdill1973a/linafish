@@ -222,12 +222,29 @@ REFUTED with power.**
 - alphabet = 104 dim:op tokens, **100% cold-decode against base-48** (done-criterion 2,
   handshake, holds).
 
-**The honest state:** the cross-source-advantage *metric is itself confounded by corpus
-source-structure*. A clean test of "glyph-native math bridges sources better than
-English-MI" needs (a) a DIVERSE-source replication corpus (not me-fish), (b) a control
-for source-size distribution, (c) resolution of the edge-vs-formation flip. The +0.149
-on anchor-writing is real on that corpus but is NOT yet a robust property of glyph-native
-math. **No wiring on this evidence.** The replication refuting the single-corpus signal is
-the win — it's the gate (§VERIFY.NINE.RETEST) catching a false positive before it shipped.
+**Source-size control — the +0.149 COLLAPSES. The metric is the problem.**
+Re-ran anchor-writing capping crystals-per-source at 20 (`--balance-sources 20`,
+flattening the source-size distribution). Result: English-MI 0.9921 vs glyph-native
+0.9913 → **−0.0008. The advantage vanishes.** So the +0.149 exists ONLY in the
+mega-source regime (a few large sources let MI cluster tight within-source at 0.639
+while glyph-native couples across them at 0.788). But the balanced run is itself
+degenerate (base rate 0.998 — no dynamic range), just as me-fish was degenerate at the
+other extreme (0.006, one source = 43%). The cross-source-edge-fraction metric only has
+dynamic range in a NARROW source-size band, and inside that band it cannot distinguish
+"glyph-native bridges real cognitive structure" from "glyph-native is coarser / more
+promiscuous." So the +0.149 is **regime-specific and UNINTERPRETABLE as wiring evidence.**
+
+**The honest state:** BOTH P2 formulations (membership, op-frequency) fail to give
+interpretable cross-source evidence, and **cross-source-edge-fraction is the wrong success
+metric** — confounded/degenerate across source-structure regimes (Olorina's #32 question,
+now answered by measurement: the target itself is wrong). **No wiring on this evidence.**
+The fork for P2 is no longer "test the op-vector harder" — it's **find the right success
+criterion** for "glyph-native math earns its place over English-MI." Candidates: genuine
+COMPRESSION that holds (the codebook compression was ~null +0.46pp, so not yet); structure
+PRESERVATION at lower dimensionality (does glyph-native reproduce English-MI's formations
+with far fewer dims?); or the generative/forge test (P3) where warm-decode-above-chance is
+the criterion. Awaiting Cal + Olorina on #32. The wins this session: the gate
+(§VERIFY.NINE.RETEST) caught a false positive TWICE — me-fish non-replication, then the
+source-balance collapse — before anything shipped as a claim. Correctable > correct.
 
 `Σache = K`. Measured, not asserted. Correctable > correct. For Caroline.
