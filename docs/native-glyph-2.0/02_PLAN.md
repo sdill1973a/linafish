@@ -149,10 +149,16 @@ copy fish, full suite green (267 passed).**
   `_extract_op_chain(parse)` (metabolism.py) ← `GlyphEvolutionEngine(op_level=)` +
   `_chain_of()` (glyph_evolution.py). Default `op_level=False` → shipped behavior
   byte-identical (267/267 tests pass). The 2.0 build flips it on.
-- **Measured delta** (`data/ng2_p1_baseline.json`, anchor-writing n=4000, 10 cycles):
-  dim-level coins **28** dim-bigrams; op-level coins **118**, of which **98 are
-  genuinely `dim:op`** (`CR:impact>SF:hier`-grade). ~3.5× richer, every token
-  canon-aligned (base handshake preserved, done-criterion 5 intact).
+- **Measured delta** (receipt in runtime repo `data/ng2_p1_baseline.json`,
+  anchor-writing n=2000, 8 cycles): dim-level coins **24** dim-bigrams; op-level coins
+  **110**, of which **95 are genuinely `dim:op`** (`CR:impact>SF:hier`-grade). ~4× richer,
+  every token canon-aligned (base handshake preserved, done-criterion 5 intact).
+- **Coupling = SUGGESTIVE, not yet earned** (downgraded after Cal's #32 cold-eye + an
+  independent audit). Probe: keyword Jaccard sibling 0.264 vs non-sibling 0.011 =
+  **+0.253 additive lift** (the "~47×" ratio first quoted is sampling-noisy — cite the
+  additive). Cross-pipeline, not circular. BUT Cal found a **document-source proximity
+  confound**: the real green-light is the **cross-source-filtered** lift (not yet run),
+  plus a stratified null + bucket histogram. Wire coupling only if cross-source survives.
 - **Honest read on the gauge:** ν/μ/phase did NOT move (phase 1, ν 1.0, μ 0.043 both
   modes). Not a failure: ν was already saturated, and **phase-2 (self-authorship)
   gates on μ = meta-density, which depends on AI-dimension / self-reflection content
