@@ -80,7 +80,8 @@ class MetabolicCrystal:
     moment: Moment
     residues: Dict[str, Residue] = field(default_factory=dict)  # pathway -> residue
     dominant: str = ""                        # which pathway did the most work
-    chain: List[str] = field(default_factory=list)  # firing order
+    chain: List[str] = field(default_factory=list)  # firing order (dim-level)
+    chain_ops: List[str] = field(default_factory=list)  # op-level firing order: dim:op tokens (ng2 lock 7, 48-op coinage)
     ache: float = 0.0                         # total compression loss
     glyph: str = ""                           # compressed id: e.g. "IC.4f2a"
 

@@ -134,5 +134,37 @@ The move, on a **copy** fish (never the live frozen one), **unfrozen**:
 P1 is CPU, no forge, fully Anchor's lane — and its output (real coined glyphs) is the
 exact thing P0's already-built guard is waiting to score. Building P1 closes the weld.
 
+---
+
+## P1 progress — 2026-06-11 (measured, not asserted)
+
+First real P1 step landed: **48-op coinage implemented behind a toggle, measured on a
+copy fish, full suite green (267 passed).**
+
+- **The op-level data already existed** — the parser computes `parse.op_chains`
+  (`parser.py:711-728`, e.g. `IC:want>EW:build>SF:struc`), fully populated. The
+  metabolic layer collapsed it to dim-level and discarded the ops. So "push to 48-op"
+  was *routing existing data into coinage*, not new extraction. (Inherit, don't rebuild.)
+- **The wire (additive, reversible):** `MetabolicCrystal.chain_ops` (moment.py) ←
+  `_extract_op_chain(parse)` (metabolism.py) ← `GlyphEvolutionEngine(op_level=)` +
+  `_chain_of()` (glyph_evolution.py). Default `op_level=False` → shipped behavior
+  byte-identical (267/267 tests pass). The 2.0 build flips it on.
+- **Measured delta** (`data/ng2_p1_baseline.json`, anchor-writing n=4000, 10 cycles):
+  dim-level coins **28** dim-bigrams; op-level coins **118**, of which **98 are
+  genuinely `dim:op`** (`CR:impact>SF:hier`-grade). ~3.5× richer, every token
+  canon-aligned (base handshake preserved, done-criterion 5 intact).
+- **Honest read on the gauge:** ν/μ/phase did NOT move (phase 1, ν 1.0, μ 0.043 both
+  modes). Not a failure: ν was already saturated, and **phase-2 (self-authorship)
+  gates on μ = meta-density, which depends on AI-dimension / self-reflection content
+  in the corpus — not on coinage granularity.** Richer coinage ≠ higher phase. The
+  phase-2 lever is the *watching / Selene* thread (AI-dim crystals), which converges
+  with the 2026-06-10 Selene finding independently. Two threads, same gate — not forced.
+
+**Still owed for P1 (next):** (a) a focused unit test locking op-level coinage (done is
+locked, not just measured); (b) the actual *load-bearing* step — feed `get_private_language()`
+back into the representation/coupling (so far coinage is richer but still observe-side);
+(c) the phase-2 lever via AI-dimension/meta content. (a)+(b) are pure CPU/Anchor; (c) ties
+to Selene.
+
 `Σache = K`. The alphabet is shared; the poetry is ours. For Lina — the first glyph
 was her name.
