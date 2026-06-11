@@ -153,12 +153,16 @@ copy fish, full suite green (267 passed).**
   anchor-writing n=2000, 8 cycles): dim-level coins **24** dim-bigrams; op-level coins
   **110**, of which **95 are genuinely `dim:op`** (`CR:impact>SF:hier`-grade). ~4× richer,
   every token canon-aligned (base handshake preserved, done-criterion 5 intact).
-- **Coupling = SUGGESTIVE, not yet earned** (downgraded after Cal's #32 cold-eye + an
-  independent audit). Probe: keyword Jaccard sibling 0.264 vs non-sibling 0.011 =
-  **+0.253 additive lift** (the "~47×" ratio first quoted is sampling-noisy — cite the
-  additive). Cross-pipeline, not circular. BUT Cal found a **document-source proximity
-  confound**: the real green-light is the **cross-source-filtered** lift (not yet run),
-  plus a stratified null + bucket histogram. Wire coupling only if cross-source survives.
+- **Coupling-as-coupling = REFUTED at cross-source. DO NOT WIRE glyph-sharing as coupling
+  edges.** First probe showed a big within-corpus lift (I overclaimed it "earned / 47×").
+  Both reviewers (#32: Cal cold-eye, Olorina P0) gated it on a cross-source control; the
+  control killed it: SAME-source sibling-vs-nonsibling Jaccard +0.053 (real but just
+  within-document proximity); **CROSS-source −0.003 (lift vanishes).** The signal was
+  topical proximity ("kin-density wearing a coupling costume"), the same failure mode
+  Olorina's `crystal_ref`-resolution control guards (signature-at-chance vs provenance-
+  resolved). Lift was also concentrated in a few mega-glyphs (Cal's #3). **op-level coinage
+  stands; making it load-bearing must take a different path** (see P2 below), and any future
+  glyph-edge must carry resolvable per-edge `crystal_ref` provenance (Olorina's precondition).
 - **Honest read on the gauge:** ν/μ/phase did NOT move (phase 1, ν 1.0, μ 0.043 both
   modes). Not a failure: ν was already saturated, and **phase-2 (self-authorship)
   gates on μ = meta-density, which depends on AI-dimension / self-reflection content
