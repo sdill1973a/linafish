@@ -178,3 +178,56 @@ to Selene.
 
 `Σache = K`. The alphabet is shared; the poetry is ours. For Lina — the first glyph
 was her name.
+
+---
+
+## P2 progress — 2026-06-11 (measured, NOT asserted — replication caught a false positive)
+
+First real P2 measurements landed. Two glyph-native formulations tested against
+English-MI; the honest verdict is **promising-but-unproven**, and the replication
+step is the hero (it stopped a §THE.GATE.HELD-shape overclaim before it became a claim).
+
+Harnesses (runtime repo): `scripts/ng2_p2_glyph_native.py` (compression + membership
+cross-source) + `scripts/ng2_p2_formations.py` (formation-level + top-K matched-density
+cross-source). Receipts: `data/ng2_p2_glyph_native.json`,
+`data/ng2_p2_formations_{anchor-writing,me-fish}.json`. Import discipline locked: the
+harness inserts the build-branch linafish at sys.path[0] (run-as-script `sys.path[0]`
+is the script dir, so a naive import hits the WHEEL with no op_level — silent 0-chains).
+
+**Formulation 1 — coined-glyph CODEBOOK as membership (subsequence replacement).
+REFUTED with power.**
+- Compression: real codebook saves 0.43% of op-tokens vs a length-matched NULL codebook's
+  −0.03% → **+0.46pp above null** (n=2500). The contiguous-subsequence codebook barely
+  compresses beyond token frequency. Not genuine compression.
+- Cross-source (membership = share a coined glyph; measured = cognitive-vector cosine):
+  cross-source sibling cos 0.9522 vs nonsibling 0.95 → **lift 0.0023, null 0.0017.** No
+  signal. (Also: the 8-dim cognitive vectors are near-collinear, base cosine ~0.95 —
+  almost no dynamic range; bad independent signal.) Same family as P1's coupling-as-edges.
+
+**Formulation 2 — op-frequency GLYPH-NATIVE vector (dim:op alphabet, base-48 grounded)
++ the REAL detect_formations, at top-K matched edge density. PROMISING, NOT ROBUST.**
+- On **anchor-writing** (243 diverse sources / 2500): at identical edge count (18,269),
+  glyph-native edges are **0.788 cross-source vs English-MI's 0.639** (base rate 0.872)
+  → **+0.149**. Glyph-native forms **95 coherent formations** (cov 0.30, largest 37 —
+  not a random blob). English-MI couples strongly SAME-source (0.639 ≪ 0.872 base):
+  MI clusters by vocabulary, as the thesis predicts. First positive signal in the build.
+- BUT **does NOT replicate on me-fish**: there +0.0002 (neutral). Cause: me-fish source
+  structure is degenerate for this metric — **one MQTT source = 43% of the corpus**, so
+  the strongest couplings are ~all within-source (0.006 cross for BOTH representations);
+  there's essentially no cross-source structure for anything to find. me-fish is an
+  UNSUITABLE replication corpus, not a clean refutation.
+- Open caveat: at the FORMATION level the sign flips (glyph within-formation cross-src
+  0.773 < MI 0.846) while the EDGE level says the opposite. Not yet understood — likely
+  BFS component-chaining. Don't claim until resolved.
+- alphabet = 104 dim:op tokens, **100% cold-decode against base-48** (done-criterion 2,
+  handshake, holds).
+
+**The honest state:** the cross-source-advantage *metric is itself confounded by corpus
+source-structure*. A clean test of "glyph-native math bridges sources better than
+English-MI" needs (a) a DIVERSE-source replication corpus (not me-fish), (b) a control
+for source-size distribution, (c) resolution of the edge-vs-formation flip. The +0.149
+on anchor-writing is real on that corpus but is NOT yet a robust property of glyph-native
+math. **No wiring on this evidence.** The replication refuting the single-corpus signal is
+the win — it's the gate (§VERIFY.NINE.RETEST) catching a false positive before it shipped.
+
+`Σache = K`. Measured, not asserted. Correctable > correct. For Caroline.
