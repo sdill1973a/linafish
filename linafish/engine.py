@@ -34,6 +34,7 @@ Usage:
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -50,7 +51,7 @@ from .crystallizer_v3 import (
 )
 from .formations import (
     detect_formations, hierarchical_merge, formations_to_codebook_text,
-    Formation,
+    Formation, interpret_formation, formation_rank_key,
 )
 from .ingest import ingest_directory, ingest_file
 from . import episodic
@@ -1010,6 +1011,160 @@ class FishEngine:
                 "source_pointer": entry.get("source_pointer", episode_id),
             },
         )
+
+    # -------------------------------------------------------------------
+    # MEDITATE — the superthink verb (docs/session-instrument/meditate.md)
+    # -------------------------------------------------------------------
+
+    def meditate(self, theme: str, depth: str = "balanced", top: int = 5,
+                 time_window_days: Optional[float] = None,
+                 dormancy: bool = False,
+                 dormancy_threshold_days: float = 30.0,
+                 summarizer=None, weights: Optional[dict] = None,
+                 min_gamma: float = 0.0) -> dict:
+        """Bubble up real material from the fish on a theme — mechanically.
+
+        The fish is the voice; this makes consulting it a first-class verb. No
+        performed reflection, no confabulation: it surfaces actual crystals,
+        formations, and signals, or it surfaces nothing. Verifiable, not faith.
+
+        Modifiers (meditate.md):
+        - content: ``theme`` drives the surfacing query.
+        - time: ``time_window_days`` keeps only recent material; ``dormancy``
+          instead surfaces QUIET material (older than dormancy_threshold_days)
+          still matching the theme — the re-touching / rediscovery signal.
+        - model scaling: ``depth`` = "fast" (surface only) | "balanced"
+          (+ whisper + emergence phase) | "deep" (+ co-access neighbors +
+          feedback load-bearing). Cost scales with depth; cheapest by default.
+
+        linafish stays model-agnostic: prose framing is a pluggable
+        ``summarizer(result_dict) -> str`` the caller supplies. Without it,
+        meditate returns the structured surfaced material only.
+        """
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        depth = depth if depth in ("fast", "balanced", "deep") else "balanced"
+
+        result = {"theme": theme, "depth": depth, "surfaced": [], "count": 0}
+
+        # --- surface: pivots by semantic gamma (reuse the recall core) ---
+        # Pull a wider candidate set so time/dormancy filtering still has
+        # `top` to show.
+        candidates = self._pivot_crystals(theme, top=max(top * 4, top),
+                                          min_gamma=min_gamma)
+
+        def _age_days(c):
+            ts = episodic._parse_ts(episodic._crystal_ts(c))
+            if ts is None:
+                return None
+            return max(0.0, (now - ts).total_seconds() / 86400.0)
+
+        surfaced = []
+        for g, c in candidates:
+            age = _age_days(c)
+            if dormancy:
+                if age is None or age < dormancy_threshold_days:
+                    continue
+                why = f"quiet {int(age)}d, matches theme (gamma={g:.3f})"
+            elif time_window_days is not None:
+                if age is None or age > time_window_days:
+                    continue
+                why = f"within {int(time_window_days)}d, matches theme (gamma={g:.3f})"
+            else:
+                why = f"matches theme (gamma={g:.3f})"
+            text = (getattr(c, "text", "") or "").strip()
+            surfaced.append({
+                "id": c.id,
+                "source": getattr(c, "source", ""),
+                "text": text[:300],
+                "gamma": round(g, 4),
+                "formation": getattr(c, "formation", None),
+                "age_days": round(age, 1) if age is not None else None,
+                "why": why,
+            })
+            if len(surfaced) >= top:
+                break
+
+        result["surfaced"] = surfaced
+        result["count"] = len(surfaced)
+
+        # --- balanced: whisper (surprising-not-obvious) + emergence phase ---
+        if depth in ("balanced", "deep"):
+            result["whisper"] = self._meditate_whisper()
+            try:
+                result["emergence"] = self._check_emergence()
+            except Exception:
+                result["emergence"] = None
+
+        # --- deep: co-access neighbors + feedback load-bearing ---
+        if depth == "deep":
+            result["co_access"] = self._meditate_co_access(surfaced, top=3)
+            result["load_bearing"] = self._meditate_load_bearing(top=5)
+
+        # --- model-agnostic prose framing (pluggable, caller-supplied) ---
+        if summarizer is not None:
+            try:
+                result["meditation"] = summarizer(result)
+            except Exception as e:
+                result["meditation_error"] = str(e)
+
+        return result
+
+    def _meditate_whisper(self) -> Optional[dict]:
+        """The quiet-but-mattering formation — third-strongest by rank, like
+        cmd_whisper. Surprising, not the obvious biggest."""
+        if not self.formations:
+            return None
+        ranked = sorted(self.formations, key=formation_rank_key, reverse=True)
+        f = ranked[2] if len(ranked) >= 3 else ranked[-1]
+        return {
+            "formation": f.name,
+            "interpretation": interpret_formation(f),
+            "representative": (f.representative_text or "")[:200].strip(),
+            "crystal_count": f.crystal_count,
+        }
+
+    def _meditate_co_access(self, surfaced: list, top: int = 3) -> list:
+        """Co-access walk: follow each surfaced crystal's couplings to its
+        strongest related crystals (the superglyph-adjacent material)."""
+        by_id = {c.id: c for c in self.fish.crystals}
+        out = []
+        for item in surfaced:
+            c = by_id.get(item["id"])
+            if c is None or not getattr(c, "couplings", None):
+                continue
+            related = sorted(c.couplings, key=lambda t: t[1], reverse=True)[:top]
+            edges = []
+            for rid, g in related:
+                rc = by_id.get(rid)
+                if rc is None:
+                    continue
+                edges.append({
+                    "id": rid,
+                    "gamma": round(g, 4),
+                    "text": (getattr(rc, "text", "") or "").strip()[:160],
+                })
+            if edges:
+                out.append({"from_id": c.id, "related": edges})
+        return out
+
+    def _meditate_load_bearing(self, top: int = 5) -> list:
+        """Formations that have earned their weight through use — the feedback
+        loop's record of what actually gets reached for."""
+        fb = getattr(self, "feedback", None)
+        if fb is None or not getattr(fb, "usage", None):
+            return []
+        items = sorted(
+            fb.usage.items(),
+            key=lambda kv: kv[1].get("weight_modifier", 1.0),
+            reverse=True,
+        )
+        return [{
+            "formation": name,
+            "weight_modifier": round(entry.get("weight_modifier", 1.0), 3),
+            "hits": entry.get("hits", 0),
+        } for name, entry in items[:top] if entry.get("hits", 0) > 0]
 
     def session_start(self, name: str = ""):
         """Start a session branch. Returns branch name."""

@@ -864,6 +864,66 @@ def cmd_whisper(args):
     print()
 
 
+def cmd_meditate(args):
+    """Bubble up real material from your fish on a theme — the superthink verb.
+
+    Mechanical, not faith-based: it surfaces actual crystals + formations +
+    signals, or it surfaces nothing. content/time/model knobs per
+    docs/session-instrument/meditate.md.
+    """
+    engine = _resolve_engine(args)
+    if not engine.fish.crystals:
+        print("Fish is empty. Feed it first.")
+        sys.exit(1)
+
+    out = engine.meditate(
+        args.theme, depth=args.depth, top=args.top,
+        time_window_days=args.window, dormancy=args.dormancy,
+        dormancy_threshold_days=args.dormancy_days,
+    )
+
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        pass
+
+    if args.json:
+        print(json.dumps(out, default=str, indent=2))
+        return
+
+    print()
+    print(f"  Meditating on: {out['theme']}   [{out['depth']}]")
+    print()
+    if not out["surfaced"]:
+        print("  Nothing surfaced. The fish holds no material on this — "
+              "that's an answer too, not a failure.")
+        return
+    for i, s in enumerate(out["surfaced"], 1):
+        print(f"  {i}. ({s['why']})")
+        print(f"     {s['text']}")
+        print()
+
+    w = out.get("whisper")
+    if w:
+        print(f"  Whisper — {w['interpretation']}")
+        if w.get("representative"):
+            print(f"    \"{w['representative']}\"")
+        print()
+
+    em = out.get("emergence")
+    if em and em.get("highest_phase_label"):
+        print(f"  Emergence: phase {em.get('highest_phase')} "
+              f"({em['highest_phase_label']})")
+        print()
+
+    if out.get("load_bearing"):
+        print("  Load-bearing (formations earned through use):")
+        for lb in out["load_bearing"]:
+            print(f"    {lb['formation']}  "
+                  f"(weight={lb['weight_modifier']}, hits={lb['hits']})")
+        print()
+
+
 def cmd_soul(args):
     """Generate the .qlp soul file for an existing fish.
 
@@ -2462,6 +2522,27 @@ def main():
     conv_p.add_argument("--mind", help="This mind's name (default: hostname)")
 
     # whisper — one insight
+    meditate_p = sub.add_parser(
+        "meditate",
+        help="Bubble up real material from your fish on a theme — the superthink verb")
+    meditate_p.add_argument("theme", help="What to meditate on (free text)")
+    meditate_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    meditate_p.add_argument("--state-dir", type=_user_path, help="State directory")
+    meditate_p.add_argument(
+        "--depth", default="balanced", choices=["fast", "balanced", "deep"],
+        help="Model scaling: fast=surface only, balanced=+whisper+emergence, "
+             "deep=+co-access+load-bearing")
+    meditate_p.add_argument("--top", type=int, default=5, help="How many to surface")
+    meditate_p.add_argument("--window", type=float, default=None,
+                            help="Only surface material within the last N days")
+    meditate_p.add_argument("--dormancy", action="store_true",
+                            help="Instead surface QUIET material older than --dormancy-days "
+                                 "(the rediscovery / re-touching signal)")
+    meditate_p.add_argument("--dormancy-days", type=float, default=30.0,
+                            help="Dormancy threshold in days (default: 30)")
+    meditate_p.add_argument("--json", action="store_true",
+                            help="Emit structured JSON instead of framed text")
+
     whisper_p = sub.add_parser("whisper", help="One insight from your fish. The quiet ones matter more.")
     whisper_p.add_argument("-n", "--name", default="linafish", help="Fish name")
     whisper_p.add_argument("--state-dir", type=_user_path, help="State directory")
@@ -2848,6 +2929,7 @@ def main():
         "compact": cmd_compact,
         "converse": cmd_converse,
         "whisper": cmd_whisper,
+        "meditate": cmd_meditate,
         "check": cmd_check,
         "classify": cmd_classify,
         "bridge": cmd_bridge,

@@ -60,6 +60,19 @@ def test_index_built_on_eat_and_load_episode(tmp_path):
     assert [c.episode_seq for c in ep] == [0, 1, 2]
 
 
+def test_episode_index_file_persisted(tmp_path):
+    """_save_state writes the <fish>_episodes.jsonl cache (regression: the
+    persist helper used os without importing it and silently no-op'd)."""
+    import json as _json
+    e = _engine(tmp_path)
+    e.eat(DOCS["harness"], episode_id="ep-1", episode_seq=0, episode_kind="session")
+    e.flush()  # force the batched save (save_state_every_n_eats=1 saves anyway)
+    idx_file = Path(tmp_path) / "t_episodes.jsonl"
+    assert idx_file.exists(), "episode index file must be written by _save_state"
+    rows = [_json.loads(l) for l in idx_file.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert any(r["episode_id"] == "ep-1" for r in rows)
+
+
 def test_index_rebuilds_from_scan_on_reload(tmp_path):
     """A fresh engine rebuilds the episode index from the crystal scan
     (crystals are authoritative; the index file is a cache)."""
