@@ -86,6 +86,14 @@ class Crystal:
     chain_seq: Optional[int] = None
     chain_created_at: Optional[str] = None
     chain_prev_hash: Optional[str] = None
+    # Episodic recall (Cal SPEC_v0.2, arena-engine#21). Session-scoped
+    # grouping — DISTINCT from chain_id (the per-crystal chaincode hash).
+    # episode_id groups crystals from one conversation/file; episode_seq is
+    # the 0-indexed position within it; episode_kind is "session" |
+    # "source_file" | future kinds. All default None — backward compatible.
+    episode_id: Optional[str] = None
+    episode_seq: Optional[int] = None
+    episode_kind: Optional[str] = None
 
     def to_dict(self):
         return asdict(self)
@@ -896,7 +904,10 @@ def crystallize(text: str, vectorizer: MIVectorizer,
                 chain_id: Optional[str] = None,
                 chain_seq: Optional[int] = None,
                 chain_created_at: Optional[str] = None,
-                chain_prev_hash: Optional[str] = None) -> Crystal:
+                chain_prev_hash: Optional[str] = None,
+                episode_id: Optional[str] = None,
+                episode_seq: Optional[int] = None,
+                episode_kind: Optional[str] = None) -> Crystal:
     """Create a crystal from text using MI × ache vectorization + cognitive parse.
 
     This is the v3 replacement for v1's keyword-based crystallize().
@@ -983,6 +994,9 @@ def crystallize(text: str, vectorizer: MIVectorizer,
         chain_seq=chain_seq,
         chain_created_at=chain_created_at,
         chain_prev_hash=chain_prev_hash,
+        episode_id=episode_id,
+        episode_seq=episode_seq,
+        episode_kind=episode_kind,
     )
 
 
@@ -1170,6 +1184,9 @@ class UniversalFish:
                             chain_seq=d.get('chain_seq'),
                             chain_created_at=d.get('chain_created_at'),
                             chain_prev_hash=d.get('chain_prev_hash'),
+                            episode_id=d.get('episode_id'),
+                            episode_seq=d.get('episode_seq'),
+                            episode_kind=d.get('episode_kind'),
                         )
                         disk_crystals.append(c)
                         loaded += 1
@@ -1272,7 +1289,10 @@ class UniversalFish:
                          chain_id: Optional[str] = None,
                          chain_seq: Optional[int] = None,
                          chain_created_at: Optional[str] = None,
-                         chain_prev_hash: Optional[str] = None) -> Optional[Crystal]:
+                         chain_prev_hash: Optional[str] = None,
+                         episode_id: Optional[str] = None,
+                         episode_seq: Optional[int] = None,
+                         episode_kind: Optional[str] = None) -> Optional[Crystal]:
         """Crystallize a single text against frozen statistics.
 
         If not frozen, queues to pending instead.
@@ -1321,6 +1341,12 @@ class UniversalFish:
                 pending_record['chain_created_at'] = chain_created_at
             if chain_prev_hash is not None:
                 pending_record['chain_prev_hash'] = chain_prev_hash
+            if episode_id is not None:
+                pending_record['episode_id'] = episode_id
+            if episode_seq is not None:
+                pending_record['episode_seq'] = episode_seq
+            if episode_kind is not None:
+                pending_record['episode_kind'] = episode_kind
             self.pending.append(pending_record)
             self._flush_pending()
             # Persistence committed — NOW it's safe to record the
@@ -1335,7 +1361,9 @@ class UniversalFish:
                              vocab=self.vocab, parser=self.parser,
                              chain_id=chain_id, chain_seq=chain_seq,
                              chain_created_at=chain_created_at,
-                             chain_prev_hash=chain_prev_hash)
+                             chain_prev_hash=chain_prev_hash,
+                             episode_id=episode_id, episode_seq=episode_seq,
+                             episode_kind=episode_kind)
         crystal.resonance = crystal.mi_vector  # formation compat
 
         # v0.4: Metabolic digestion — enrich the crystal

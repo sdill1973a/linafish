@@ -53,6 +53,11 @@ from .formations import (
     Formation,
 )
 from .ingest import ingest_directory, ingest_file
+from . import episodic
+from .episodic import (
+    EpisodicMoment, load_episode, walk as episodic_walk,
+    score_moment, assemble_source_excerpt,
+)
 
 # ---------------------------------------------------------------------------
 # ASSESSMENT — graceful degradation if module not yet written
@@ -304,6 +309,20 @@ class FishEngine:
                 f.member_ids.append(c.id)
                 f.update_with(c)
             self.formations = list(self.formation_index.values())
+
+        # ---------------------------------------------------------------
+        # EPISODIC RECALL — the episode index (Cal SPEC_v0.2, #21)
+        # ---------------------------------------------------------------
+        # Maps episode_id -> {ordered_crystal_ids (in episode_seq order),
+        # episode_kind, created_at, last_updated, source_pointer}. Crystals
+        # are authoritative: the index is (re)built from the crystal scan
+        # here, kept current in-memory on eat(), and persisted in
+        # _save_state. The *_episodes.jsonl file is a cache — on cold load
+        # we rebuild from the JSONL crystals so the index can never drift
+        # from the source of truth (mirrors the formation bootstrap above).
+        self._episodes_path = self.state_dir / f"{name}_episodes.jsonl"
+        self.episode_index: Dict[str, dict] = {}
+        self._rebuild_episode_index()
 
         # ---------------------------------------------------------------
         # ASSESSMENT STATE — the RTI data layer
@@ -798,6 +817,164 @@ class FishEngine:
             self._save_state(commit=commit)
             self._eat_count_since_save = 0
             return True
+
+    # -------------------------------------------------------------------
+    # EPISODIC RECALL — moment-with-context (Cal SPEC_v0.2, arena-engine#21)
+    # -------------------------------------------------------------------
+
+    def _rebuild_episode_index(self) -> None:
+        """Build the episode index from the crystal scan (authoritative).
+
+        Groups every crystal carrying an episode_id, orders each group by
+        episode_seq (None sorts last, stably), and records the ordered
+        crystal-id list. Run at __init__ and after a full re-eat. Crystals
+        are the source of truth, so this can never drift from disk.
+        """
+        groups: Dict[str, list] = {}
+        for c in self.fish.crystals:
+            eid = getattr(c, "episode_id", None)
+            if eid is None:
+                continue
+            groups.setdefault(eid, []).append(c)
+
+        index: Dict[str, dict] = {}
+        for eid, crystals in groups.items():
+            crystals.sort(key=lambda c: (c.episode_seq is None,
+                                         c.episode_seq if c.episode_seq is not None else 0))
+            first = crystals[0]
+            index[eid] = {
+                "episode_id": eid,
+                "episode_kind": getattr(first, "episode_kind", None) or "unknown",
+                "created_at": episodic._crystal_ts(first),
+                "last_updated": episodic._crystal_ts(crystals[-1]),
+                "ordered_crystal_ids": [c.id for c in crystals],
+                "source_pointer": eid,
+            }
+        self.episode_index = index
+
+    def _index_episode_crystal(self, crystal) -> None:
+        """Append a freshly-eaten crystal to its episode in the in-memory
+        index, creating the entry if new (spec §5.3 maintenance protocol)."""
+        eid = crystal.episode_id
+        ts = episodic._crystal_ts(crystal)
+        entry = self.episode_index.get(eid)
+        if entry is None:
+            self.episode_index[eid] = {
+                "episode_id": eid,
+                "episode_kind": getattr(crystal, "episode_kind", None) or "unknown",
+                "created_at": ts,
+                "last_updated": ts,
+                "ordered_crystal_ids": [crystal.id],
+                "source_pointer": eid,
+            }
+        else:
+            if crystal.id not in entry["ordered_crystal_ids"]:
+                entry["ordered_crystal_ids"].append(crystal.id)
+            entry["last_updated"] = ts
+
+    def _persist_episode_index(self) -> None:
+        """Write the episode index to <fish>_episodes.jsonl (one record per
+        episode). Small (episodes << crystals) — called from _save_state, not
+        the per-eat hot path."""
+        path = getattr(self, "_episodes_path", None)
+        if path is None:
+            return
+        try:
+            self.state_dir.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(path.suffix + ".tmp")
+            with open(tmp, "w", encoding="utf-8") as f:
+                for entry in self.episode_index.values():
+                    f.write(json.dumps(entry, default=str) + "\n")
+            os.replace(tmp, path)
+        except Exception as e:  # never let index persistence break a save
+            print(f"episode index persist failed: {e}", file=sys.stderr)
+
+    def _pivot_crystals(self, text: str, top: int = 5,
+                        min_gamma: float = 0.0):
+        """Rank crystals by semantic gamma against the query, returning the
+        top (gamma, crystal) pairs. Reuses the match()/taste() vectorize +
+        gamma machinery; the threshold is a low floor so small corpora and
+        episodic walks aren't starved by match()'s hard 0.4 cutoff."""
+        if not self.fish.crystals or not self.fish.frozen:
+            return []
+        probe = v3_crystallize(text, self.fish.vectorizer,
+                               source="query", vocab=self.fish.vocab)
+        if not probe or not probe.mi_vector:
+            return []
+        scores = []
+        for c in self.fish.crystals:
+            vec = c.mi_vector if c.mi_vector else c.resonance
+            if not vec:
+                continue
+            g = gamma(probe.mi_vector, vec)
+            if g > min_gamma:
+                scores.append((g, c))
+        scores.sort(key=lambda x: x[0], reverse=True)
+        return scores[:top]
+
+    def recall_episodic(self, text: str, k: int = 5,
+                        max_before: int = 5, max_after: int = 5,
+                        time_horizon_sec: int = 86400,
+                        include_source: bool = False,
+                        min_gamma: float = 0.0,
+                        weights: Optional[dict] = None) -> List[EpisodicMoment]:
+        """Moment-with-context retrieval (spec §6-§8).
+
+        Semantic query -> top-k pivot crystals -> walk each pivot's episode
+        for before/after context -> dedup pivots sharing an episode (walk from
+        the earliest) -> score + rank. Pivots with no episode return orphan
+        moments so legacy fish still answer (degraded, not broken).
+        Returns EpisodicMoment objects; the HTTP layer serializes via
+        to_dict().
+        """
+        from datetime import datetime, timezone
+
+        pivots = self._pivot_crystals(text, top=k, min_gamma=min_gamma)
+        if not pivots:
+            return []
+
+        crystal_by_id = {c.id: c for c in self.fish.crystals}
+        now = datetime.now(timezone.utc)
+
+        # Group non-orphan pivots by episode for dedup; orphans stand alone.
+        by_episode: Dict[str, list] = {}
+        orphans = []
+        for g, p in pivots:
+            eid = getattr(p, "episode_id", None)
+            if eid and eid in self.episode_index:
+                by_episode.setdefault(eid, []).append((g, p))
+            else:
+                orphans.append((g, p))
+
+        moments: List[EpisodicMoment] = []
+
+        for eid, group in by_episode.items():
+            # Walk from the EARLIEST pivot (lowest episode_seq) so before/after
+            # preserves the chronological start of the matched region (spec §7).
+            group.sort(key=lambda gp: (gp[1].episode_seq is None,
+                                       gp[1].episode_seq if gp[1].episode_seq is not None else 0))
+            best_gamma = max(g for g, _ in group)
+            earliest = group[0][1]
+            episode = load_episode(eid, self.episode_index, crystal_by_id)
+            moment = episodic_walk(earliest, episode, max_before=max_before,
+                                   max_after=max_after,
+                                   time_horizon_sec=time_horizon_sec)
+            # All matched pivots in this episode, in seq order.
+            moment.pivots = [p for _, p in group]
+            score_moment(moment, pivot_gamma=best_gamma, now=now, weights=weights)
+            if include_source:
+                assemble_source_excerpt(moment)
+            moments.append(moment)
+
+        for g, p in orphans:
+            moment = episodic_walk(p, None)
+            score_moment(moment, pivot_gamma=g, now=now, weights=weights)
+            if include_source:
+                assemble_source_excerpt(moment)
+            moments.append(moment)
+
+        moments.sort(key=lambda m: m.relevance, reverse=True)
+        return moments
 
     def session_start(self, name: str = ""):
         """Start a session branch. Returns branch name."""
@@ -1354,6 +1531,11 @@ class FishEngine:
         # Also save the v3 internal state (vectorizer, crystals)
         self.fish._save_state()
 
+        # Persist the episode index cache (episodic recall). Small — one
+        # record per episode, not per crystal. Rebuilt from the crystal scan
+        # on cold load regardless, so a missed write is never data loss.
+        self._persist_episode_index()
+
         # Also save assessment state
         self._save_assessment_state()
 
@@ -1392,7 +1574,10 @@ class FishEngine:
             chain_id: Optional[str] = None,
             chain_seq: Optional[int] = None,
             chain_created_at: Optional[str] = None,
-            chain_prev_hash: Optional[str] = None) -> dict:
+            chain_prev_hash: Optional[str] = None,
+            episode_id: Optional[str] = None,
+            episode_seq: Optional[int] = None,
+            episode_kind: Optional[str] = None) -> dict:
         """Feed text to the fish. Two-phase: learn then crystallize.
 
         If this is the first eat and assessment is available, runs
@@ -1437,7 +1622,10 @@ class FishEngine:
                                                  chain_id=chain_id,
                                                  chain_seq=chain_seq,
                                                  chain_created_at=chain_created_at,
-                                                 chain_prev_hash=chain_prev_hash)
+                                                 chain_prev_hash=chain_prev_hash,
+                                                 episode_id=episode_id,
+                                                 episode_seq=episode_seq,
+                                                 episode_kind=episode_kind)
             if not crystal:
                 return {"crystals_added": 0, "total_crystals": len(self.fish.crystals)}
 
@@ -1450,6 +1638,12 @@ class FishEngine:
             # via rebuild_formations below. With the flag on, formations are
             # maintained incrementally and rebuild_formations short-circuits.
             self._file_into_formation(crystal)
+            # Episodic recall: keep the episode index current in-memory
+            # (O(1) append). Crystal already on disk via _persist_crystal;
+            # the index file is refreshed in _save_state and rebuilt from
+            # the crystal scan on cold load, so it can't drift.
+            if crystal.episode_id is not None:
+                self._index_episode_crystal(crystal)
             self.rebuild_formations()
             # Eat-latency fix: the crystal is already durable in the JSONL
             # (crystallize_text -> _persist_crystal). Batch the expensive
