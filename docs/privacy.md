@@ -161,6 +161,39 @@ Without any memory system, every AI conversation starts cold. The AI knows nothi
 
 LiNafish is the middle path: the AI knows how you think without storing what you said. The privacy cost is a handful of representative quotes and a cognitive profile. The quality gain is measured: d=2.245, cold-to-warm, replicated across 46 conversations.
 
+## Episodic recall — the `/moment` endpoint
+
+The episodic recall layer (`docs/episodic-recall.md`) adds a higher-fidelity
+content surface than the rest of linafish. Two endpoints, two risk levels:
+
+- **`POST /recall_episodic`** returns bounded *moments* — the matched crystals
+  plus a few ordered neighbors. The optional `source_excerpt` is limited to that
+  window, and is only included when the fish has opted into source exposure.
+  Risk is comparable to `/taste`: representative quotes, not the whole record.
+
+- **`GET /moment/<episode_id>` is the single highest-fidelity content surface in
+  linafish.** It returns the *full, untruncated text of an entire episode* — not
+  a window, not representative quotes, but everything that episode contains. This
+  is the worst-case exposure if misconfigured.
+
+Mitigations, all on by default except where noted:
+
+1. **Disabled by default.** `/moment` returns `403` unless the fish explicitly
+   opts in via `serve_converse(expose_full_sources=True)` or
+   `LINAFISH_EXPOSE_FULL_SOURCES=1`. A fish that never opts in cannot leak full
+   sources through this path at all.
+2. **Converse-only.** The endpoint exists only on `linafish converse`, never on
+   the lightweight `http` server.
+3. **Bind + ACL.** When enabled, deploy behind a tailnet/LAN bind and an
+   allowed-callers ACL per the federation pattern. A `--bind wan` converse server
+   with `/moment` enabled and no ACL is the worst-case leak — treat that
+   combination as a misconfiguration.
+4. **Auth token.** `serve_converse(token=...)` requires `Authorization: Bearer`
+   on every request, including `/moment`.
+
+If you enable `/moment`, treat it like `state.json`: it exposes your actual words
+in full. Read `docs/episodic-recall.md` before turning it on.
+
 ## Summary
 
 | Concern | Answer |

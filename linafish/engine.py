@@ -976,6 +976,41 @@ class FishEngine:
         moments.sort(key=lambda m: m.relevance, reverse=True)
         return moments
 
+    def get_episode_source(self, episode_id: str):
+        """Return the full untruncated source for an episode as a ChainSource,
+        or None if the episode isn't indexed (spec §4.3 / §8 /moment).
+
+        v1 decision (documented in docs/episodic-recall.md): the source is
+        ASSEMBLED from the episode's crystals' own ``text`` (joined in
+        episode_seq order), which the crystallizer stores untruncated
+        (MAX_CRYSTAL_TEXT). The spec's separate append-only ``*_sources.jsonl``
+        store was motivated by "without bloating the crystal store" — a
+        concern that does not apply while crystals hold full text — and §4.3
+        flags it as a sync hazard. Deriving from the authoritative crystals
+        avoids the redundant file and the hazard. If crystal truncation
+        returns, the persisted ChainSource store becomes the v2 fallback.
+
+        This is the highest-fidelity content surface in linafish: it returns
+        ALL of an episode's text, unbounded. The caller (/moment) gates it
+        behind opt-in config + ACL.
+        """
+        crystal_by_id = {c.id: c for c in self.fish.crystals}
+        episode = load_episode(episode_id, self.episode_index, crystal_by_id)
+        if episode is None:
+            return None
+        full_text = "\n\n".join((getattr(c, "text", "") or "") for c in episode)
+        entry = self.episode_index.get(episode_id, {})
+        return episodic.ChainSource(
+            episode_id=episode_id,
+            episode_kind=entry.get("episode_kind", "unknown"),
+            created_at=entry.get("created_at") or "",
+            full_text=full_text,
+            metadata={
+                "crystal_count": len(episode),
+                "source_pointer": entry.get("source_pointer", episode_id),
+            },
+        )
+
     def session_start(self, name: str = ""):
         """Start a session branch. Returns branch name."""
         if not name:

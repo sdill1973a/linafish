@@ -23,6 +23,7 @@ s93, 2026-04-11. The mesh grows another synapse.
 """
 
 import json
+import os
 import signal
 import socket
 import sys
@@ -57,6 +58,13 @@ class ConverseHandler(BaseHTTPRequestHandler):
     engine: FishEngine = None
     mind_name: str = "unknown"
     auth_token: str = None  # None = no auth required
+    # Episodic recall (Cal SPEC_v0.2 §8-§9). /recall_episodic is always
+    # available; /moment/<episode_id> returns UNTRUNCATED episode source —
+    # the highest-fidelity content surface in linafish — and is DEFAULT OFF.
+    # A fish opts in (serve_converse(expose_full_sources=True) or env
+    # LINAFISH_EXPOSE_FULL_SOURCES=1) to enable it at all; even then, ACL /
+    # tailnet gating per the federation pattern is the recommended deploy.
+    expose_full_sources: bool = False
 
     def _check_auth(self) -> bool:
         """Check auth token if configured. Returns True if OK."""
@@ -93,9 +101,12 @@ class ConverseHandler(BaseHTTPRequestHandler):
                     "GET  /inbox/<mind_id>  — unread DMs for a mind",
                     "POST /eat  — feed text",
                     "POST /taste  — semantic search",
+                    "POST /recall_episodic  — moment-with-context retrieval",
+                    "GET  /moment/<episode_id>  — full episode source (opt-in)",
                     "POST /msg  — federation DM send",
                     "POST /msg/read  — mark read",
                 ],
+                "expose_full_sources": self.expose_full_sources,
             }, indent=2), "application/json")
 
         elif parsed.path == "/crystals":
@@ -146,6 +157,9 @@ class ConverseHandler(BaseHTTPRequestHandler):
         elif parsed.path.startswith("/inbox/"):
             self._handle_inbox(parsed)
 
+        elif parsed.path.startswith("/moment/"):
+            self._handle_moment(parsed)
+
         else:
             self._respond(404, "Not found")
 
@@ -186,7 +200,16 @@ class ConverseHandler(BaseHTTPRequestHandler):
             if not text:
                 self._respond(400, json.dumps({"error": "missing text"}), "application/json")
                 return
-            result = self.engine.eat(text, source=f"{source_mind}:{source}")
+            result = self.engine.eat(
+                text, source=f"{source_mind}:{source}",
+                chain_id=body.get("chain_id"),
+                chain_seq=body.get("chain_seq"),
+                chain_created_at=body.get("chain_created_at"),
+                chain_prev_hash=body.get("chain_prev_hash"),
+                episode_id=body.get("episode_id"),
+                episode_seq=body.get("episode_seq"),
+                episode_kind=body.get("episode_kind"),
+            )
             self._respond(200, json.dumps(result), "application/json")
 
         elif parsed.path == "/taste":
@@ -205,6 +228,9 @@ class ConverseHandler(BaseHTTPRequestHandler):
             else:
                 self._respond(200, self.engine.taste(text, top=top))
 
+        elif parsed.path == "/recall_episodic":
+            self._handle_recall_episodic(body)
+
         elif parsed.path == "/msg":
             self._handle_msg_send(body)
 
@@ -213,6 +239,68 @@ class ConverseHandler(BaseHTTPRequestHandler):
 
         else:
             self._respond(404, "Not found")
+
+    # --- Episodic recall endpoints (Cal SPEC_v0.2 §8) -------------------------
+
+    def _handle_recall_episodic(self, body: dict):
+        """POST /recall_episodic — moment-with-context retrieval.
+
+        Body: {text, k=5, max_before=5, max_after=5, include_source=false}.
+        include_source returns a bounded source_excerpt assembled from the
+        matched window's crystals; it is NOT the full untruncated episode
+        (that is /moment, opt-in). Even so, if the fish has not opted into
+        source exposure, include_source is forced false here too.
+        """
+        text = body.get("text", "")
+        if not text:
+            self._respond(400, json.dumps({"error": "missing text"}),
+                          "application/json")
+            return
+        k = body.get("k", 5)
+        max_before = body.get("max_before", 5)
+        max_after = body.get("max_after", 5)
+        include_source = bool(body.get("include_source", False)) and self.expose_full_sources
+
+        moments = self.engine.recall_episodic(
+            text, k=k, max_before=max_before, max_after=max_after,
+            include_source=include_source,
+        )
+        self._respond(200, json.dumps({
+            "query": text,
+            "moments": [m.to_dict() for m in moments],
+        }, default=str), "application/json")
+
+    def _handle_moment(self, parsed):
+        """GET /moment/<episode_id> — HIGHEST-FIDELITY CONTENT SURFACE.
+
+        Returns the full untruncated source for an episode. DEFAULT OFF: a
+        fish must opt in via expose_full_sources (serve_converse arg or
+        LINAFISH_EXPOSE_FULL_SOURCES). When off, returns 403. Misconfigured
+        ACL on this endpoint is the worst-case leak in linafish — see
+        docs/privacy.md.
+        """
+        if not self.expose_full_sources:
+            self._respond(403, json.dumps({
+                "error": "full-source exposure disabled",
+                "detail": "Set expose_full_sources (serve_converse) or "
+                          "LINAFISH_EXPOSE_FULL_SOURCES=1 to enable /moment.",
+            }), "application/json")
+            return
+
+        episode_id = parsed.path[len("/moment/"):]
+        if not episode_id:
+            self._respond(400, json.dumps({"error": "missing episode_id"}),
+                          "application/json")
+            return
+
+        source = self.engine.get_episode_source(episode_id)
+        if source is None:
+            self._respond(404, json.dumps({
+                "error": "episode not found", "episode_id": episode_id,
+            }), "application/json")
+            return
+        self._respond(200, json.dumps(source.to_dict(), default=str),
+                      "application/json")
 
     # --- Federation DM endpoints (port from FishHandler) ----------------------
 
@@ -397,9 +485,21 @@ def serve_converse(
     bind: str = "local",
     mind: str = None,
     token: str = None,
+    expose_full_sources: Optional[bool] = None,
 ):
-    """Start the converse server."""
+    """Start the converse server.
+
+    expose_full_sources gates the /moment/<episode_id> endpoint (untruncated
+    episode source — the highest-fidelity content surface). Default OFF.
+    None falls back to the LINAFISH_EXPOSE_FULL_SOURCES env var ("1"/"true"
+    enables); pass True/False to override explicitly. Even when enabled,
+    deploy behind ACL / tailnet gating per docs/privacy.md.
+    """
     host = BIND_MAP.get(bind, bind)
+
+    if expose_full_sources is None:
+        expose_full_sources = os.environ.get(
+            "LINAFISH_EXPOSE_FULL_SOURCES", "").strip().lower() in ("1", "true", "yes")
 
     if bind == "wan" and not token:
         print("Error: WAN access requires --token for authentication.", file=sys.stderr)
@@ -436,6 +536,7 @@ def serve_converse(
     ConverseHandler.engine = engine
     ConverseHandler.mind_name = mind
     ConverseHandler.auth_token = token
+    ConverseHandler.expose_full_sources = expose_full_sources
 
     server = ThreadingHTTPServer((host, port), ConverseHandler)
 
