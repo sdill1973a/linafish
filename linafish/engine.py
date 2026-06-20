@@ -37,6 +37,7 @@ import json
 import re
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import List, Optional, Dict
@@ -151,6 +152,7 @@ class FishEngine:
                  dedupe: bool = False,
                  addressed_formations: bool = True,
                  commit_every_n_eats: int = 0,
+                 save_state_every_n_eats: int = 1,
                  living_vocab: bool = False):
         self.name = name
         self.state_dir = state_dir or Path.home() / ".linafish"
@@ -186,6 +188,25 @@ class FishEngine:
         # git_autocommit=False the daemon's state-dir git log silently
         # stops advancing, breaking the only built-in rollback safety net.
         self.commit_every_n_eats = max(0, int(commit_every_n_eats))
+        # save_state_every_n_eats: eat-latency root-fix (runbook
+        # fish_engine_eat_latency_root_fix_2026-06-20). The expensive full
+        # _save_state() (re-serializes the whole corpus into fish.md — O(N)
+        # in crystal count, ~2s on the .67 454K room) is decoupled from the
+        # per-eat hot path. Crystals stay durable every eat via the
+        # append-only JSONL (crystallize_text -> _persist_crystal); only the
+        # derived fish.md/codebook write is batched. 1 (default) = save every
+        # eat = legacy behavior, fully backward compatible. Daemons set this
+        # high and drive the full save off-request via flush() on a timer +
+        # at shutdown (see serve_http). Safety net: a save still fires once
+        # the gate is reached, so fish.md staleness is bounded even if the
+        # timer stalls.
+        self.save_state_every_n_eats = max(1, int(save_state_every_n_eats))
+        self._eat_count_since_save = 0
+        # Writer lock — serializes concurrent eat()s. Before the latency fix,
+        # ThreadingHTTPServer ran /eat with no lock, so concurrent eats
+        # mutated self.formations / self.fish.crystals unsynchronized. Cheap
+        # now that the O(N) save is off the hot path.
+        self._eat_lock = threading.Lock()
         self._eat_save_counter = 0
         # Reentrancy guard for signal-triggered flush_commit (codex round-2
         # 2026-05-02 BLOCKING). _save_state can be interrupted between
@@ -753,6 +774,30 @@ class FishEngine:
         state-dir git log.
         """
         self._git_commit(message)
+
+    def flush(self, commit: Optional[bool] = None) -> bool:
+        """Force the deferred full save (eat-latency fix, runbook
+        fish_engine_eat_latency_root_fix_2026-06-20).
+
+        Daemons run eat() with ``save_state_every_n_eats`` > 1 so the O(N)
+        fish.md/codebook serialization stays off the request path; this
+        drives that save on a background timer and at graceful shutdown.
+
+        No-op (returns False) when no eats are pending since the last save,
+        so an idle daemon's timer doesn't pointlessly re-serialize an
+        unchanged corpus, and so it never regresses an up-to-date fish.md.
+        Crystal durability does NOT depend on this — every eat already
+        appended to the JSONL via _persist_crystal.
+
+        commit: passed through to _save_state (True forces a git commit).
+        Returns True iff a save was performed.
+        """
+        with self._eat_lock:
+            if self._eat_count_since_save == 0:
+                return False
+            self._save_state(commit=commit)
+            self._eat_count_since_save = 0
+            return True
 
     def session_start(self, name: str = ""):
         """Start a session branch. Returns branch name."""
@@ -1370,45 +1415,58 @@ class FishEngine:
                     "total_crystals": len(self.fish.crystals),
                     "sealed": True}
 
-        # Pre-assess on first eat if not already done
-        if not self._pre_assessed and HAS_ASSESSMENT:
-            self.pre_assess([text])
+        # Writer lock — serialize concurrent eats (ThreadingHTTPServer runs
+        # /eat without a lock; the eat-latency fix makes locking cheap by
+        # taking the O(N) save off the hot path).
+        with self._eat_lock:
+            # Pre-assess on first eat if not already done
+            if not self._pre_assessed and HAS_ASSESSMENT:
+                self.pre_assess([text])
 
-        # Phase 1: Learn co-occurrence stats
-        self.fish.learn([text])
+            # Phase 1: Learn co-occurrence stats
+            self.fish.learn([text])
 
-        # Phase 2: Freeze and crystallize (assessment-informed seeds)
-        if not self.fish.frozen:
-            self._rebuild_vocab()
-            self.fish.frozen = True
-            self.fish.epoch += 1
+            # Phase 2: Freeze and crystallize (assessment-informed seeds)
+            if not self.fish.frozen:
+                self._rebuild_vocab()
+                self.fish.frozen = True
+                self.fish.epoch += 1
 
-        prev_count = len(self.fish.crystals)
-        crystal = self.fish.crystallize_text(text, source=source,
-                                             chain_id=chain_id,
-                                             chain_seq=chain_seq,
-                                             chain_created_at=chain_created_at,
-                                             chain_prev_hash=chain_prev_hash)
-        if not crystal:
-            return {"crystals_added": 0, "total_crystals": len(self.fish.crystals)}
+            prev_count = len(self.fish.crystals)
+            crystal = self.fish.crystallize_text(text, source=source,
+                                                 chain_id=chain_id,
+                                                 chain_seq=chain_seq,
+                                                 chain_created_at=chain_created_at,
+                                                 chain_prev_hash=chain_prev_hash)
+            if not crystal:
+                return {"crystals_added": 0, "total_crystals": len(self.fish.crystals)}
 
-        self.docs_ingested += 1
-        self._last_source = source
-        self._last_new_crystals = len(self.fish.crystals) - prev_count
-        # §RECOUPLE.IN.PLACE addressed-formations: file the new crystal
-        # into its formation by grammar address. No-op when the flag is
-        # off — legacy callers still get the discovered-formations path
-        # via rebuild_formations below. With the flag on, formations are
-        # maintained incrementally and rebuild_formations short-circuits.
-        self._file_into_formation(crystal)
-        self.rebuild_formations()
-        self._save_state()
+            self.docs_ingested += 1
+            self._last_source = source
+            self._last_new_crystals = len(self.fish.crystals) - prev_count
+            # §RECOUPLE.IN.PLACE addressed-formations: file the new crystal
+            # into its formation by grammar address. No-op when the flag is
+            # off — legacy callers still get the discovered-formations path
+            # via rebuild_formations below. With the flag on, formations are
+            # maintained incrementally and rebuild_formations short-circuits.
+            self._file_into_formation(crystal)
+            self.rebuild_formations()
+            # Eat-latency fix: the crystal is already durable in the JSONL
+            # (crystallize_text -> _persist_crystal). Batch the expensive
+            # full _save_state (fish.md/codebook rebuild, O(N)) off the hot
+            # path — fire it only once the gate is reached. Default gate is 1
+            # (save every eat = legacy). Daemons set the gate high and flush()
+            # on a timer + at shutdown.
+            self._eat_count_since_save += 1
+            if self._eat_count_since_save >= self.save_state_every_n_eats:
+                self._save_state()
+                self._eat_count_since_save = 0
 
-        return {
-            "crystals_added": 1,
-            "total_crystals": len(self.fish.crystals),
-            "formations": len(self.formations),
-        }
+            return {
+                "crystals_added": 1,
+                "total_crystals": len(self.fish.crystals),
+                "formations": len(self.formations),
+            }
 
     # -------------------------------------------------------------------
     # EAT_MANY — batched in-memory ingest

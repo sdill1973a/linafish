@@ -328,6 +328,9 @@ class FishHandler(BaseHTTPRequestHandler):
                 if stop is not None:
                     stop.set()
                 try:
+                    # Capture eats deferred by the latency-batching gate,
+                    # then commit a final rollback point.
+                    self.engine.flush()
                     self.engine.flush_commit("http shutdown endpoint")
                 except Exception as e:
                     print(f"flush_commit on shutdown: {e}", file=sys.stderr)
@@ -515,7 +518,9 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
                vocab_path: Optional[Path] = None,
                host: Optional[str] = None,
                bind: str = "local",
-               re_eat_interval_hours: float = 6.0):
+               re_eat_interval_hours: float = 6.0,
+               save_state_every_n_eats: int = 200,
+               flush_interval_secs: float = 30.0):
     """Serve the fish over HTTP.
 
     ``bind`` is the convenience shorthand mirroring ``converse``:
@@ -544,7 +549,18 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
     # Plus a SIGTERM/SIGINT handler below flushes uncommitted eats on
     # graceful shutdown so the final commit is captured even if N hasn't
     # rolled over.
-    engine = FishEngine(state_dir=state_dir, name=name, commit_every_n_eats=100)
+    # Eat-latency root-fix (runbook fish_engine_eat_latency_root_fix_2026-06-20):
+    # the per-eat full _save_state re-serialized the whole corpus into fish.md
+    # (O(N), ~2s on the 454K-crystal room) and under burst from several
+    # schedulers serialized past n8n's 10s timeout. Crystals stay durable every
+    # eat via the append-only JSONL; the engine now batches the expensive
+    # fish.md/codebook write behind save_state_every_n_eats and we drive it off
+    # the request path: a background flush thread on a short timer + the SIGTERM
+    # handler at shutdown. The gate doubles as a safety net (bounded staleness
+    # if the timer ever stalls). commit_every_n_eats keeps state-dir git history
+    # advancing for rollback; with the save batched, the commit is off-path too.
+    engine = FishEngine(state_dir=state_dir, name=name, commit_every_n_eats=100,
+                        save_state_every_n_eats=save_state_every_n_eats)
 
     _stop_maintenance = threading.Event()
 
@@ -557,6 +573,10 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
         engine._shutdown_pending = True
         if not engine._save_in_progress:
             try:
+                # Capture any eats deferred by the latency-batching gate
+                # (writes a fresh fish.md), then always commit a final
+                # rollback point — preserves the pre-fix shutdown guarantee.
+                engine.flush()
                 engine.flush_commit(f"http daemon shutdown (signal {signum})")
             except Exception as e:
                 print(f"flush_commit failed on shutdown: {e}", file=sys.stderr)
@@ -582,6 +602,29 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
         _maint.start()
         print(f"  Maintenance: every {re_eat_interval_hours:.1f}h "
               f"(QLP output to stderr)", file=sys.stderr)
+
+    # Eat-latency fix: drive the batched full save off the request path. The
+    # gate (save_state_every_n_eats) keeps the O(N) fish.md write out of eat();
+    # this thread performs it on a short timer so the derived codebook never
+    # lags more than flush_interval_secs. Crystals are already durable in the
+    # JSONL, so a missed tick only delays the fish.md refresh — never data.
+    if flush_interval_secs > 0:
+        def _flush_loop():
+            while not _stop_maintenance.wait(flush_interval_secs):
+                if getattr(engine, "_shutdown_pending", False) or \
+                        getattr(engine, "_save_in_progress", False):
+                    continue
+                try:
+                    engine.flush()
+                except Exception as e:
+                    print(f"[flush] error: {e}", file=sys.stderr, flush=True)
+        _flusher = threading.Thread(
+            target=_flush_loop, name="linafish-flush", daemon=True,
+        )
+        _flusher.start()
+        print(f"  Flush: every {flush_interval_secs:.0f}s "
+              f"(batched fish.md save, gate={save_state_every_n_eats} eats)",
+              file=sys.stderr)
 
     resolved_host = host if host else BIND_MAP.get(bind, bind)
     if bind == "wan" and not host:
