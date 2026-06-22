@@ -882,6 +882,27 @@ def cmd_meditate(args):
         dormancy_threshold_days=args.dormancy_days,
     )
 
+    # --descend: optional inference-layer crucible. deep is OPT-IN — it does
+    # nothing until an endpoint is configured (LINAFISH_LLM_URL). DeepNotConfigured
+    # is caught so base meditate never breaks when no endpoint is set.
+    descent = None
+    if getattr(args, "descend", False):
+        try:
+            from . import deep
+            memory = (deep.recall_diamonds(args.theme, fish=args.diamond_fish)
+                      if args.remember else "")
+            descent = deep.descend(args.theme, max_depth=args.descend_max,
+                                   wide=args.wide, memory=memory)
+            if args.remember and descent.get("diamond"):
+                deep.eat_diamond(args.theme, descent["diamond"],
+                                 descent["stop_reason"], fish=args.diamond_fish)
+            out["descent"] = descent
+        except Exception as e:
+            from . import deep as _d
+            out["descent_error"] = (
+                str(e) if isinstance(e, _d.DeepNotConfigured)
+                else f"descend failed: {e}")
+
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, OSError):
@@ -921,6 +942,19 @@ def cmd_meditate(args):
         for lb in out["load_bearing"]:
             print(f"    {lb['formation']}  "
                   f"(weight={lb['weight_modifier']}, hits={lb['hits']})")
+        print()
+
+    # --descend output (the crucible's descent, if requested)
+    if descent:
+        print(f"  Descent ({descent['stop_reason']}):")
+        for r in descent["rungs"]:
+            print(f"    rung {r['n']} [{r['status']}] {r['core']}")
+        if descent.get("diamond"):
+            print()
+            print(f"  ◆ Diamond (rung {descent['diamond_rung']}): {descent['diamond']}")
+        print()
+    elif out.get("descent_error"):
+        print(f"  [--descend unavailable] {out['descent_error']}")
         print()
 
 
@@ -2542,6 +2576,20 @@ def main():
                             help="Dormancy threshold in days (default: 30)")
     meditate_p.add_argument("--json", action="store_true",
                             help="Emit structured JSON instead of framed text")
+    meditate_p.add_argument("--descend", action="store_true",
+                            help="Descend the theme to its diamond via the crucible "
+                                 "(linafish.deep). OPT-IN: needs an inference endpoint "
+                                 "(set LINAFISH_LLM_URL). Off by default — base meditate "
+                                 "stays inference-free.")
+    meditate_p.add_argument("--wide", type=int, default=0, metavar="K",
+                            help="With --descend: fan K diverse lenses before the descent (max 6)")
+    meditate_p.add_argument("--descend-max", type=int, default=6,
+                            help="With --descend: hard depth ceiling (default 6)")
+    meditate_p.add_argument("--remember", action="store_true",
+                            help="With --descend: recall past diamonds to seed the descent, "
+                                 "and eat the new one into the diamond-fish (accumulation)")
+    meditate_p.add_argument("--diamond-fish", default="diamante-pisco",
+                            help="With --remember: diamond-fish name (default: diamante-pisco)")
 
     whisper_p = sub.add_parser("whisper", help="One insight from your fish. The quiet ones matter more.")
     whisper_p.add_argument("-n", "--name", default="linafish", help="Fish name")
