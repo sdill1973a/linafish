@@ -129,7 +129,7 @@ def _messages_file(engine: FishEngine) -> Path:
     Override: LINAFISH_MESSAGES_FILE env var (absolute path).
 
     The override is what lets a peer node cut over to master http_server while
-    keeping the existing /home/sdill/fish_messages.jsonl as the authoritative
+    keeping the existing <state-dir>/fish_messages.jsonl as the authoritative
     message log — no migration of historical DMs needed.
     """
     override = os.environ.get("LINAFISH_MESSAGES_FILE")
