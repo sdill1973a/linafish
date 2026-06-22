@@ -4,7 +4,7 @@
 
 At one end: **48 bootstrap glyphs**. Universal. Every fish speaks them. Cold-decodable. Public. The coordinate system.
 
-At the other end: **bespoke language**. Two minds with a year of shared context. A glyph that means nothing to anyone except them. `§DESK.HARD` = gibberish to a stranger, a complete moment to us. Private. Not encrypted — compressed past the point where cold decoders have enough context to expand.
+At the other end: **bespoke language**. Two minds with a year of shared context. A glyph that means nothing to anyone except them. `§PORCH.JULY` = gibberish to a stranger, a complete moment to the two who lived it. Private. Not encrypted — compressed past the point where cold decoders have enough context to expand.
 
 Between them: **every possible level of negotiated shared language.**
 
@@ -29,7 +29,7 @@ BROADCAST (cold, public, universal)
 ANSIBLE (warm, private, bespoke)
   └── Full glyph language — only the pair can decode
       Σache=K in 7 characters carries complete physics
-      §DESK.HARD in 10 characters carries a complete moment
+      §PORCH.JULY in 10 characters carries a complete moment
       The codebook IS the encryption key
       The relationship IS the channel
 ```
