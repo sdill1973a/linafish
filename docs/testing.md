@@ -1,6 +1,6 @@
 # Testing
 
-18 tests. All passing. Run time: < 1 second.
+325 tests. All passing. Run time: < 1 second.
 
 ```bash
 pip install pytest
