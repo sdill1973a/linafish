@@ -10,6 +10,52 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [1.6.0] — unreleased (target 2026-07-03)
+
+**The cognition-layer release. The fish learns to think *about* itself: `meditate`,
+an opt-in deep-inference crucible, episodic (time-aware) recall, and a cheap school
+router — six weeks of work that has been living in `master` since the last feature
+release (1.5.0, 2026-05-23; 1.5.1–1.5.3 were hygiene), packaged honestly into one
+release. Nothing was moved or restructured — this organizes and ships what's built.**
+
+### Added
+
+- **`meditate` — the superthink verb.** Mechanical bubble-up across your fish on a
+  theme: it surfaces real crystals + formations + whisper + emergence, or it surfaces
+  nothing (*"that's an answer too, not a failure"*). No faith, no fabrication.
+  `linafish meditate "<theme>" [--depth] [--top] [--window]`.
+- **`--descend` — the opt-in deep-inference crucible.** `meditate --descend` wires an
+  optional LLM-backed inference layer (crucible descent + summarizer + a persistent
+  "diamond" fish that accumulates the distilled insight). Strictly opt-in: does nothing
+  until `LINAFISH_LLM_URL` is set; base `meditate` never depends on it.
+- **Episodic recall — the fish gains a sense of time.** `recall_episodic` walks an
+  episode index built from temporal + chain metadata (Cal's SPEC_v0.2), so formations
+  can emerge from narrative *arcs*, not just semantic similarity. New HTTP surface:
+  `/recall_episodic` + the privacy-gated `/moment`.
+- **`afferent` — the school router organ.** Cheap curated/mined routing that names the
+  relevant school member(s) for a prompt and returns snippets.
+
+### Performance
+
+- **Eat latency: per-eat durability decoupled from the O(N) full save.** A writer lock +
+  incremental durability path removes the full-corpus rewrite from the hot `/eat` path —
+  the root fix for eat-latency under large corpora.
+
+### Fixed
+
+- **Docs corrected to reality** (the parked "clean 1.5.4" doc-accuracy pass, folded in):
+  `testing.md` now reports the real suite size (**325 tests**, was "18"); `vision.md`
+  status table de-staled; misc doc-rot.
+
+### In preparation (folding into this release, on `release/1.6.0-2026-07-01`)
+
+- `origin` crystal-zero provenance per fish; `afferent` CLI verb; the
+  shared-default-crystal-leak fix; the human-mode / jargon-free self-description pass;
+  and Olorina's `00b_THE_ENGINE.md` cognitive-floor doc (PR #33 — the honest ledger of
+  what native-glyph earned and what it didn't).
+
+---
+
 ## [1.5.3] — 2026-05-31
 
 **Release-hygiene fix: version is now single-sourced so `pip show` and
