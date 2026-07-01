@@ -124,6 +124,13 @@ except ImportError:
 # notes_2026-05-22_living_vocabulary_phase5_design.md.
 DEFAULT_RECENCY_HALF_LIFE = 500
 
+# Origin / "crystal zero" provenance (v1.2 seed #6, docs/v12-seeds.md #6).
+# `source` and `formation` markers used to identify the one origin crystal
+# a fish may carry, and to keep it out of ordinary formation clustering
+# (it isn't content — it's a label on the spore casing).
+ORIGIN_SOURCE = "__crystal_zero__"
+ORIGIN_FORMATION = "__origin__"
+
 
 class FishEngine:
     """The fish. MI x ache math. No keywords. Pure compression.
@@ -159,7 +166,8 @@ class FishEngine:
                  addressed_formations: bool = True,
                  commit_every_n_eats: int = 0,
                  save_state_every_n_eats: int = 1,
-                 living_vocab: bool = False):
+                 living_vocab: bool = False,
+                 origin: Optional[Dict[str, str]] = None):
         self.name = name
         self.state_dir = state_dir or Path.home() / ".linafish"
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -372,9 +380,87 @@ class FishEngine:
         self._load_fish_md()
         self._load_assessment_state()
 
+        # Origin / "crystal zero" provenance (v1.2 seed #6). Optional and
+        # backward compatible: only fires when a caller passes `origin=`.
+        # Idempotent — set_origin() is a no-op if this fish already has one
+        # (e.g. loaded from disk), so re-constructing an engine with the
+        # same origin kwarg every process start never duplicates it.
+        if origin:
+            self.set_origin(**origin)
+
     @property
     def crystals(self) -> List[Crystal]:
         return self.fish.crystals
+
+    # -------------------------------------------------------------------
+    # ORIGIN / "CRYSTAL ZERO" — v1.2 seed #6 (docs/v12-seeds.md #6)
+    # -------------------------------------------------------------------
+    # "Every fish should have crystal zero that says who built it, when,
+    # why, what it holds... Twelve seconds of writing that saves an hour
+    # of archaeology. The tardigrade labels its spore casing."
+    #
+    # Implemented as an ordinary Crystal (so it persists, loads, and
+    # round-trips through the exact same JSONL path every other crystal
+    # does — no new state file, no schema migration) marked
+    # `protected=True` so pruning/compaction/deprecation code can — and
+    # future such code MUST — skip it. Nothing in the engine currently
+    # deletes crystals (compact()/revectorize_all() only rebuild vocab
+    # and re-vectorize in place), so today `protected=True` is a forward
+    # contract; it costs nothing and closes the gap the moment any
+    # pruning path is added.
+
+    def get_origin(self) -> Optional[Crystal]:
+        """Return this fish's crystal-zero (origin/provenance record), or
+        None if `set_origin()` has never been called for this fish."""
+        for c in self.fish.crystals:
+            if c.source == ORIGIN_SOURCE:
+                return c
+        return None
+
+    def set_origin(self, built_by: str, why: str = "", holds: str = "",
+                    when: Optional[str] = None) -> Crystal:
+        """Record crystal zero: who built this fish, when, why, what it
+        holds. Idempotent — if an origin crystal already exists (this call
+        or a prior process), returns it unchanged rather than creating a
+        second one; a fish carries at most one crystal zero.
+
+        Args:
+            built_by: who built this fish — a name, an instance id, a
+                session/scar tag ("Anchor", "session_2026-07-01", ...).
+            why: why it exists / what problem it answers.
+            holds: a short description of what the fish holds.
+            when: ISO-8601 timestamp (default: now, UTC).
+
+        Returns:
+            the crystal-zero Crystal (pre-existing one if already set).
+        """
+        existing = self.get_origin()
+        if existing is not None:
+            return existing
+
+        from datetime import datetime, timezone
+        when = when or datetime.now(timezone.utc).isoformat()
+        text = (
+            f"CRYSTAL ZERO — Built by {built_by} on {when}. {why} "
+            f"Holds: {holds}. DO NOT DEPRECATE."
+        ).strip()
+
+        crystal = Crystal(
+            id=f"{self.name}-origin",
+            ts=when,
+            text=text,
+            source=ORIGIN_SOURCE,
+            mi_vector=[],
+            resonance=[],
+            keywords=[],
+            structural=True,
+            ache=0.0,
+            formation=ORIGIN_FORMATION,
+            protected=True,
+        )
+        self.fish.crystals.append(crystal)
+        self.fish._persist_crystal(crystal)
+        return crystal
 
     # -------------------------------------------------------------------
     # ASSESSMENT: PRE-ASSESSMENT

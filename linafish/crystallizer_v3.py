@@ -94,6 +94,12 @@ class Crystal:
     episode_id: Optional[str] = None
     episode_seq: Optional[int] = None
     episode_kind: Optional[str] = None
+    # Origin provenance (v1.2 seed #6, "crystal zero"). Default False —
+    # backward compatible for every crystal that predates this field.
+    # True only on the one origin/"crystal zero" record a fish may carry
+    # (see FishEngine.set_origin in engine.py). Pruning/compaction/
+    # deprecation code should skip any crystal with protected=True.
+    protected: bool = False
 
     def to_dict(self):
         return asdict(self)
@@ -1187,6 +1193,7 @@ class UniversalFish:
                             episode_id=d.get('episode_id'),
                             episode_seq=d.get('episode_seq'),
                             episode_kind=d.get('episode_kind'),
+                            protected=d.get('protected', False) or False,
                         )
                         disk_crystals.append(c)
                         loaded += 1
