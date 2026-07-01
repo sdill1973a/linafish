@@ -821,6 +821,47 @@ def cmd_school(args):
         print(school.docket())
 
 
+def cmd_afferent(args):
+    """The afferent school-router organ (see linafish.afferent module docstring
+    for the full CURATED vs MINED explanation).
+
+    build: scan every member fish under a school directory and write a
+    precomputed routing index. Rare, deliberate, offline — the only step
+    that does real work.
+
+    route (alias: surface): given that index and a prompt, do the cheap
+    sub-millisecond per-turn lookup naming which member(s) should wake.
+
+    The module shipped tested but was only reachable via
+    ``python -m linafish.afferent``; this verb closes that gap so it's a
+    normal top-level ``linafish`` command like ``school`` or ``soul``.
+    """
+    from .afferent import build_index, surface_for
+
+    if args.action == "build":
+        school_dir = str(args.path)
+        index_path = args.prompt[0] if args.prompt else str(Path(school_dir) / "afferent_index.json")
+        idx = build_index(school_dir, index_path)
+        n = idx["_meta"]["n_members"]
+        mode = "curated" if idx["_meta"].get("topics") else "mined"
+        print(f"indexed {n} members ({mode} mode) -> {index_path}")
+        for name, fp in sorted(idx["members"].items(), key=lambda x: -x[1]["n_crystals"])[:10]:
+            print(f"  {name:18s} {fp['n_crystals']:>6d}cr  ~{','.join(fp['vocab'][:7])}")
+    else:  # route / surface
+        index_path = str(args.path)
+        prompt = " ".join(args.prompt)
+        if not prompt:
+            print(f'Usage: linafish afferent {args.action} <index_path> "<prompt>"')
+            sys.exit(1)
+        woke = surface_for(prompt, index_path, k=args.k, mined_threshold=args.mined_threshold)
+        if not woke:
+            print("  (no member woke for this prompt)")
+            return
+        for name, info, snip in woke:
+            tag = ",".join(info) if isinstance(info, list) else f"score {info}"
+            print(f"  {name:16s} {tag:24s}  ~{snip[:70]}")
+
+
 def cmd_whisper(args):
     """One insight from your fish. What it noticed that you might not have."""
     engine = _resolve_engine(args)
@@ -2924,6 +2965,24 @@ def main():
     school_p.add_argument("--centroid", action="store_true", help="Enable centroid subtraction for add")
     school_p.add_argument("--min-gamma", type=float, default=None, help="Min gamma override for add")
 
+    # afferent — the school router organ (cheap per-turn member routing)
+    afferent_p = sub.add_parser("afferent",
+        help="The school router organ. build=precompute a routing index over "
+             "a school directory. route/surface=given the index + a prompt, "
+             "name which member(s) wake (sub-millisecond, no compute).")
+    afferent_p.add_argument("action", choices=["build", "route", "surface"],
+        help="build=scan a school dir and write a precomputed index (rare, offline). "
+             "route/surface=given an index + prompt, name which member(s) are relevant.")
+    afferent_p.add_argument("path", type=_user_path,
+        help="For build: the school directory. For route/surface: the afferent index JSON.")
+    afferent_p.add_argument("prompt", nargs="*",
+        help="For build: optional output index path (single word, default: "
+             "<school_dir>/afferent_index.json). For route/surface: the prompt to route.")
+    afferent_p.add_argument("-k", type=int, default=2,
+        help="Max members to surface (route/surface only, default: 2)")
+    afferent_p.add_argument("--mined-threshold", type=float, default=4.0,
+        help="Minimum MINED-mode score to wake a member (route/surface only, default: 4.0)")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -2986,6 +3045,7 @@ def main():
         "style": cmd_style,
         "soul": cmd_soul,
         "school": cmd_school,
+        "afferent": cmd_afferent,
         "hunt": cmd_hunt,
         "emerge": cmd_emerge,
         "feedback": cmd_feedback,
