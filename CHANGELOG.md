@@ -32,8 +32,15 @@ release. Nothing was moved or restructured — this organizes and ships what's b
   episode index built from temporal + chain metadata (Cal's SPEC_v0.2), so formations
   can emerge from narrative *arcs*, not just semantic similarity. New HTTP surface:
   `/recall_episodic` + the privacy-gated `/moment`.
-- **`afferent` — the school router organ.** Cheap curated/mined routing that names the
-  relevant school member(s) for a prompt and returns snippets.
+- **`afferent` — the school router organ, now a top-level verb.** Cheap curated/mined
+  routing that names the relevant school member(s) for a prompt and returns snippets.
+  `linafish afferent build <school_dir>` + `linafish afferent route <index> "<prompt>"`
+  (previously reachable only via `python -m linafish.afferent`).
+- **Origin crystal-zero — a fish remembers who made it.** Optional provenance record
+  (who built it, when, why) stored as a structural, `protected` crystal-zero so a fish
+  is never mistaken for disused and pruned. `FishEngine(origin={...})` / `set_origin()` /
+  `get_origin()`. Backward-compatible: fish with no origin load and behave unchanged.
+  (v1.2 seed #6 — *"the tardigrade labels its spore casing."*)
 
 ### Performance
 
@@ -49,10 +56,10 @@ release. Nothing was moved or restructured — this organizes and ships what's b
 
 ### In preparation (folding into this release, on `release/1.6.0-2026-07-01`)
 
-- `origin` crystal-zero provenance per fish; `afferent` CLI verb; the
-  shared-default-crystal-leak fix; the human-mode / jargon-free self-description pass;
-  and Olorina's `00b_THE_ENGINE.md` cognitive-floor doc (PR #33 — the honest ledger of
-  what native-glyph earned and what it didn't).
+- The human-mode / jargon-free self-description pass (the fish explaining itself without
+  interrupting warmth with math); the native-glyph op-level coinage toggle (gated OFF by
+  default); and Olorina's `00b_THE_ENGINE.md` cognitive-floor doc (PR #33 — the honest
+  ledger of what native-glyph earned and what it didn't).
 
 ---
 
