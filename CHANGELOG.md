@@ -54,12 +54,12 @@ release. Nothing was moved or restructured — this organizes and ships what's b
   `testing.md` now reports the real suite size (**325 tests**, was "18"); `vision.md`
   status table de-staled; misc doc-rot.
 
-### In preparation (folding into this release, on `release/1.6.0-2026-07-01`)
+### Deferred to 1.6.1
 
-- The human-mode / jargon-free self-description pass (the fish explaining itself without
-  interrupting warmth with math); the native-glyph op-level coinage toggle (gated OFF by
-  default); and Olorina's `00b_THE_ENGINE.md` cognitive-floor doc (PR #33 — the honest
-  ledger of what native-glyph earned and what it didn't).
+- The native-glyph op-level coinage work + Olorina's `00b_THE_ENGINE.md` cognitive-floor
+  doc (PR #33). Held deliberately: the toggle is gated-off (no user value in 1.6.0), it's
+  entangled with a branch of self-refutations, and it wants Cal + Olorina's cold-eye
+  before any of it ships. Native-glyph ships as its own honest, sibling-reviewed 1.6.1.
 
 ---
 
