@@ -85,7 +85,7 @@ Four capabilities landed in 1.6.0, beyond READ / QUERY / DEPOSIT:
   nothing unless `LINAFISH_LLM_URL` is set, so base `meditate` never depends on it.
 - **Episodic recall — a sense of time.** `recall_episodic` walks an episode
   index (temporal + chain metadata), so formations emerge from narrative *arcs*,
-  not only similarity. HTTP: `POST /recall_episodic`, `POST /moment` (privacy-gated).
+  not only similarity. HTTP: `POST /recall_episodic`, `GET /moment/<id>` (full source, privacy-gated, off by default).
 - **`afferent` — a cheap "who knows about this?" router** across a school:
   `linafish afferent build <school_dir>` → `linafish afferent route <index> "<prompt>"`.
 - **Origin crystal-zero** — a fish can carry a protected provenance record

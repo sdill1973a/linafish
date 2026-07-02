@@ -171,7 +171,7 @@ a briefing matching what's actually responding.
 | `POST` | `/eat` | Deposit new text as a crystal |
 | `POST` | `/taste` | Semantic query, returns top-k crystals |
 | `POST` | `/recall_episodic` | Time-aware recall — walk narrative arcs, not just similarity (1.6.0) |
-| `POST` | `/moment` | Record a moment into the episode index — privacy-gated (1.6.0) |
+| `GET` | `/moment/<id>` | Full untruncated source for an episode by id — privacy-gated, off by default (1.6.0) |
 
 **HTTP server only (`linafish http`):**
 

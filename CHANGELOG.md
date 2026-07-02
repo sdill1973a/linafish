@@ -10,7 +10,7 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
-## [1.6.0] — unreleased (target 2026-07-03)
+## [1.6.0] — 2026-07-01
 
 **The cognition-layer release. The fish learns to think *about* itself: `meditate`,
 an opt-in deep-inference crucible, episodic (time-aware) recall, and a cheap school
