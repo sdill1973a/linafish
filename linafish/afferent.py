@@ -107,15 +107,30 @@ def _crystals_file(d, name):
     return hits[0] if hits else None
 
 
+def _norm_kws(v):
+    """Coerce a member's keyword list to clean, matchable form: lowercase, str
+    only, non-empty. Drops non-strings (e.g. a hand-edited port number) that
+    would otherwise crash `kw in pl` on every route call, and lowercases so a
+    keyword like "RCP" isn't silently unmatchable against a lowercased prompt."""
+    out = []
+    for kw in v:
+        if isinstance(kw, str):
+            k = kw.strip().lower()
+            if k:
+                out.append(k)
+    return out
+
+
 def load_topics(school_dir):
     """Load a topic->member keyword map from <school_dir>/afferent_topics.json,
-    or return {} (→ mined-only routing). Format: {"member": ["kw", "kw", ...]}."""
+    or return {} (→ build auto-derives one). Format: {"member": ["kw", ...]}."""
     p = os.path.join(school_dir, "afferent_topics.json")
     if os.path.exists(p):
         try:
             with open(p, encoding="utf-8") as fh:
                 d = json.load(fh)
-            return {k: list(v) for k, v in d.items() if isinstance(v, (list, tuple))}
+            return {k: _norm_kws(v) for k, v in d.items()
+                    if isinstance(v, (list, tuple))}
         except Exception:
             return {}
     return {}
@@ -177,8 +192,10 @@ def build_index(school_dir, index_path, topics=None, exclude=()):
 
     topics: {member: [keywords]} for snippet harvest + the curated route map. If
     None, loaded from <school_dir>/afferent_topics.json. exclude: member names to
-    skip. The index stores, per member: TF-IDF-distinctive vocab (for MINED
-    routing), per-keyword on-topic snippets (for CURATED snippets), crystal count.
+    skip. The index stores, per member: TF-IDF-distinctive vocab (the raw
+    material an auto-derived interest map is built from when no map is supplied,
+    minus the member's own name tokens), per-keyword on-topic snippets, crystal
+    count. Routing is always CURATED; see the module docstring.
     """
     if topics is None:
         topics = load_topics(school_dir)
@@ -243,7 +260,17 @@ def build_index(school_dir, index_path, topics=None, exclude=()):
     # derived map is a floor; a hand-curated afferent_topics.json still wins.
     topics_auto = False
     if not topics:
-        topics = {name: list(fp["vocab"]) for name, fp in members.items()}
+        # Derive from mined vocab, but EXCLUDE each member's own name tokens: a
+        # concept-named facet's own name is exactly what TF-IDF selects (high tf
+        # in-member, rare across — measured), so without this it re-enters as a
+        # "keyword" and defeats surface_for's wake-guard, reproducing the very
+        # bare-name over-fire the guard exists to stop. The name still routes via
+        # the name-tier whenever a genuine OTHER keyword also hits.
+        _nsplit = re.compile(r"[_\-.]")
+        topics = {}
+        for name, fp in members.items():
+            own = {p for p in _nsplit.split(name) if len(p) > 3}
+            topics[name] = [w for w in fp["vocab"] if w not in own]
         topics_auto = True
 
     out = {"_meta": {"n_members": len(members), "df": dict(df),
@@ -253,6 +280,7 @@ def build_index(school_dir, index_path, topics=None, exclude=()):
         os.makedirs(os.path.dirname(os.path.abspath(index_path)), exist_ok=True)
         with open(index_path, "w", encoding="utf-8") as fh:
             json.dump(out, fh, indent=1)
+        _CACHE.pop(index_path, None)  # a rebuilt index must not serve stale from cache
     return out
 
 
@@ -274,7 +302,11 @@ def _curated_scores(prompt, topics):
     name_split = re.compile(r"[_\-.]")
     matched = {}
     for member, kws in topics.items():
-        hit = [kw for kw in kws if (kw in ptoks if " " not in kw else kw in pl)]
+        # word-boundary match: "art class" must not fire on "start classes", and
+        # digit/hyphen/short keywords ("n8n", "raw-archive", "ai") that can't
+        # survive the [a-z]{3,} tokenizer still match. keywords are lowercased by
+        # _norm_kws (supplied) / _tok (auto-derived).
+        hit = [kw for kw in kws if re.search(r"\b" + re.escape(kw) + r"\b", pl)]
         if not hit:
             continue  # no topic keyword → not relevant; a name mention is noise
         name_match = any(len(p) > 3 and p in ptoks for p in name_split.split(member))
@@ -300,8 +332,10 @@ _CACHE = {}
 
 def surface_for(prompt, index_path, k=2, mined_threshold=4.0):
     """The afferent call: cheap lookup naming the relevant member(s). Returns
-    [(name, matched_or_score, snippet), ...] or []. CURATED if the index carries
-    a topic map (preferred); else MINED. Loads + caches the index once."""
+    [(name, matched_or_score, snippet), ...] or []. Routes CURATED on the index's
+    topic map (supplied or auto-derived at build); the legacy MINED frequency
+    path runs only for the degenerate index with no map at all. Loads + caches
+    the index once."""
     if not prompt:
         return []
     idx = _CACHE.get(index_path)
@@ -320,13 +354,13 @@ def surface_for(prompt, index_path, k=2, mined_threshold=4.0):
         ranked = sorted(matched.items(), key=lambda x: x[1][0], reverse=True)
         out = []
         for name, (score, kws) in ranked:
+            if len(out) >= k:          # honor k, incl. the degenerate k<=0
+                break
             if len(kws) < WAKE_MIN:
                 continue
             snips = members.get(name, {}).get("kw_snippets") or {}
             snip = next((snips[kw][:120] for kw in kws if kw in snips), "")
             out.append((name, kws, snip))
-            if len(out) >= k:
-                break
         return out
 
     # MINED
