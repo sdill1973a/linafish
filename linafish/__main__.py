@@ -2838,6 +2838,11 @@ def main():
                         help="Maximum fusion levels (default: 5)")
     fuse_p.add_argument("--threshold", type=float, default=0.8,
                         help="Formation stability threshold for bedrock (default: 0.8)")
+    fuse_p.add_argument("--no-centroid", action="store_true",
+                        help="Disable centroid subtraction. Fusion subtracts the "
+                             "corpus centroid by default because it is almost always "
+                             "pointed at ONE coherent (single-voice) corpus; pass this "
+                             "only for a genuinely multi-voice corpus.")
 
     # room — the supermind listener
     room_p = sub.add_parser(
