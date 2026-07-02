@@ -87,3 +87,44 @@ def test_afferent_build_and_route_end_to_end(tmp_path: Path):
     )
     assert surface_result.returncode == 0, surface_result.stderr
     assert "garden" in surface_result.stdout
+
+
+def test_name_match_outweighs_incidental_keyword():
+    """A fish named for its topic must win its topic over a member that merely
+    shares one incidental vocab word. Regression for MINED/curated tie-loss
+    (measured: `sister` losing "sister" to `automation`)."""
+    from linafish.afferent import _curated_scores
+
+    topics = {
+        # 'sister' matches only via its NAME here (no keyword overlap).
+        "sister": ["olorina", "codebook"],
+        # 'automation' incidentally lists "sister" + "relationship" as keywords.
+        "automation": ["sister", "relationship", "cron"],
+    }
+    scored = _curated_scores("my sister and our relationship", topics)
+    # automation gets 2 keyword hits (2.0); sister gets 1 name hit (+2.0 = 2.0).
+    # The name signal must not lose the tie — sister ranks first.
+    ranked = sorted(scored.items(), key=lambda x: -x[1][0])
+    assert ranked[0][0] == "sister", ranked
+    assert scored["sister"][0] >= scored["automation"][0]
+
+
+def test_build_auto_derives_topics_when_no_map(tmp_path: Path):
+    """With no afferent_topics.json, build derives a starter interest map from
+    mined vocab (so routing runs CURATED, not the hijack-prone MINED path)."""
+    from linafish.afferent import build_index
+
+    school_dir = tmp_path / "school"
+    for name, texts in {
+        "billing": ["the billing webhook reset the invoice charge cycle"] * 3,
+        "garden": ["the tomatoes and basil need watering before frost"] * 3,
+    }.items():
+        d = school_dir / name
+        d.mkdir(parents=True)
+        with (d / f"{name}_crystals.jsonl").open("w", encoding="utf-8") as fh:
+            for t in texts:
+                fh.write(json.dumps({"text": t, "ache": 1.0}) + "\n")
+
+    idx = build_index(school_dir, str(school_dir / "afferent_index.json"))
+    assert idx["_meta"]["topics_auto"] is True
+    assert idx["_meta"]["topics"], "auto-derived topic map must be non-empty"

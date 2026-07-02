@@ -227,7 +227,21 @@ def build_index(school_dir, index_path, topics=None, exclude=()):
     for fp in members.values():
         for w in fp["vocab"]:
             df[w] += 1
-    out = {"_meta": {"n_members": len(members), "df": dict(df), "topics": topics},
+
+    # Zero-config routing: if no curated interest map was supplied, derive a
+    # starter one from each member's mined distinctive vocab so `surface_for`
+    # routes CURATED (hit-count, name-weighted) — NOT MINED. MINED sums
+    # frequency-magnitude, which small-corpus members provably hijack and which
+    # cannot separate filtered-view schools at all (members that skim one
+    # primary stream share its vocab; measured — see module docstring). The
+    # derived map is a floor; a hand-curated afferent_topics.json still wins.
+    topics_auto = False
+    if not topics:
+        topics = {name: list(fp["vocab"]) for name, fp in members.items()}
+        topics_auto = True
+
+    out = {"_meta": {"n_members": len(members), "df": dict(df),
+                     "topics": topics, "topics_auto": topics_auto},
            "members": members}
     if index_path:
         os.makedirs(os.path.dirname(os.path.abspath(index_path)), exist_ok=True)
@@ -237,18 +251,25 @@ def build_index(school_dir, index_path, topics=None, exclude=()):
 
 
 def _curated_scores(prompt, topics):
-    """Route by curated topic keywords. Returns {member: [matched_kws]}. The
-    member's own name is an implicit keyword (split on '_'/'-')."""
+    """Route by curated topic keywords. Returns {member: (score, matched_kws)}.
+
+    The member's own NAME is an implicit keyword (split on '_'/'-'/'.') and
+    weights HIGHER than an incidental keyword match: a fish named for its topic
+    should win its topic. Without this, a member that shares one vocab word with
+    the query can tie-beat the fish literally named for the subject (measured:
+    `sister` losing "sister" to `automation`)."""
     pl = (prompt or "").lower()
     ptoks = set(_TOK.findall(pl))
     matched = {}
     for member, kws in topics.items():
         hit = [kw for kw in kws if (kw in ptoks if " " not in kw else kw in pl)]
-        for part in re.split(r"[_\-]", member):
+        score = float(len(hit))
+        for part in re.split(r"[_\-.]", member):
             if len(part) > 3 and part in ptoks and part not in hit:
                 hit.append(part)
+                score += 2.0  # a name match is a strong, disambiguating signal
         if hit:
-            matched[member] = hit
+            matched[member] = (score, hit)
     return matched
 
 
@@ -288,7 +309,7 @@ def surface_for(prompt, index_path, k=2, mined_threshold=4.0):
     if topics:                       # CURATED
         matched = _curated_scores(prompt, topics)
         out = []
-        for name, kws in sorted(matched.items(), key=lambda x: -len(x[1]))[:k]:
+        for name, (score, kws) in sorted(matched.items(), key=lambda x: -x[1][0])[:k]:
             if len(kws) < WAKE_MIN:
                 continue
             snips = members.get(name, {}).get("kw_snippets") or {}
@@ -311,8 +332,11 @@ def _cli():
         index_path = args[2] if len(args) >= 3 else os.path.join(school_dir, "afferent_index.json")
         idx = build_index(school_dir, index_path)
         n = idx["_meta"]["n_members"]
-        mode = "curated" if idx["_meta"].get("topics") else "mined"
+        mode = "auto-curated" if idx["_meta"].get("topics_auto") else "curated"
         print(f"indexed {n} members ({mode} mode) -> {index_path}")
+        if idx["_meta"].get("topics_auto"):
+            print(f"  note: interest map auto-derived from mined vocab. For sharper "
+                  f"routing, curate {os.path.join(school_dir, 'afferent_topics.json')}")
         for name, fp in sorted(idx["members"].items(), key=lambda x: -x[1]["n_crystals"])[:10]:
             print(f"  {name:18s} {fp['n_crystals']:>6d}cr  ~{','.join(fp['vocab'][:7])}")
     elif len(args) >= 3 and args[0] == "route":
