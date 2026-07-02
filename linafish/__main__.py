@@ -843,8 +843,11 @@ def cmd_afferent(args):
         index_path = args.prompt[0] if args.prompt else str(Path(school_dir) / "afferent_index.json")
         idx = build_index(school_dir, index_path)
         n = idx["_meta"]["n_members"]
-        mode = "curated" if idx["_meta"].get("topics") else "mined"
+        mode = "auto-curated" if idx["_meta"].get("topics_auto") else "curated"
         print(f"indexed {n} members ({mode} mode) -> {index_path}")
+        if idx["_meta"].get("topics_auto"):
+            print(f"  note: interest map auto-derived from mined vocab. For sharper "
+                  f"routing, curate {Path(school_dir) / 'afferent_topics.json'}")
         for name, fp in sorted(idx["members"].items(), key=lambda x: -x[1]["n_crystals"])[:10]:
             print(f"  {name:18s} {fp['n_crystals']:>6d}cr  ~{','.join(fp['vocab'][:7])}")
     else:  # route / surface

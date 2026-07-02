@@ -11,20 +11,26 @@ fingerprint per member is PRECOMPUTED ONCE into an index; per-turn routing is a
 sub-millisecond in-memory dict lookup. The organ is meant to run on a solar Pi.
 Heavy work (the index build) is a rare, deliberate, offline step.
 
-TWO ROUTING MODES
-  - CURATED (robust; use when members are NOT topic-pure): route on a
-    topic->member keyword map you supply (an `afferent_topics.json` in the
-    school dir, or passed to `surface_for`/`build_index`). The map names each
-    member's topic explicitly, so it routes correctly even when the members'
-    crystals overlap heavily (e.g. a school whose members were all fed the same
-    broadcast stream).
-  - MINED (zero-config; use when members ARE topic-pure): route on the TF-IDF
-    *distinctive* vocabulary mined from each member's crystals — words frequent
-    in this member and rare across the others. This needs no map, but it only
-    disambiguates when each member's corpus is genuinely about its own distinct
-    topic. If every member ate the same stream, the topic signal is not
-    statistically recoverable by any frequency method (measured) — route CURATED
-    there, or re-feed the members topic-pure first, then MINED returns.
+ROUTING — always CURATED (route on a topic->member keyword map).
+  Per-turn routing counts keyword hits against each member's interest map (with
+  a member-name match as a higher tier), NOT frequency magnitude. Two ways the
+  map is obtained:
+  - SUPPLIED (best): an `afferent_topics.json` in the school dir (or passed to
+    `surface_for`/`build_index`) naming each member's topic keywords. Routes
+    correctly even when members' crystals overlap heavily (e.g. a school whose
+    members all skim one broadcast stream).
+  - AUTO-DERIVED (zero-config fallback): if no map is supplied, `build_index`
+    derives a starter map from each member's TF-IDF-*distinctive* mined vocab
+    and flags `topics_auto`. Good enough to route, but noisier than a curated
+    map — the CLI says so and points you at `afferent_topics.json`.
+
+  Why not route on the mined frequency directly? Because summing TF-IDF
+  magnitude is not comparable across members of different corpus sizes: a small
+  member's incidental word outweighs a large member's on-topic word (measured —
+  `qlp_grammar`/113cr beat the `sister` fish/10073cr on "sister"), and for
+  members that all ate one stream the topic signal is not statistically
+  recoverable by ANY frequency method (measured). `_mined_scores` is retained
+  only as the vocab-mining step behind the auto-derived map, not a live route.
 
 SNIPPETS. When a member wakes under CURATED routing, the organ can surface one
 on-topic crystal: the window centered on the matched keyword, harvested at build
@@ -251,25 +257,28 @@ def build_index(school_dir, index_path, topics=None, exclude=()):
 
 
 def _curated_scores(prompt, topics):
-    """Route by curated topic keywords. Returns {member: (score, matched_kws)}.
+    """Route by curated topic keywords. Returns {member: (score, matched_kws)}
+    where score is a ``(name_match, n_keyword_hits)`` tuple, compared high-first.
 
-    The member's own NAME is an implicit keyword (split on '_'/'-'/'.') and
-    weights HIGHER than an incidental keyword match: a fish named for its topic
-    should win its topic. Without this, a member that shares one vocab word with
-    the query can tie-beat the fish literally named for the subject (measured:
-    `sister` losing "sister" to `automation`)."""
+    A member wakes ONLY on a real topic-keyword hit — a bare mention of its NAME
+    is not sufficient. Otherwise members whose names are ordinary words
+    (`desk`, `paper`, `boot`, `comms`) fire on incidental prose ("the paper on
+    my desk"). But WHEN a member already has a keyword hit, a match on its name
+    lifts it into a strictly higher tier: a fish named for the subject wins its
+    subject over any rival carrying only incidental keyword hits, no matter how
+    many. Measured: without the tier, `sister` lost "sister" to `automation` on
+    keyword volume; with a flat bonus, three stray hits still beat it. The tier
+    is order- and volume-independent."""
     pl = (prompt or "").lower()
     ptoks = set(_TOK.findall(pl))
+    name_split = re.compile(r"[_\-.]")
     matched = {}
     for member, kws in topics.items():
         hit = [kw for kw in kws if (kw in ptoks if " " not in kw else kw in pl)]
-        score = float(len(hit))
-        for part in re.split(r"[_\-.]", member):
-            if len(part) > 3 and part in ptoks and part not in hit:
-                hit.append(part)
-                score += 2.0  # a name match is a strong, disambiguating signal
-        if hit:
-            matched[member] = (score, hit)
+        if not hit:
+            continue  # no topic keyword → not relevant; a name mention is noise
+        name_match = any(len(p) > 3 and p in ptoks for p in name_split.split(member))
+        matched[member] = ((1 if name_match else 0, len(hit)), hit)
     return matched
 
 
@@ -308,13 +317,16 @@ def surface_for(prompt, index_path, k=2, mined_threshold=4.0):
 
     if topics:                       # CURATED
         matched = _curated_scores(prompt, topics)
+        ranked = sorted(matched.items(), key=lambda x: x[1][0], reverse=True)
         out = []
-        for name, (score, kws) in sorted(matched.items(), key=lambda x: -x[1][0])[:k]:
+        for name, (score, kws) in ranked:
             if len(kws) < WAKE_MIN:
                 continue
             snips = members.get(name, {}).get("kw_snippets") or {}
             snip = next((snips[kw][:120] for kw in kws if kw in snips), "")
             out.append((name, kws, snip))
+            if len(out) >= k:
+                break
         return out
 
     # MINED

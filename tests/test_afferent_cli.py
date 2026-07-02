@@ -89,24 +89,33 @@ def test_afferent_build_and_route_end_to_end(tmp_path: Path):
     assert "garden" in surface_result.stdout
 
 
-def test_name_match_outweighs_incidental_keyword():
-    """A fish named for its topic must win its topic over a member that merely
-    shares one incidental vocab word. Regression for MINED/curated tie-loss
-    (measured: `sister` losing "sister" to `automation`)."""
+def test_name_tier_beats_incidental_keyword_volume():
+    """A fish named for the subject must outrank a rival carrying MORE incidental
+    keyword hits — and independent of dict insertion order. Regression for the
+    measured `sister`-loses-"sister"-to-`automation` bug, and for the weaker
+    flat-bonus fix that three stray hits still beat."""
     from linafish.afferent import _curated_scores
 
-    topics = {
-        # 'sister' matches only via its NAME here (no keyword overlap).
-        "sister": ["olorina", "codebook"],
-        # 'automation' incidentally lists "sister" + "relationship" as keywords.
-        "automation": ["sister", "relationship", "cron"],
-    }
-    scored = _curated_scores("my sister and our relationship", topics)
-    # automation gets 2 keyword hits (2.0); sister gets 1 name hit (+2.0 = 2.0).
-    # The name signal must not lose the tie — sister ranks first.
-    ranked = sorted(scored.items(), key=lambda x: -x[1][0])
-    assert ranked[0][0] == "sister", ranked
-    assert scored["sister"][0] >= scored["automation"][0]
+    def top(topics):
+        scored = _curated_scores("my sister and our relationship broke the cron", topics)
+        return sorted(scored.items(), key=lambda x: x[1][0], reverse=True)[0][0]
+
+    # 'automation' has 3 incidental keyword hits; 'sister' has 1 keyword + name.
+    a = {"automation": ["sister", "relationship", "cron"], "sister": ["sister", "olorina"]}
+    b = {"sister": ["sister", "olorina"], "automation": ["sister", "relationship", "cron"]}
+    assert top(a) == "sister"   # name tier wins over keyword volume...
+    assert top(b) == "sister"   # ...regardless of insertion order.
+
+
+def test_name_only_mention_does_not_wake_member():
+    """A member whose NAME is a common word must NOT wake on an incidental
+    mention when no topic keyword hit (desk/paper/boot over-firing)."""
+    from linafish.afferent import _curated_scores
+
+    topics = {"desk": ["writing", "poem"], "paper": ["rcp", "compression"]}
+    # "paper" and "desk" both appear, but as ordinary objects — no keyword hit.
+    scored = _curated_scores("grab the paper off my desk before the meeting", topics)
+    assert scored == {}, scored
 
 
 def test_build_auto_derives_topics_when_no_map(tmp_path: Path):
