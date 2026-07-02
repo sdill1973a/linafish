@@ -71,6 +71,13 @@ def test_origin_persists_across_reload(tmp_path: Path):
     assert reloaded.protected is True
     assert reloaded.source == ORIGIN_SOURCE
     assert "persistence check" in reloaded.text
+    # 1.6.0 cold-eye regression guard: the addressed-formations bootstrap
+    # (default-on) must NOT reclassify crystal-zero on reload — a protected
+    # crystal keeps its saved ORIGIN_FORMATION and stays out of the
+    # addressed-formation index (empty vectors would otherwise re-address it
+    # to "UNKNOWN" and surface its "DO NOT DEPRECATE" text via /pfc).
+    assert reloaded.formation == ORIGIN_FORMATION
+    assert ORIGIN_FORMATION not in engine2.formation_index
 
 
 def test_origin_kwarg_at_construction(tmp_path: Path):

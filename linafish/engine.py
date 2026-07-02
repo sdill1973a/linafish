@@ -282,9 +282,11 @@ class FishEngine:
         # waiting for detect_formations to discover membership via BFS.
         # rebuild_formations short-circuits to a no-op in this mode
         # because formations are maintained incrementally on every eat.
-        # The flag default is False — existing callers keep the legacy
-        # behavior unchanged. Subsequent commits flip the default once
-        # migration tooling and the gardener pass land.
+        # The flag default is now True (flipped once migration tooling +
+        # the gardener pass landed) — every engine bootstraps its
+        # formation_index from disk on construction. Pass
+        # addressed_formations=False to opt back into the legacy
+        # detect-formations-via-BFS behavior.
         self.addressed_formations = addressed_formations
         self.formation_index: Dict[str, Formation] = {}
 
@@ -300,6 +302,17 @@ class FishEngine:
         if self.addressed_formations and self.fish.crystals:
             from .formations import formation_address as _fa
             for c in self.fish.crystals:
+                # Protected crystals (crystal-zero / origin provenance) keep the
+                # formation they were saved with (e.g. ORIGIN_FORMATION) and stay
+                # OUT of the addressed-formation index — they are provenance, not
+                # cognitive content. set_origin()'s contract requires
+                # formation-filing code (this loop IS such code) to skip them:
+                # crystal-zero has empty vectors, so without this skip it
+                # re-addresses to "UNKNOWN" on every reload and its
+                # "DO NOT DEPRECATE" text can surface as a formation's
+                # representative_text via /pfc. (1.6.0 cold-eye finding.)
+                if getattr(c, 'protected', False):
+                    continue
                 addr = _fa(
                     cognitive_vector=getattr(c, 'cognitive_vector', None),
                     resonance=getattr(c, 'resonance', None),
