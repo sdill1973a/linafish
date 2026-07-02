@@ -51,7 +51,7 @@ release. Nothing was moved or restructured — this organizes and ships what's b
 ### Fixed
 
 - **Docs corrected to reality** (the parked "clean 1.5.4" doc-accuracy pass, folded in):
-  `testing.md` now reports the real suite size (**325 tests**, was "18"); `vision.md`
+  `testing.md` now reports the real suite size (**334 tests**, was "18"); `vision.md`
   status table de-staled; misc doc-rot.
 
 ### Deferred to 1.6.1
