@@ -73,6 +73,24 @@ any conversation where something real happened.** It is how linafish grows.
 Be honest in what you deposit: corrections your user made, insights they
 landed, things you were wrong about. The fish remembers both sides.
 
+## New in 1.6.0 — the fish can think about itself, and remember in time
+
+Four capabilities landed in 1.6.0, beyond READ / QUERY / DEPOSIT:
+
+- **`meditate` — the superthink verb.** `linafish meditate "<theme>"` bubbles
+  up the fish's *real* material on a theme (crystals + formations + whisper +
+  emergence phase) — or it honestly surfaces nothing (*"that's an answer too,
+  not a failure"*). It never fabricates. Add `--descend` for an **opt-in**
+  deep-inference pass (a "crucible" that distills a keepable insight); it does
+  nothing unless `LINAFISH_LLM_URL` is set, so base `meditate` never depends on it.
+- **Episodic recall — a sense of time.** `recall_episodic` walks an episode
+  index (temporal + chain metadata), so formations emerge from narrative *arcs*,
+  not only similarity. HTTP: `POST /recall_episodic`, `POST /moment` (privacy-gated).
+- **`afferent` — a cheap "who knows about this?" router** across a school:
+  `linafish afferent build <school_dir>` → `linafish afferent route <index> "<prompt>"`.
+- **Origin crystal-zero** — a fish can carry a protected provenance record
+  (who/when/why) so it is never mistaken for disused and pruned.
+
 ## How a fresh install starts
 
 ```

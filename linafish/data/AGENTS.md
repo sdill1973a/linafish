@@ -73,6 +73,29 @@ any conversation where something real happened.** It is how linafish grows.
 Be honest in what you deposit: corrections your user made, insights they
 landed, things you were wrong about. The fish remembers both sides.
 
+## New in 1.6.0 — the fish can think about itself, and remember in time
+
+Four capabilities landed in 1.6.0, beyond READ / QUERY / DEPOSIT:
+
+- **`meditate` — the superthink verb.** `linafish meditate "<theme>"` bubbles
+  up the fish's *real* material on a theme: actual crystals + formations + the
+  whisper + emergence phase — or it honestly surfaces nothing (*"that's an
+  answer too, not a failure"*). It never fabricates; it shows what's there.
+  Add `--descend` for an **opt-in** deep-inference pass (a "crucible" that
+  descends on the theme and distills a keepable insight into a persistent
+  "diamond" fish). Deep is strictly opt-in — it does nothing unless
+  `LINAFISH_LLM_URL` is configured, so base `meditate` never depends on it.
+- **Episodic recall — the fish gains a sense of time.** `recall_episodic`
+  walks an episode index built from temporal + chain metadata, so formations
+  can emerge from narrative *arcs*, not only semantic similarity.
+- **`afferent` — a cheap "who knows about this?" router** across a school of
+  fish: `linafish afferent build <school_dir>`, then
+  `linafish afferent route <index> "<prompt>"` names the relevant member(s)
+  and returns snippets.
+- **Origin crystal-zero — a fish remembers who made it.** A fish can carry a
+  protected provenance record (who built it, when, why) so it is never
+  mistaken for disused and pruned.
+
 ## How a fresh install starts
 
 ```
@@ -147,6 +170,8 @@ a briefing matching what's actually responding.
 | `GET` | `/pfc` | Primary Formation Codebook — READ THIS FIRST |
 | `POST` | `/eat` | Deposit new text as a crystal |
 | `POST` | `/taste` | Semantic query, returns top-k crystals |
+| `POST` | `/recall_episodic` | Time-aware recall — walk narrative arcs, not just similarity (1.6.0) |
+| `POST` | `/moment` | Record a moment into the episode index — privacy-gated (1.6.0) |
 
 **HTTP server only (`linafish http`):**
 
