@@ -120,7 +120,7 @@ def _scan_member(cf, topic_kws=()):
     vocab, dims, kw_best, n = Counter(), Counter(), {}, 0
     single_kws = [k for k in topic_kws if " " not in k]
     try:
-        with open(cf, encoding="utf-8") as fh:
+        with open(cf, encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 line = line.strip()
                 if not line:
