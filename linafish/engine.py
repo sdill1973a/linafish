@@ -205,7 +205,7 @@ class FishEngine:
         # save_state_every_n_eats: eat-latency root-fix (runbook
         # fish_engine_eat_latency_root_fix_2026-06-20). The expensive full
         # _save_state() (re-serializes the whole corpus into fish.md — O(N)
-        # in crystal count, ~2s on the .67 454K room) is decoupled from the
+        # in crystal count, ~2s on a 454K-crystal room) is decoupled from the
         # per-eat hot path. Crystals stay durable every eat via the
         # append-only JSONL (crystallize_text -> _persist_crystal); only the
         # derived fish.md/codebook write is batched. 1 (default) = save every
@@ -1876,7 +1876,7 @@ class FishEngine:
 
         chaincode marriage (spec 2026-03-25): chain_id / chain_seq
         carry the chaincode position with the deposit. The ingest
-        pipeline on .140 looks up chain position by content_hash from
+        the ingest pipeline looks up chain position by content_hash from
         the chaincode DB before calling this method, so each crystal
         knows where it lives in the chain. Pure-fish callers can leave
         these as None — backward compatible.

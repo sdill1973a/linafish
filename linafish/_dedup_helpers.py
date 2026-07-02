@@ -3,7 +3,7 @@
 MQTT broadcasts arrive shaped like::
 
     [2026-04-21T17:14:08.037Z anchor/conv/lab from=unknown]
-    ALL MINDS — new topic: room/all on .67:1883. ...
+    ALL MINDS — new topic: room/all on the federation broker. ...
 
 The per-message timestamp+source prefix line varies on every arrival, so
 byte-equivalence dedup fails: every broadcast hashes uniquely. The listener

@@ -279,7 +279,7 @@ def test_phase3_eat_accepts_form_encoded_body_with_chain_metadata():
     SovereignCore_Runtime/scripts (feed_the_whole_man, feed_our_words,
     feed_noods_fish) post ``application/x-www-form-urlencoded`` data
     with a ``name`` field instead of ``source``. linafish 1.x docs
-    say JSON, but breaking these feeders on the .67 upgrade is a
+    say JSON, but breaking these feeders on the the federation-host upgrade is a
     worse tradeoff than accepting both shapes. This test pins both
     paths through to Engine.eat with chain metadata intact."""
     from linafish.http_server import _parse_request_body

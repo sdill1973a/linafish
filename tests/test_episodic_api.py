@@ -125,3 +125,14 @@ def test_get_episode_source_engine_level(tmp_path):
     assert src.episode_id == "ep-1"
     assert "corndog" in src.full_text
     assert e.get_episode_source("nope") is None
+
+
+def test_moment_full_source_requires_token_on_nonlocal_bind():
+    """1.6.0 cold-eye guard: expose_full_sources on a non-local bind without a
+    token must refuse to start — no unauthenticated full-source exposure. The
+    guard fires before any engine/port setup, so this raises immediately."""
+    from linafish.converse import serve_converse
+    with pytest.raises(SystemExit):
+        serve_converse(bind="lan", expose_full_sources=True, token=None, port=0)
+    with pytest.raises(SystemExit):
+        serve_converse(bind="wan", expose_full_sources=True, token=None, port=0)

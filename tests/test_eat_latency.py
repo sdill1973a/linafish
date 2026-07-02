@@ -2,7 +2,7 @@
 
 Root cause (runbook fish_engine_eat_latency_root_fix_2026-06-20): every
 ``eat()`` triggered a full ``_save_state()`` that re-serializes the entire
-corpus into fish.md — O(N) in corpus size, ~2s on the .67 454K-crystal room.
+corpus into fish.md — O(N) in corpus size, ~2s on a 454K-crystal room.
 Under burst from multiple schedulers this serialized past n8n's 10s timeout.
 
 The fix: crystals stay durable via the append-only JSONL (``_persist_crystal``,

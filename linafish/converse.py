@@ -506,6 +506,19 @@ def serve_converse(
         print("  linafish converse --bind wan --token YOUR_SECRET", file=sys.stderr)
         sys.exit(1)
 
+    # 1.6.0 cold-eye hardening: /moment serves untruncated episode source when
+    # expose_full_sources is on. On any non-local bind without a token that is
+    # unauthenticated access to full source text for anyone who can reach the
+    # port. Refuse to start in that combination — the mitigation must be in
+    # code, not only in deploy-time ACL discipline.
+    if expose_full_sources and bind != "local" and not token:
+        print("Error: expose_full_sources on a non-local bind requires --token.",
+              file=sys.stderr)
+        print("  /moment would serve untruncated source unauthenticated. Either "
+              "drop LINAFISH_EXPOSE_FULL_SOURCES, use --bind local, or set --token.",
+              file=sys.stderr)
+        sys.exit(1)
+
     if mind is None:
         mind = socket.gethostname()
 

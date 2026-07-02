@@ -324,7 +324,7 @@ class Formation:
         # Keywords + chains — bounded by language vocabulary, not N.
         # Counter bumps are O(1) per keyword. Top-5 is computed lazily by
         # the ``keywords`` @property below, moving sort cost from per-call
-        # (O(K log K) × N crystals — the 14-min init walk on .67's 393K
+        # (O(K log K) × N crystals — the 14-min init walk on a 393K
         # corpus, 2026-04-30 §TWO.RELEASES.ONE.OOM) to per-read.
         for kw in (crystal.keywords or []):
             self._keyword_counter[kw] += 1
@@ -368,7 +368,7 @@ def _formation_keywords_get(self) -> List[str]:
 
     Background: pre-2026-05-01 this list was a regular dataclass field
     that ``update_with`` re-sorted on every call. The sort dominated
-    bootstrap walks at federation scale — 14 minutes init time on .67's
+    bootstrap walks at federation scale — 14 minutes init time on the federation host's
     393K corpus, surfaced 2026-04-30 §TWO.RELEASES.ONE.OOM. The fix
     moves the sort behind a property; the field is gone, the InitVar
     seed in ``__post_init__`` preserves the legacy detect_formations

@@ -251,7 +251,7 @@ class FishHandler(BaseHTTPRequestHandler):
         # (feed_the_whole_man, feed_our_words, feed_noods_fish in
         # SovereignCore_Runtime/scripts/) post form-encoded data with a
         # 'name' field. linafish 1.x docs say JSON, but breaking the
-        # pre-1.x feeders the moment we deploy 1.x to .67 is a worse
+        # pre-1.x feeders the moment we deploy 1.x to the federation host is a worse
         # tradeoff than accepting both shapes here.
         body = _parse_request_body(self.headers.get("Content-Type", ""), raw)
         if body is None:
