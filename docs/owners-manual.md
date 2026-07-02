@@ -305,7 +305,7 @@ A: Yes. Many people keep a personal fish and a work fish. Some keep a fish per p
 A: Nothing. The fish waits. It doesn't decay. It doesn't forget. When you come back, it picks up where you left off.
 
 **Q: Can two people share a fish?**
-A: Yes — that's the converse feature (coming soon). Two minds, one fish. The coupling between your crystals IS the conversation. R(n) grows with every exchange.
+A: Yes — that's the converse feature. Two minds, one fish. The coupling between your crystals IS the conversation. R(n) grows with every exchange. Run `linafish converse` to start it.
 
 **Q: My fish only has one formation. Is it broken?**
 A: Probably not broken — just underfed, or your writing is very consistent. Try `--centroid` to subtract your baseline voice and expose the variation underneath.
