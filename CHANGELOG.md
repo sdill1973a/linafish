@@ -10,6 +10,33 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [1.6.1] — 2026-07-03
+
+**Hardening release. `afferent` (the school router shipped in 1.6.0) is corrected to
+route by *interest*, not frequency-magnitude, and hardened across two independent
+cold-eye reviews; single-author corpora can now fuse at all. No new surface — this
+makes what 1.6.0 shipped actually correct. 340 tests green.**
+
+### Fixed
+
+- **`afferent` routes by interest, not frequency-magnitude.** The router now sorts by
+  name-tier first (not a flat name bonus), matches keywords on word boundaries,
+  normalizes/validates keywords (several silently-dead keywords in real maps were being
+  ignored), auto-derives excludes the fish's own-name tokens, invalidates its cache on
+  rebuild, and guards `k <= 0`. Two cold-eye passes (independent models) each found real
+  defects a green suite had hidden — both closed.
+- **`afferent build` tolerates non-UTF-8 bytes** in crystal files (reads with
+  `errors="replace"`) instead of crashing.
+- **Single-author corpora now ignite.** Three root causes fixed so a fish built from one
+  author's writing can fuse at all (previously silently produced no formations).
+
+### Docs
+
+- `/moment` route corrected to `GET /moment/<id>` (was documented POST) in AGENTS.md;
+  CHANGELOG 1.6.0 ship date stamped.
+
+---
+
 ## [1.6.0] — 2026-07-01
 
 **The cognition-layer release. The fish learns to think *about* itself: `meditate`,
