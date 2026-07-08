@@ -840,6 +840,17 @@ class FishEngine:
                     ["git", "init"], cwd=str(self.state_dir),
                     capture_output=True, timeout=10,
                 )
+                # Keep git's own auto-gc EAGER and NON-BLOCKING. The fish commits
+                # state frequently (git add -A every N eats), so loose objects
+                # accumulate fast; without eager, detached gc they snowball forever
+                # because the commit's short timeout kills git's default end-of-commit
+                # auto-gc on a large repo (observed 2026-07-08: a keeper .git grew to
+                # 25.8 GB of purely loose objects). autoDetach=true packs in the
+                # background so the eat path never blocks. See also _maybe_gc.
+                for cfg in (("gc.auto", "256"), ("gc.autoPackLimit", "16"),
+                            ("gc.autoDetach", "true")):
+                    subprocess.run(["git", "config", *cfg], cwd=str(self.state_dir),
+                                   capture_output=True, timeout=10)
                 gitignore = self.state_dir / ".gitignore"
                 if not gitignore.exists():
                     gitignore.write_text("*.tmp\n*.lock\n", encoding="utf-8")
@@ -857,6 +868,29 @@ class FishEngine:
             subprocess.run(
                 ["git", "commit", "-m", message, "--allow-empty-message"],
                 cwd=str(self.state_dir), capture_output=True, timeout=10,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+        self._maybe_gc()
+
+    def _maybe_gc(self, every: int = 20):
+        """Pack loose objects periodically, DECOUPLED from the commit hot path.
+
+        The commit above has a 10s timeout; on a large fish that timeout kills git's
+        own end-of-commit auto-gc before it can pack, so loose objects snowball forever
+        (a keeper .git hit 25.8 GB of loose objects, 2026-07-08). This fires `git gc
+        --auto` as its own call every `every` commits — with gc.autoDetach=true (set at
+        init) it spawns a background pack and returns immediately, so the eat path never
+        blocks. --auto respects the gc.auto threshold, so it's a cheap no-op when there's
+        nothing to pack. Failures are swallowed (git optional / transient)."""
+        self._commits_since_gc = getattr(self, "_commits_since_gc", 0) + 1
+        if self._commits_since_gc < every:
+            return
+        self._commits_since_gc = 0
+        try:
+            subprocess.run(
+                ["git", "gc", "--auto", "--quiet"], cwd=str(self.state_dir),
+                capture_output=True, timeout=30,
             )
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
