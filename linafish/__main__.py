@@ -66,9 +66,19 @@ def cmd_eat(args):
               f"own seed_terms mechanism via seed_grammar, not the v1 "
               f"extend_vocabulary path). Continuing without vocab override.")
 
-    # Eat through FishEngine — persists to ~/.linafish/{name}/
+    # Eat through FishEngine. --state-dir controls where the fish STATE persists (and
+    # loads+appends to an existing fish there); without it, defaults to ~/.linafish/{name}.
+    # This is the fix for the phantom-fish footgun: `eat -n X` with no --state-dir always
+    # minted/loaded X under ~/.linafish, so eating into a canonical fish that lives
+    # elsewhere silently created a fresh one. --output only ever wrote a fish.md COPY, which
+    # made it *look* like the fish lived at -o when it didn't.
     name = args.name or source.stem
-    engine = FishEngine(name=name)
+    state_dir = getattr(args, "state_dir", None)
+    engine = FishEngine(name=name, state_dir=state_dir)
+    if args.output and not state_dir:
+        print(f"  [warn] -o/--output only writes a fish.md COPY; the fish STATE persists to "
+              f"{engine.state_dir} (keyed by name '{name}'). To control where the fish "
+              f"LIVES and append to an existing one, pass --state-dir.")
     result = engine.eat_path(source)
 
     if not engine.fish.crystals:
@@ -102,9 +112,10 @@ def cmd_eat(args):
     # the persistent copy at engine.fish_file is the new addition.
     output = Path(args.output) if args.output else Path(f"{name}.fish.md")
     output.write_text(codebook, encoding="utf-8")
-    print(f"\nFish: {output} ({len(codebook)} chars, "
+    print(f"\nFish.md copy: {output} ({len(codebook)} chars, "
           f"{result.get('formations', 0)} formations)")
-    print(f"Persisted: {engine.fish_file}")
+    print(f"Persisted (fish state): {engine.state_dir}  "
+          f"[{result.get('total_crystals', 0)} crystals total]")
 
     # Explain what just happened — the WHY (v0.4.3)
     # Reach into engine.formations and engine.fish.crystals to feed the
@@ -2764,7 +2775,14 @@ def main():
     eat_p.add_argument("source", type=_user_path, help="File or directory to ingest")
     eat_p.add_argument("-n", "--name", help="Fish name")
     eat_p.add_argument("-d", "--description", help="Fish description")
-    eat_p.add_argument("-o", "--output", type=_user_path, help="Output path")
+    eat_p.add_argument("-o", "--output", type=_user_path,
+                       help="Write a COPY of the rendered fish.md here. Does NOT set where "
+                            "the fish persists — use --state-dir for that.")
+    eat_p.add_argument("--state-dir", type=_user_path,
+                       help="Directory where the fish STATE (crystals, v3 state, fish.md) "
+                            "lives. Loads + APPENDS to an existing fish there; default "
+                            "~/.linafish. Use this to eat into a canonical fish that lives "
+                            "outside ~/.linafish (e.g. --state-dir ~/anchor/qable/fish).")
     eat_p.add_argument("--hint", help="Context hint for better vectorization")
     eat_p.add_argument("--vocab", type=_user_path, help="Path to domain vocabulary JSON")
 
