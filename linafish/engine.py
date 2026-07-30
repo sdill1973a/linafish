@@ -34,6 +34,7 @@ Usage:
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -151,7 +152,8 @@ class FishEngine:
                  dedupe: bool = False,
                  addressed_formations: bool = True,
                  commit_every_n_eats: int = 0,
-                 living_vocab: bool = False):
+                 living_vocab: bool = False,
+                 no_heat: bool = False):
         self.name = name
         self.state_dir = state_dir or Path.home() / ".linafish"
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -326,6 +328,24 @@ class FishEngine:
             FeedbackLoop(state_path=self.state_dir / f"{name}_feedback.json")
             if HAS_FEEDBACK else None
         )
+
+        # NO-HEAT — 2.0 invariant 1 (READ-ONLY AMBIENT). An engine serving an
+        # AMBIENT reader (a per-turn heartbeat, a resident server, any caller that
+        # did not CHOOSE to look) must never record usage. Deliberate views heat;
+        # heartbeats never do. "Accessed" must mean *chosen*, or it means nothing.
+        #
+        # Measured on olorina/.35, 2026-07-30, before this existed: the resident
+        # server heated on every served taste while the deliberate CLI heated on
+        # none — the polarity exactly INVERTED. Two formations sat at 71,353 and
+        # 70,456 hits, `unhelpful: 0`, `weight_modifier` pinned at its 3.0 ceiling,
+        # accumulated at one ambient tick per ~34s for roughly a month. Every one
+        # of those marks was made by something that never chose; every deliberate
+        # query made none. The usage signal was not polluted, it was inverted:
+        # all noise, zero signal, and it silently outranked the codebook.
+        #
+        # Off by default — this changes no existing behavior unless asked for.
+        self._no_heat = bool(no_heat) or os.environ.get(
+            "LINAFISH_NO_HEAT", "").strip().lower() in ("1", "true", "yes")
 
         self._git_init()
         self._load_fish_md()
@@ -2278,6 +2298,8 @@ class FishEngine:
         PR #21 review: taste()/match() were returning answers without ever
         recording which formations did the work.
         """
+        if self._no_heat:
+            return  # ambient reader — see NO-HEAT in __init__ (2.0 invariant 1)
         if self.feedback is None or not top_crystal_ids or not self.formations:
             return
         seen = set()
