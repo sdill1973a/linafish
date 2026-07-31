@@ -847,19 +847,84 @@ class FishEngine:
             except (FileNotFoundError, subprocess.TimeoutExpired):
                 pass
 
-    def _git_commit(self, message: str = "Fish updated"):
-        """Commit current state to git."""
-        try:
-            subprocess.run(
-                ["git", "add", "-A"], cwd=str(self.state_dir),
-                capture_output=True, timeout=10,
+    # Signatures of git failures already reported, so a persistently broken
+    # repo warns once per process instead of once per eat. Class-level on
+    # purpose: short-lived CLI engines in a loop should stay quiet too.
+    _git_warned: set = set()
+
+    def _git_commit(self, message: str = "Fish updated") -> bool:
+        """Commit current state to git. Returns True iff a commit was made.
+
+        Never raises — a broken git must not take down an eat — but never
+        hides a real failure either. A commit that fails silently is worse
+        than having no git at all: the fish *looks* versioned and isn't, so
+        history/diff/revert/session all quietly become no-ops.
+
+        (2026-07-31: an unset committer identity killed every commit in a
+        state dir for three weeks. Nothing said a word. Hence the noise.)
+
+        "Nothing to commit" is not a failure — an idle fish is the common
+        case and stays silent.
+        """
+        rc, _, err = self._git_run("add", "-A")
+        if rc != 0:
+            self._git_warn("add", err)
+            return False
+
+        rc, out, err = self._git_run(
+            "commit", "-m", message, "--allow-empty-message",
+        )
+        if rc == 0:
+            return True
+
+        # git reports "nothing to commit" on stdout, not stderr.
+        blob = f"{out}\n{err}".lower()
+        if any(s in blob for s in (
+            "nothing to commit",
+            "nothing added to commit",
+            "no changes added to commit",
+            "working tree clean",
+        )):
+            return False
+
+        self._git_warn("commit", err or out)
+        return False
+
+    def _git_warn(self, op: str, detail: str) -> None:
+        """Report a git failure once per (state dir, op, reason)."""
+        detail = (detail or "unknown error").strip()
+        first = detail.splitlines()[0] if detail else "unknown error"
+        key = (str(self.state_dir), op, first)
+        if key in self._git_warned:
+            return
+        self._git_warned.add(key)
+
+        hint = ""
+        low = detail.lower()
+        if "identity" in low or "please tell me who you are" in low:
+            hint = (
+                "\n  fix: git -C "
+                f'"{self.state_dir}" config user.email "you@example.com"'
+                "\n       git -C "
+                f'"{self.state_dir}" config user.name "Your Name"'
             )
-            subprocess.run(
-                ["git", "commit", "-m", message, "--allow-empty-message"],
-                cwd=str(self.state_dir), capture_output=True, timeout=10,
-            )
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
+        elif "git not available" in low:
+            hint = "\n  fix: install git, or the fish keeps no history."
+        elif "timed out" in low:
+            hint = "\n  fix: check for a stale .git/index.lock, or a slow/network state dir."
+        elif "index.lock" in low:
+            hint = "\n  fix: another git process is running, or remove .git/index.lock"
+
+        # ASCII only — this lands on cp1252 consoles that mangle em-dashes.
+        # logging, not print: daemons run windowless (no stderr anyone reads),
+        # and logging's lastResort handler still writes WARNING to stderr when
+        # nothing else is configured, so the CLI stays loud either way.
+        import logging as _log
+        _log.getLogger(__name__).warning(
+            "[linafish] git %s FAILED in %s -- this fish is NOT being "
+            "versioned; history/diff/revert/session will be empty.\n  %s%s",
+            op, self.state_dir, first, hint,
+        )
 
     def _git_run(self, *args, **kwargs):
         """Run a git command in the state directory. Returns (returncode, stdout, stderr).
@@ -878,8 +943,17 @@ class FishEngine:
             out = r.stdout.strip() if r.stdout else ""
             err = r.stderr.strip() if r.stderr else ""
             return r.returncode, out, err
-        except (FileNotFoundError, subprocess.TimeoutExpired):
+        except FileNotFoundError:
             return -1, "", "git not available"
+        except subprocess.TimeoutExpired:
+            # Distinct from "not installed" — git IS here but hung (stale
+            # index.lock, huge repo, network-backed state dir). Callers
+            # surface this text to users; telling them to install git
+            # when git is running would send them the wrong way.
+            return -1, "", (
+                f"git timed out after {kwargs.get('timeout', 10)}s: "
+                f"git {' '.join(args)}"
+            )
 
     def flush_commit(self, message: str = "daemon flush — periodic commit"):
         """Force a commit regardless of policy. For long-running daemons
