@@ -15,7 +15,41 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from linafish.engine import FishEngine
+
+
+@pytest.fixture(autouse=True)
+def isolated_git_env(monkeypatch, tmp_path):
+    """Make every test here hermetic with respect to the developer's config.
+
+    Two of these tests assert a commit FAILS for want of a committer
+    identity. Repo-local `user.useConfigOnly` is not sufficient on its own:
+    it stops git *guessing* an identity from hostname/username, but a real
+    `user.email` in the developer's global config is still honored, so the
+    commit succeeds and the assertion inverts.
+
+    The failure mode is nasty because it is invisible to whoever wrote the
+    test: the suite passes only on a machine with no global git identity —
+    which is exactly the misconfigured state that produced the bug being
+    tested. It then "fails" on any contributor with a normal ~/.gitconfig
+    and reads as flakiness. Isolate the environment instead of trying to
+    out-configure it.
+
+    Env vars, not just fixture-local subprocess kwargs: the engine shells
+    out to git itself, and those calls inherit os.environ.
+    """
+    empty = tmp_path / "empty.gitconfig"
+    empty.write_text("", encoding="utf-8")
+    # A real empty file, not os.devnull — 'nul' is not a usable config path
+    # for git on Windows.
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    # These bypass config entirely; some CI images set them.
+    for var in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME",
+                "GIT_COMMITTER_EMAIL", "EMAIL", "GIT_CONFIG_SYSTEM"):
+        monkeypatch.delenv(var, raising=False)
 
 
 def _git(cwd, *args):
@@ -38,6 +72,11 @@ def _repo(tmp, identity=True):
     if identity:
         _git(state, "config", "user.email", "test@example.com")
         _git(state, "config", "user.name", "test")
+    else:
+        # isolated_git_env empties the global config; this stops git
+        # synthesizing an identity from username@hostname, which succeeds
+        # on any box whose hostname resolves to a plausible FQDN.
+        _git(state, "config", "user.useConfigOnly", "true")
     return state
 
 
@@ -66,9 +105,6 @@ def test_missing_identity_warns_and_returns_false(caplog):
     """The original bug: no committer identity, every commit lost, silently."""
     with tempfile.TemporaryDirectory() as tmp:
         state = _repo(tmp, identity=False)
-        # Defeat any real identity inherited from the developer's global
-        # config or the CI runner — otherwise this commit would succeed.
-        _git(state, "config", "user.useConfigOnly", "true")
         (state / "fish.md").write_text("# fish\n", encoding="utf-8")
 
         with caplog.at_level(logging.WARNING, logger="linafish.engine"):
@@ -85,7 +121,6 @@ def test_warning_is_deduped_across_instances(caplog):
     including across the short-lived engines the CLI builds in a loop."""
     with tempfile.TemporaryDirectory() as tmp:
         state = _repo(tmp, identity=False)
-        _git(state, "config", "user.useConfigOnly", "true")
         (state / "fish.md").write_text("# fish\n", encoding="utf-8")
 
         FishEngine._git_warned.clear()
