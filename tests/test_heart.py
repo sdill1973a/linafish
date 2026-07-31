@@ -112,3 +112,41 @@ def test_family_weight_orders_the_surface(home):
     """The densest band is marked and leads."""
     out = beat(GENUINE, home)
     assert out.splitlines()[0].startswith("♥ heart ♥"), "densest band did not lead"
+
+
+def test_slow_band_cannot_hang_the_turn(home, monkeypatch):
+    """INVARIANT 2, the half the whole-beat budget does NOT cover.
+
+    The budget is only checked BETWEEN bands, so a single slow fish blocks the
+    turn indefinitely no matter what the budget says. `per_fish_timeout` was
+    parsed from config and never applied — a small test corpus always returns
+    instantly and so cannot exercise this path. Found by an outside reviewer.
+
+    The slowness has to be injected INSIDE _recall_band (at the engine call),
+    not by replacing _recall_band — patching the function that holds the timeout
+    puts the delay outside the region under test. First version of this test did
+    exactly that and failed against the fix.
+    """
+    import time as _time
+    from linafish.engine import FishEngine
+
+    (home / "heart.toml").write_text(
+        CONFIG + '\n[timing]\nper_fish_timeout = 0.5\n', encoding="utf-8")
+
+    real_recall = FishEngine.recall
+
+    def slow_recall(self, query, top=10, no_heat=None):
+        if self.name == "journal":
+            _time.sleep(5)              # far past the 0.5s band timeout
+        return real_recall(self, query, top=top, no_heat=no_heat)
+
+    monkeypatch.setattr(FishEngine, "recall", slow_recall)
+
+    t0 = _time.time()
+    out = beat(GENUINE, home)
+    elapsed = _time.time() - t0
+
+    assert elapsed < 4, (
+        f"a slow band hung the turn for {elapsed:.1f}s — the per-fish timeout "
+        "is not applied, and the whole-beat budget cannot save it")
+    assert isinstance(out, str)

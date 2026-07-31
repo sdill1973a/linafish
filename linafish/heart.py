@@ -41,6 +41,7 @@ it stays local and is never shipped. The MECHANISM is public; the family never.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import re
 import time
@@ -160,13 +161,36 @@ def _recall_band(query: str, member: dict, cfg: HeartConfig) -> list[tuple]:
     INVARIANT 1: every read here is ``no_heat=True``. Ambient reads must leave
     no trace — including on engines whose process default records.
     """
-    try:
+    def _read() -> str:
         from .engine import FishEngine
         eng = FishEngine(name=member["name"], state_dir=Path(member["dir"]),
                          no_heat=True)
-        text = eng.recall(query, top=cfg.per_fish, no_heat=True) or ""
+        return eng.recall(query, top=cfg.per_fish, no_heat=True) or ""
+
+    # INVARIANT 2 — the nerve never blocks a thought. The whole-beat budget is
+    # only checked BETWEEN bands, so without a per-band bound one slow fish
+    # hangs the turn regardless of it. `per_fish_timeout` was parsed from config
+    # and never applied until 2026-07-31; found by an outside reviewer, because
+    # a small test corpus always returns instantly and cannot exercise this.
+    #
+    # Bounded honestly: a Python thread cannot be killed, so an abandoned read
+    # keeps running to completion in the background — we stop WAITING for it, we
+    # do not stop it. That is enough for the invariant (the turn proceeds) and
+    # it is a daemon thread, so it never holds up interpreter exit. A real
+    # cancellation would need the subprocess transport.
+    # NOT a `with` block: ThreadPoolExecutor.__exit__ calls shutdown(wait=True),
+    # which blocks for the abandoned worker and silently restores the exact hang
+    # this is meant to prevent. The first version of this fix used `with`, timed
+    # out correctly at 0.5s, and still took the full 5s to return.
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    try:
+        text = pool.submit(_read).result(timeout=cfg.per_fish_timeout)
+    except concurrent.futures.TimeoutError:
+        return []  # band too slow — drop it, keep the turn
     except Exception:  # noqa: BLE001
         return []  # INVARIANT 2
+    finally:
+        pool.shutdown(wait=False)
 
     out, lines, i = [], text.splitlines(), 0
     while i < len(lines):
