@@ -11,14 +11,19 @@ works.
 ## Quick start
 
 ```bash
-# 1. you already have fish. put a heart.toml beside them:
-cat > ~/my-fish/heart.toml <<'TOML'
+# 1. make some fish. `eat` writes to ~/.linafish/ — it has no --state-dir.
+linafish eat ~/writing/journal.md -n journal
+linafish eat ~/writing/notes.md   -n notes
+
+# 2. put a heart.toml in the SAME directory the fish live in.
+#    dir = "." because `eat` writes a flat layout, not one folder per fish.
+cat > ~/.linafish/heart.toml <<'TOML'
 [family]
-journal = { dir = "journal", weight = 1.3 }   # your densest band
-notes   = { dir = "notes",   weight = 1.0 }
+journal = { dir = ".", weight = 1.3 }   # your densest band
+notes   = { dir = ".", weight = 1.0 }
 
 [gate]
-min_prompt_chars = 20      # trivial turns pay nothing
+min_prompt_chars  = 20     # trivial turns pay nothing
 min_matched_terms = 2      # one incidental word is not a memory reaching
 
 [surface]
@@ -26,9 +31,16 @@ top = 4                    # crystals surfaced per beat
 per_fish = 3
 TOML
 
-# 2. fire a beat
-linafish heart "I'm rebuilding the wall by the greenhouse" --state-dir ~/my-fish
+# 3. fire a beat
+linafish heart "I'm rebuilding the wall by the greenhouse" --state-dir ~/.linafish
 ```
+
+**On layout:** `heart` takes `--state-dir`; `eat` does not, and always writes to
+`~/.linafish/`. So the quick-start above uses the flat layout `eat` actually
+produces. If you keep fish in per-fish subdirectories (which today means building
+them through the Python API, `FishEngine(state_dir=...)`), point each family
+member at its own `dir` instead. This asymmetry is a wart, not a design — an
+earlier version of this page described a layout the CLI could not produce.
 
 ```
 ♥ heart ♥ [journal] The greenhouse flooded again after the March rain and I lost the seedlings.

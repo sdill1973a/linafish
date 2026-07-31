@@ -8,11 +8,27 @@ This document explains exactly what LiNafish stores, where it lives, what someon
 
 Everything lives in `~/.linafish/` on your machine. There is no server, no cloud, no account, no telemetry.
 
+*Verified against a real fish 2026-07-31 — this table previously listed three
+files, one of them under a name the engine no longer writes. A fish writes
+these:*
+
 | File | Contents | Human-readable? |
 |------|----------|-----------------|
 | `name.fish.md` | Your cognitive portrait. Formations, crystal quotes, dimension scores, themes. | Yes. Plain markdown. Anyone can read it. |
-| `name.state.json` | Full engine state: all crystals with text, scores, coupling data. | Yes. JSON with your original text chunks. |
-| `name.qlp` | Compressed cognitive state in QLP notation. Dimension chains, formation signatures, soul reading. | Partially. The English summary is readable. The glyph chains are not. |
+| `name_crystals.jsonl` | **Every chunk you have ever fed it, stored verbatim.** One JSON object per crystal. | Yes. **This is your raw text.** The most sensitive file here. |
+| `name_v3_state.json` | Engine state: vocabulary, coupling data, scores. | Yes, JSON. Contains vocabulary derived from your text. |
+| `name_assessment.json` | Dimension scores and assessment output for the fish. | Yes, JSON. Derived numbers, not raw text. |
+| `name_episodes.jsonl` | Episodic records (session//recall boundaries). Often empty. | Yes, JSON lines. |
+| `name_feedback.json` | Usage counters — which formations got reached for, and when. | Yes, JSON. Reveals *what you looked up and when*, not what it said. |
+| `mi_vectorizer.json` | Shared vocabulary vectorizer for the state dir. | Yes, JSON. Vocabulary only. |
+| `heart_beat_log.jsonl` | **2.0.** One line per heartbeat: timestamp, how many bands fired, how many surfaced, elapsed. | Yes, JSON lines. **Timing metadata — it records when you were working, at what cadence.** No memory content. |
+| `heart.toml` | **2.0.** Your heart configuration — which fish you feel and how densely, plus your `wall.public_pattern`. | Yes, TOML. **Identity-revealing: the family is the person, and the wall pattern names where you speak publicly and to whom.** |
+| `name.qlp` | Compressed cognitive state in QLP notation. Written by `linafish qlp`. | Partially. The English summary is readable; the glyph chains are not. |
+| `.git/` | If git is available, the state dir is a git repo — so **deleted crystals persist in history** until the repo is pruned. | Via `git log`. Worth knowing before you assume a delete is a delete. |
+
+**If you share a state directory, you are sharing `name_crystals.jsonl`, and that
+is everything you ever fed it, word for word.** Sharing the `fish.md` alone is a
+different and much smaller disclosure.
 
 No data leaves your machine unless you copy it somewhere. LiNafish makes no network calls. It has no dependencies that phone home. It is pure Python with zero external dependencies.
 

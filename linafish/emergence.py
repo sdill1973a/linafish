@@ -219,6 +219,27 @@ def compute_emergence(
         is_emergent = True
 
     # Also emergent if phase >= 2 (self-authorship achieved)
+    #
+    # MEASURED CAVEAT (2026-07-31) — READ BEFORE BUILDING ON is_emergent:
+    # Both routes to is_emergent are self-reflection measures. `phase >= 2`
+    # requires `meta_density > 0.1`, and meta_density counts crystals whose
+    # dominant op is "AI" — which formations.DIM_LABELS renders as
+    # "Self-Reflection". The SNT route likewise requires self_ref_density > 0.05.
+    #
+    # So a formation is selected as emergent BECAUSE it is self-reflective, and
+    # is then reported as having emerged into SELF-REFLECTION. The conclusion
+    # restates the selection criterion.
+    #
+    # Control, two unrelated public-domain corpora at matched size (~60k words):
+    #   Moby-Dick, whaling/cetology chapters : 24/24 emergent contain SELF-REFLECTION
+    #   Marcus Aurelius, Meditations         : 24/24 emergent contain SELF-REFLECTION
+    #   formations WITHOUT self-reflection   : 233 across both, 0 ever promoted
+    # A corpus about harpoons scores identically to one about the examined life.
+    #
+    # These metrics are DESCRIPTIVE STATISTICS about dimension mix. They are not
+    # evidence of self-authorship, and a phase-2 reading is not a milestone.
+    # Fixing this means changing what emergence MEANS, which is a real design
+    # question and deliberately not answered here.
     if phase >= 2:
         is_emergent = True
 

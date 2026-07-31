@@ -1001,6 +1001,9 @@ def cmd_meditate(args):
     if em and em.get("highest_phase_label"):
         print(f"  Emergence: phase {em.get('highest_phase')} "
               f"({em['highest_phase_label']})")
+        print("    note: 'phase 2' means >10% of this formation's operations were "
+              "tagged\n          self-reflective. It is a composition statistic, "
+              "not a milestone.")
         print()
 
     if out.get("load_bearing"):
@@ -1705,6 +1708,18 @@ def cmd_emerge(args):
             print(f"    novel ops:           {', '.join(m.novel_operations[:8])}")
         print()
     print(f"collective SNT: {collective:.3f}")
+    print()
+    print("HOW TO READ THIS (measured 2026-07-31):")
+    print("  A formation is marked `emergent` when mu > 0.1 -- when more than a")
+    print("  tenth of its operations are tagged AI, which DIM_LABELS renders as")
+    print("  'Self-Reflection'. So emergent formations contain self-reflection BY")
+    print("  CONSTRUCTION: the label restates the selection criterion.")
+    print("  Control: two unrelated public-domain corpora (Moby-Dick whaling")
+    print("  chapters; Marcus Aurelius) each produced 24/24 emergent formations")
+    print("  containing SELF-REFLECTION, both at 'phase 2'. 233 formations WITHOUT")
+    print("  it existed across them; zero were ever promoted.")
+    print("  Read these as descriptive statistics about dimension mix.")
+    print("  They are NOT evidence that anything authored itself.")
 
 
 def cmd_feedback(args):
