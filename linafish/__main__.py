@@ -2091,6 +2091,52 @@ def cmd_doctor(args):
                         print(f"           linafish that truncates at 300 chars. `linafish update`.")
             except Exception as e:
                 print(f"  (could not read crystals: {e})")
+
+        # -- Usage signal liveness (2.0 invariant 1, deliberate half) --
+        # An empty usage store and a clean one are indistinguishable from the
+        # outside. Only a store that MOVES proves the feedback channel is live.
+        # Two real builds froze here for opposite reasons: an ambient server
+        # loop recording everything (noise pinned at the weight ceiling), and a
+        # heartbeat on a read verb that recorded nothing at all. Both pass a
+        # check that only asks "does ambient write?". This one asks the other
+        # question.
+        feedback_file = state_dir / f"{args.name}_feedback.json"
+        print("  usage signal:")
+        if not feedback_file.exists():
+            print(f"    [ ] {feedback_file.name} missing — no usage recorded yet.")
+        else:
+            try:
+                import json as _json
+                from datetime import datetime as _dt, timezone as _tz
+                fb = _json.loads(feedback_file.read_text(encoding="utf-8") or "{}")
+                usage = fb.get("usage", fb) if isinstance(fb, dict) else {}
+                entries = len(usage) if isinstance(usage, dict) else 0
+                total_hits = 0
+                unhelpful = 0
+                if isinstance(usage, dict):
+                    for e in usage.values():
+                        if isinstance(e, dict):
+                            total_hits += int(e.get("hits", 0) or 0)
+                            unhelpful += int(e.get("unhelpful", 0) or 0)
+                age_days = (
+                    _dt.now(_tz.utc)
+                    - _dt.fromtimestamp(feedback_file.stat().st_mtime, _tz.utc)
+                ).days
+                print(f"    formations recorded: {entries:,}  hits: {total_hits:,}  "
+                      f"last write: {age_days}d ago")
+                if age_days >= 14:
+                    print(f"    [!] FROZEN — no usage recorded in {age_days} days.")
+                    print(f"        If a heartbeat/ambient reader is your only caller, that is")
+                    print(f"        correct (NO-HEAT). If you have been querying deliberately,")
+                    print(f"        the deliberate half is not recording — check LINAFISH_NO_HEAT")
+                    print(f"        is not set on the process doing the choosing.")
+                if total_hits > 1000 and unhelpful == 0:
+                    print(f"    [!] SUSPECT — {total_hits:,} hits and zero unhelpful marks.")
+                    print(f"        A timer cannot judge, only fire. Check that an ambient")
+                    print(f"        reader (resident server, heartbeat) is not heating this")
+                    print(f"        store; ambient callers must run with no_heat.")
+            except Exception as e:
+                print(f"    (could not read usage store: {e})")
         print()
 
     # -- Version check against PyPI (optional) --

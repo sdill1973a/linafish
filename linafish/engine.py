@@ -2236,6 +2236,20 @@ class FishEngine:
         if not hits:
             return f"No crystals contain '{query}'."
 
+        # THE DELIBERATE HALF of 2.0 invariant 1. NO-HEAT silences ambient
+        # readers; this is the other side of the same split — a view that was
+        # CHOSEN must record, or the usage store freezes and an empty signal
+        # becomes indistinguishable from a clean one. Before this, recall() had
+        # no write path at all: a heartbeat built on recall satisfied invariant
+        # 1 for free AND recorded nothing on deliberate use, silently. Measured
+        # on the reference box: two fish queried on purpose for eight weeks,
+        # feedback last written 2026-06-04. The gate is the SAME `no_heat` flag
+        # (checked inside _record_feedback_hits) — ambient callers set it,
+        # deliberate callers don't, and one flag now governs both halves.
+        self._record_feedback_hits({
+            c.id for _, _, c in hits[:top] if getattr(c, "id", None) is not None
+        })
+
         results = [f"Found {len(hits)} crystals matching '{query}':\n"]
         for score, term_count, c in hits[:top]:
             source = c.source or "unknown"
