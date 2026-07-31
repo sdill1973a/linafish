@@ -196,7 +196,7 @@ def test_suspect_silent_on_deliberate_rate(tmp_path):
     store.write_text(json.dumps(usage), encoding="utf-8")
 
     out = _doctor(tmp_path)
-    assert "SUSPECT" not in out, (
+    assert "[!] SUSPECT" not in out, (
         "SUSPECT fired on ceiling-pinned formations accumulated slowly — it is "
         "reading volume rather than rate"
     )
@@ -213,4 +213,40 @@ def test_suspect_fires_on_timer_rate(tmp_path):
     }), encoding="utf-8")
 
     out = _doctor(tmp_path)
-    assert "SUSPECT" in out, "SUSPECT missed a timer-rate store"
+    assert "[!] SUSPECT" in out, "SUSPECT missed a timer-rate store"
+
+
+def test_rate_does_not_false_alarm_on_backfilled_legacy_store(tmp_path):
+    """A rate whose numerator and denominator cover different windows is not a
+    rate. A healthy store — 55 hits over six months, 0.31/day — backfilled and
+    hit once computed 56 hits/day and accused itself of being a timer, in
+    confident prose (Olorina, measured on the live panel)."""
+    from linafish.feedback import FeedbackLoop
+    now = time.time()
+    store = tmp_path / "probe_feedback.json"
+    store.write_text(json.dumps({
+        "SLOW": {"hits": 55, "helpful": 55, "unhelpful": 0,
+                 "last_used": now - 86400, "weight_modifier": 3.0}
+    }), encoding="utf-8")
+
+    FeedbackLoop(state_path=store).hit("SLOW")   # the one deliberate use
+
+    out = _doctor(tmp_path)
+    assert "[!] SUSPECT" not in out, (
+        "a 0.31 hits/day store was accused of being a timer — the numerator "
+        "counts all of history while the span counts only since backfill"
+    )
+
+
+def test_rate_still_catches_a_timer_after_baselining(tmp_path):
+    """Negative control for the fix above: baselining must not blind the check."""
+    now = time.time()
+    store = tmp_path / "probe_feedback.json"
+    store.write_text(json.dumps({
+        "TIMER": {"hits": 3000, "helpful": 3000, "unhelpful": 0,
+                  "hits_baseline": 0, "first_used": now - 6 * 3600,
+                  "last_used": now, "weight_modifier": 3.0}
+    }), encoding="utf-8")
+
+    out = _doctor(tmp_path)
+    assert "[!] SUSPECT" in out, "baselining the numerator blinded the timer check"

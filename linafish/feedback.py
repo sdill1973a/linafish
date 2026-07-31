@@ -53,11 +53,23 @@ class FeedbackLoop:
             }
 
         entry = self.usage[formation_name]
-        # Backfill for stores written before first_used existed. Seeded from
-        # last_used (not `now`) so an old entry cannot masquerade as new and
-        # manufacture an implausible rate on its next hit.
+        # Backfill for stores written before first_used existed. Seed from
+        # `now` AND baseline the counter — both halves, or neither.
+        #
+        # Seeding from last_used compresses a long history into a short window:
+        # a healthy store with 55 hits over six months, backfilled and then hit
+        # once, computes 56 hits/day and trips a 50/day alarm (measured on the
+        # live panel by Olorina, §A.RATE.NEEDS.ONE.WINDOW, then reproduced here
+        # before applying this).
+        #
+        # The timestamp was never the bug. `hits` counts ALL of history while
+        # the span counts only since the backfill — and **a rate whose numerator
+        # and denominator cover different windows is not a rate.** Baseline the
+        # numerator and `now` becomes the correct origin: we then measure only
+        # what we have actually observed.
         if not entry.get("first_used"):
-            entry["first_used"] = entry.get("last_used") or now
+            entry["first_used"] = now
+            entry["hits_baseline"] = entry.get("hits", 0)
         entry["hits"] += 1
         entry["last_used"] = now
 

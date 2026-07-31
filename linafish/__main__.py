@@ -2210,8 +2210,17 @@ def cmd_doctor(args):
                     span_h = (last - first) / 3600.0
                     if span_h < MIN_SPAN_HOURS:
                         continue
+                    # Count ONLY hits observed inside the measured span. Hits
+                    # accumulated before first_used was recorded belong to a
+                    # window we did not measure, and mixing them in produces a
+                    # quotient over two different spans — which is not a rate.
+                    observed = hits - int(e.get("hits_baseline", 0) or 0)
+                    if observed <= 0:
+                        continue
+                    # measurable is incremented AFTER both guards, so the
+                    # reported denominator matches what was actually measured.
                     measurable += 1
-                    rate = hits / (span_h / 24.0)
+                    rate = observed / (span_h / 24.0)
                     if rate > worst_rate:
                         worst_name, worst_rate = fname, rate
 
