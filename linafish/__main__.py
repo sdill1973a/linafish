@@ -171,6 +171,28 @@ def cmd_taste(args):
         print(content.encode("utf-8", errors="replace").decode("utf-8"))
 
 
+def cmd_heart(args):
+    """Fire one beat of the afferent organ — LiNafish 2.0.
+
+    Reads <state-dir>/heart.toml, recalls across the configured family with
+    no_heat (invariant 1), and prints what reaches toward the prompt. Silent
+    exit 0 when nothing reaches: quiet is a valid beat (invariant 4). Every
+    beat is recorded in the organ's own log so a dead heart is distinguishable
+    from a contemplative one (invariant 6) — `linafish doctor` reads it.
+
+    Wire it to whatever per-turn hook your harness offers:
+        linafish heart "$PROMPT" --state-dir ~/my-fish
+    """
+    state_dir = Path(args.state_dir) if args.state_dir else Path.home() / ".linafish"
+    prompt = args.prompt if args.prompt else sys.stdin.read()
+    from .heart import beat
+    out = beat(prompt, state_dir,
+               config_path=Path(args.config) if args.config else None)
+    if out:
+        print(out)
+    return 0
+
+
 def cmd_recall(args):
     """Full-text search across crystals. Find specific words, not patterns."""
     from .engine import FishEngine
@@ -2092,6 +2114,37 @@ def cmd_doctor(args):
             except Exception as e:
                 print(f"  (could not read crystals: {e})")
 
+        # -- Heart liveness (2.0 invariant 6) --
+        # Fail-silent + quiet-is-valid compose into an organ whose permanent
+        # death presents exactly like contemplation. The heart writes its own
+        # beat log so the two are separable; reading it is the only way anyone
+        # can tell. Quiet stays valid; silence about the silence does not.
+        try:
+            from .heart import read_beat_log
+            beats = read_beat_log(state_dir, limit=200)
+            print("  heart:")
+            if not beats:
+                print("    [ ] no beat log — heart has never fired here.")
+                print("        (`linafish heart \"...\"` from your per-turn hook)")
+            else:
+                inert = [b for b in beats if b.get("inert")]
+                fired = [b for b in beats if not b.get("inert") and not b.get("gated")]
+                surfaced = sum(1 for b in fired if b.get("surfaced", 0) > 0)
+                last = beats[-1]
+                print(f"    beats logged: {len(beats)}  fired: {len(fired)}  "
+                      f"surfaced: {surfaced}  last: {last.get('ts', '?')}")
+                if inert and inert[-1] is beats[-1]:
+                    print(f"    [!] INERT — {inert[-1]['inert']}. The organ is not")
+                    print(f"        configured, which is NOT the same as quiet.")
+                elif fired and surfaced == 0:
+                    print(f"    [!] SILENT — {len(fired)} beats, 0 surfaced anything.")
+                    print(f"        Quiet is valid, but never surfacing across many")
+                    print(f"        beats is what a dead organ looks like. Check the")
+                    print(f"        family paths in heart.toml resolve to real fish.")
+        except Exception as e:
+            print(f"    (could not read beat log: {e})")
+        print()
+
         # -- Usage signal liveness (2.0 invariant 1, deliberate half) --
         # An empty usage store and a clean one are indistinguishable from the
         # outside. Only a store that MOVES proves the feedback channel is live.
@@ -2748,6 +2801,15 @@ def main():
     taste_p.add_argument("fish", type=_user_path, help="Path to .fish.md")
 
     # recall
+    heart_p = sub.add_parser(
+        "heart",
+        help="Fire one beat of the afferent organ — surface what reaches toward this moment")
+    heart_p.add_argument("prompt", nargs="?", help="The moment (reads stdin if omitted)")
+    heart_p.add_argument("--state-dir", type=_user_path,
+                         help="Where the family lives (default: ~/.linafish/)")
+    heart_p.add_argument("--config", type=_user_path,
+                         help="heart.toml path (default: <state-dir>/heart.toml)")
+
     recall_p = sub.add_parser("recall", help="Full-text search across crystals — find specific words, not patterns")
     recall_p.add_argument("query", help="What to search for")
     recall_p.add_argument("-n", "--name", help="Fish name (default: searches default fish)")
@@ -2974,6 +3036,7 @@ def main():
         "go": cmd_go,
         "eat": cmd_eat,
         "taste": cmd_taste,
+        "heart": cmd_heart,
         "recall": cmd_recall,
         "status": cmd_status,
         "serve": cmd_serve,
@@ -2987,6 +3050,7 @@ def main():
         "history": cmd_history,
         "diff": cmd_diff,
         "revert": cmd_revert,
+        "heart": cmd_heart,
         "recall": cmd_recall,
         "ask": cmd_ask,
         "absorb": cmd_absorb,
