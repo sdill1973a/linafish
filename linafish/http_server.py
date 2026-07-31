@@ -518,6 +518,39 @@ BIND_MAP = {
 }
 
 
+class _NotReadyHandler(BaseHTTPRequestHandler):
+    """Answers every request 503 while the engine is still loading.
+
+    The port has to be claimed before the engine loads (single-writer
+    interlock, see serve_http), but a bound-and-silent port is its own lie:
+    a starter probing by connect reads UP for the whole load, and past
+    request_queue_size the connections are dropped outright. On a large
+    fish that is a multi-minute window where a health probe hangs to its
+    timeout instead of answering.
+
+    So the socket answers from the first instant, truthfully: not up yet,
+    don't start another one. Swapped for FishHandler once the engine is
+    live (anchor-dill review, PR #42).
+    """
+
+    def _respond(self):
+        body = json.dumps({
+            "status": "loading",
+            "detail": "fish is still loading; this port is claimed",
+        }).encode()
+        self.send_response(503)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Retry-After", "5")
+        self.end_headers()
+        self.wfile.write(body)
+
+    do_GET = do_POST = do_HEAD = _respond
+
+    def log_message(self, *a):
+        pass  # a boot-time probe storm is not worth stderr
+
+
 class _ExclusiveHTTPServer(ThreadingHTTPServer):
     """ThreadingHTTPServer whose bind actually refuses an occupied port.
 
@@ -578,12 +611,21 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
     if bind == "wan" and not host:
         print("Warning: WAN bind exposes the fish to the internet.", file=sys.stderr)
     try:
-        server = _ExclusiveHTTPServer((resolved_host, port), FishHandler)
+        server = _ExclusiveHTTPServer((resolved_host, port), _NotReadyHandler)
     except OSError as e:
         print(f"linafish http: cannot bind {resolved_host}:{port} — {e}\n"
               f"  Another daemon is almost certainly already serving this "
               f"fish. Refusing to start a second writer.", file=sys.stderr)
         raise SystemExit(1)
+
+    # Serve 503s immediately so the port never lies in either direction:
+    # before this, a probe during load got either a false DOWN (pre-bind) or
+    # a hang (bound but not accepting). Handler is swapped for FishHandler
+    # below, after the engine exists — RequestHandlerClass is read per
+    # request, so the swap is a single atomic rebind with no window.
+    _serve_thread = threading.Thread(
+        target=server.serve_forever, name="linafish-serve", daemon=True)
+    _serve_thread.start()
 
     # HTTP /eat path uses periodic commit (every 100 eats) instead of per-eat
     # autocommit — per-eat fired a `git commit` that wedged the request loop
@@ -671,14 +713,19 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
               f"(batched fish.md save, gate={save_state_every_n_eats} eats)",
               file=sys.stderr)
 
-    # Socket was bound at the top of this function (see the disjoint-writer
-    # note there); the handler only becomes able to answer now that
-    # FishHandler.engine is set and serve_forever starts below.
+    # The engine is live and FishHandler.engine is set: stop answering 503
+    # and start answering for real. Atomic rebind, already-serving socket.
+    server.RequestHandlerClass = FishHandler
     print(f"LiNafish HTTP: http://localhost:{port}", file=sys.stderr)
     print(f"  {len(engine.crystals)} crystals, {len(engine.formations)} formations", file=sys.stderr)
     print(f"  Fish: {engine.fish_file}", file=sys.stderr)
 
+    # The accept loop has been running since before the engine loaded (it
+    # served 503s); do NOT start a second one — two threads in one accept
+    # loop breaks shutdown. Block on the existing one instead.
     try:
-        server.serve_forever()
+        while _serve_thread.is_alive():
+            _serve_thread.join(timeout=1.0)
     except KeyboardInterrupt:
         print("\nStopped.", file=sys.stderr)
+        server.shutdown()
