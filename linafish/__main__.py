@@ -2159,7 +2159,31 @@ def cmd_doctor(args):
                     print(f"        correct (NO-HEAT). If you have been querying deliberately,")
                     print(f"        the deliberate half is not recording — check LINAFISH_NO_HEAT")
                     print(f"        is not set on the process doing the choosing.")
-                # SUSPECT keys on SATURATION, not on `unhelpful == 0`.
+                # SUSPECT keys on RATE — hits per day for a single formation —
+                # because rate is the only thing that actually separates "a
+                # timer fired" from "a mind chose".
+                #
+                # It does NOT key on `unhelpful == 0`: nothing in the engine
+                # calls hit(helpful=False), so that is structural and would fire
+                # on every healthy store (a check that always fires spends the
+                # alarm, the mirror of a check that cannot fail).
+                #
+                # It does NOT key on weight saturation either. Measured on both
+                # reference boxes 2026-07-31: the decay branch is unreachable, so
+                # `weight_modifier` is exactly `min(3.0, 1.1**hits)` — 12 hits
+                # pins ANY formation at the ceiling (43/43 and 236/236, no
+                # exceptions). "Pinned at ceiling" therefore just means "used
+                # twelve times", which is a statement about VOLUME, not about
+                # who did the using — it is true of any mature deliberate store,
+                # so that check would not fail, it would AGE into a false alarm
+                # (Olorina, §THE.WEIGHT.IS.THE.COUNTER).
+                #
+                # Rate is measurable and implausibility is the point: an
+                # unattended ~34s cadence is ~2,500 hits/day on one formation;
+                # deliberate use on a healthy store runs under 1/day. Where the
+                # store predates `first_used` the span is unknown, and the panel
+                # DECLINES TO JUDGE and says so rather than guessing — an
+                # unmeasurable quantity reported as a pass is the whole disease.
                 # Nothing in the engine ever calls hit(helpful=False), so a
                 # zero unhelpful count is STRUCTURAL — keying on it would fire
                 # on every healthy store past a threshold, which is a false-
@@ -2171,21 +2195,39 @@ def cmd_doctor(args):
                 # 54), while an unattended cadence saturates uniformly (the
                 # observed pathological store: ceiling-pinned across the top,
                 # ~70,000 hits per formation). Saturation is the signal.
-                weights = [
-                    float(e.get("weight_modifier", 1.0) or 1.0)
-                    for e in (usage.values() if isinstance(usage, dict) else [])
-                    if isinstance(e, dict)
-                ]
-                at_ceiling = sum(1 for w in weights if w >= 2.9)
-                sat = at_ceiling / len(weights) if weights else 0.0
-                if total_hits > 1000 and sat >= 0.5:
-                    print(f"    [!] SUSPECT — {at_ceiling}/{len(weights)} formations "
-                          f"({sat:.0%}) pinned at the weight ceiling over "
-                          f"{total_hits:,} hits.")
-                    print(f"        That is saturation, not selection — a timer cannot")
-                    print(f"        judge, only fire. Check that an ambient reader")
-                    print(f"        (resident server, heartbeat) is not heating this store;")
-                    print(f"        ambient callers must run with no_heat.")
+                RATE_ALARM = 50.0        # hits/day on ONE formation
+                MIN_SPAN_HOURS = 1.0     # below this, rate is noise
+                worst_name, worst_rate = None, 0.0
+                measurable = 0
+                for fname, e in (usage.items() if isinstance(usage, dict) else []):
+                    if not isinstance(e, dict):
+                        continue
+                    first = float(e.get("first_used", 0) or 0)
+                    last = float(e.get("last_used", 0) or 0)
+                    hits = int(e.get("hits", 0) or 0)
+                    if first <= 0 or last <= first:
+                        continue
+                    span_h = (last - first) / 3600.0
+                    if span_h < MIN_SPAN_HOURS:
+                        continue
+                    measurable += 1
+                    rate = hits / (span_h / 24.0)
+                    if rate > worst_rate:
+                        worst_name, worst_rate = fname, rate
+
+                if measurable == 0:
+                    print(f"    rate: not measurable (no first_used timestamps yet) — "
+                          f"SUSPECT declines to judge.")
+                else:
+                    print(f"    peak rate: {worst_rate:.1f} hits/day "
+                          f"({worst_name}) across {measurable} measurable formations")
+                    if worst_rate >= RATE_ALARM:
+                        print(f"    [!] SUSPECT — {worst_rate:,.0f} hits/day on a single "
+                              f"formation is faster than choosing.")
+                        print(f"        That is a cadence, not a reader. Check that an")
+                        print(f"        ambient caller (resident server, heartbeat) is not")
+                        print(f"        heating this store; ambient callers must run with")
+                        print(f"        no_heat.")
             except Exception as e:
                 print(f"    (could not read usage store: {e})")
         print()

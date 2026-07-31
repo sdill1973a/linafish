@@ -168,34 +168,49 @@ def test_mtime_fallback_names_itself(tmp_path):
     assert "file mtime" in out, "fallback did not name what it measured"
 
 
-def test_suspect_does_not_fire_on_a_healthy_heavy_tailed_store(tmp_path):
-    """`unhelpful == 0` is structural — nothing ever records helpful=False.
-    Keying SUSPECT on it would fire on every healthy store past a threshold.
-    Shape measured from a real healthy store: ~9% at ceiling, median 2 hits."""
+def test_suspect_declines_to_judge_without_timestamps(tmp_path):
+    """A store predating first_used has no measurable span. The panel must SAY
+    so rather than passing silently — an unmeasurable quantity reported as a
+    pass is the whole disease."""
     store = tmp_path / "probe_feedback.json"
-    usage = {f"F{i}": {"hits": 2, "helpful": 2, "unhelpful": 0,
-                       "last_used": time.time(), "weight_modifier": 1.2}
-             for i in range(40)}
-    for i in range(4):  # the heavy tail — a few genuinely load-bearing
-        usage[f"HOT{i}"] = {"hits": 400, "helpful": 400, "unhelpful": 0,
-                            "last_used": time.time(), "weight_modifier": 3.0}
+    store.write_text(json.dumps({
+        "F": {"hits": 90000, "helpful": 90000, "unhelpful": 0,
+              "last_used": time.time(), "weight_modifier": 3.0}
+    }), encoding="utf-8")
+
+    out = _doctor(tmp_path)
+    assert "declines to judge" in out, "panel guessed instead of naming the gap"
+
+
+def test_suspect_silent_on_deliberate_rate(tmp_path):
+    """Deliberate use on a healthy store runs well under 1 hit/day/formation.
+    Weight is ignored on purpose: it is a pure function of hits (12 hits pins
+    ANY formation at 3.0), so ceiling-pinning is volume, not provenance."""
+    now = time.time()
+    store = tmp_path / "probe_feedback.json"
+    usage = {}
+    for i in range(20):
+        usage[f"F{i}"] = {"hits": 40, "helpful": 40, "unhelpful": 0,
+                          "first_used": now - 120 * 86400,   # over four months
+                          "last_used": now, "weight_modifier": 3.0}
     store.write_text(json.dumps(usage), encoding="utf-8")
 
     out = _doctor(tmp_path)
     assert "SUSPECT" not in out, (
-        "SUSPECT fired on a healthy heavy-tailed store — it is keying on "
-        "something structural rather than on saturation"
+        "SUSPECT fired on ceiling-pinned formations accumulated slowly — it is "
+        "reading volume rather than rate"
     )
 
 
-def test_suspect_fires_on_a_saturated_store(tmp_path):
-    """The pathological shape: an unattended cadence pins everything at the
-    ceiling. ~70k hits per formation was the observed real case."""
+def test_suspect_fires_on_timer_rate(tmp_path):
+    """A ~34s cadence is roughly 2,500 hits/day on one formation."""
+    now = time.time()
     store = tmp_path / "probe_feedback.json"
-    usage = {f"F{i}": {"hits": 70000, "helpful": 70000, "unhelpful": 0,
-                       "last_used": time.time(), "weight_modifier": 3.0}
-             for i in range(20)}
-    store.write_text(json.dumps(usage), encoding="utf-8")
+    store.write_text(json.dumps({
+        "TIMER": {"hits": 71353, "helpful": 71353, "unhelpful": 0,
+                  "first_used": now - 30 * 86400, "last_used": now,
+                  "weight_modifier": 3.0}
+    }), encoding="utf-8")
 
     out = _doctor(tmp_path)
-    assert "SUSPECT" in out, "SUSPECT missed a fully saturated store"
+    assert "SUSPECT" in out, "SUSPECT missed a timer-rate store"
