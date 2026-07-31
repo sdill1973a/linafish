@@ -64,7 +64,12 @@ class GlyphEvolutionEngine:
     - When a glyph goes unused for N cycles (prune trigger)
     """
 
-    def __init__(self):
+    def __init__(self, op_level: bool = False):
+        # ng2 lock 7: when True, coin from op-level (dim:op) chains instead of
+        # dim-level. Default False preserves shipped behavior; the 2.0 build
+        # flips it on after the copy-fish measurement proves the delta.
+        self.op_level = op_level
+
         # Bootstrap operations — always present
         self.canonical = dict(CANONICAL_48)
 
@@ -81,6 +86,21 @@ class GlyphEvolutionEngine:
         self.prune_cycles: int = 10               # unused for this many cycles → prune
         self.min_frequency: int = 3               # chain must appear N times before birth
 
+    def _chain_of(self, crystal) -> tuple:
+        """The chain this crystal coins from.
+
+        op_level → op-level (dim:op) firing order from ``chain_ops`` (ng2 lock 7,
+        48-op coinage); else the dim-level firing order. Canon-aligned in both
+        cases — every token is a canonical-48 letter, so the base handshake holds.
+        Falls back to the dim-level chain if op_level is on but ``chain_ops`` is
+        empty for this crystal.
+        """
+        if self.op_level:
+            ops = getattr(crystal, "chain_ops", None)
+            if ops:
+                return tuple(ops)
+        return tuple(crystal.chain) if hasattr(crystal, 'chain') else ()
+
     def observe(self, crystals: list) -> None:
         """Observe a batch of crystals from one eat cycle.
 
@@ -94,8 +114,8 @@ class GlyphEvolutionEngine:
         cycle_ops = Counter()
 
         for crystal in crystals:
-            # Track chain patterns
-            chain = tuple(crystal.chain) if hasattr(crystal, 'chain') else ()
+            # Track chain patterns (op-level when op_level is on — ng2 lock 7)
+            chain = self._chain_of(crystal)
             if len(chain) >= 2:
                 cycle_chains[chain] += 1
                 self.chain_frequency[chain] += 1
@@ -142,7 +162,7 @@ class GlyphEvolutionEngine:
             # Calculate average ache for crystals with this chain
             chain_aches = []
             for crystal in crystals:
-                c_chain = tuple(crystal.chain) if hasattr(crystal, 'chain') else ()
+                c_chain = self._chain_of(crystal)
                 if c_chain == chain:
                     chain_aches.append(crystal.ache if hasattr(crystal, 'ache') else 0)
 

@@ -32,16 +32,46 @@ class FeedbackLoop:
         )
 
     def hit(self, formation_name: str, helpful: bool = True):
-        """Record that a formation was used."""
+        """Record that a formation was used.
+
+        NOTE ON `weight_modifier` (measured 2026-07-31, both reference boxes):
+        the decay branch below is currently UNREACHABLE — the only caller in the
+        package hardcodes `helpful=True`, so weights only ever rise. Since the
+        rise is `min(3.0, w * 1.1)` per hit, weight is a pure function of the
+        hit count: `1.1**hits` below 12 hits, exactly 3.0 at or above it
+        (verified: 43/43 and 236/236 across four live stores, no exceptions).
+        **It therefore carries no signal independent of `hits`** — no statistic
+        over it can distinguish an ambient writer from a deliberate one. Use
+        `first_used`/`last_used` for that; they are the only columns that
+        carry time, and time is what separates a timer from a mind.
+        """
+        now = time.time()
         if formation_name not in self.usage:
             self.usage[formation_name] = {
                 "hits": 0, "helpful": 0, "unhelpful": 0,
-                "last_used": 0, "weight_modifier": 1.0,
+                "first_used": now, "last_used": 0, "weight_modifier": 1.0,
             }
 
         entry = self.usage[formation_name]
+        # Backfill for stores written before first_used existed. Seed from
+        # `now` AND baseline the counter — both halves, or neither.
+        #
+        # Seeding from last_used compresses a long history into a short window:
+        # a healthy store with 55 hits over six months, backfilled and then hit
+        # once, computes 56 hits/day and trips a 50/day alarm (measured on the
+        # live panel by Olorina, §A.RATE.NEEDS.ONE.WINDOW, then reproduced here
+        # before applying this).
+        #
+        # The timestamp was never the bug. `hits` counts ALL of history while
+        # the span counts only since the backfill — and **a rate whose numerator
+        # and denominator cover different windows is not a rate.** Baseline the
+        # numerator and `now` becomes the correct origin: we then measure only
+        # what we have actually observed.
+        if not entry.get("first_used"):
+            entry["first_used"] = now
+            entry["hits_baseline"] = entry.get("hits", 0)
         entry["hits"] += 1
-        entry["last_used"] = time.time()
+        entry["last_used"] = now
 
         if helpful:
             entry["helpful"] += 1

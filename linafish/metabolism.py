@@ -185,6 +185,7 @@ class MetabolicEngine:
         # Determine dominant pathway and chain
         dominant = max(residues, key=lambda d: residues[d].activation)
         chain = self._extract_chain(residues, parse)
+        chain_ops = self._extract_op_chain(parse)  # ng2 lock 7: op-level (dim:op) firing order
 
         # Generate glyph
         glyph = self._generate_glyph(dominant, text, chain)
@@ -195,6 +196,7 @@ class MetabolicEngine:
             residues=residues,
             dominant=dominant,
             chain=chain,
+            chain_ops=chain_ops,
             ache=sum(r.ache for r in residues.values()),
             glyph=glyph,
         )
@@ -303,6 +305,21 @@ class MetabolicEngine:
                   if r.activation > 0.1]
         active.sort(key=lambda x: -x[1])
         return [dim for dim, _ in active[:4]]  # top 4
+
+    def _extract_op_chain(self, parse: ParseResult) -> List[str]:
+        """Op-level firing order — dim:op tokens (e.g. IC:want>EW:build).
+
+        Higher resolution than the dimension-level chain: the seed for ng2
+        48-op coinage (lock 7). The parser already computes these as
+        ``parse.op_chains``; we pick the longest (most resolution) and split it
+        into tokens. Canon-aligned — every token is a canonical-48 letter — so
+        the base handshake is preserved. Empty when the parser found no op-chain.
+        """
+        op_chains = getattr(parse, "op_chains", None) or []
+        if not op_chains:
+            return []
+        best = max(op_chains, key=lambda s: s.count(">"))
+        return [tok for tok in best.split(">") if tok]
 
     def _generate_glyph(self, dominant: str, text: str, chain: List[str]) -> str:
         """Generate a glyph ID: dominant.hash.

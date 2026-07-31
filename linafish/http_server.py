@@ -18,7 +18,9 @@ a URL can read the fish. Serves the same engine as the MCP server.
                                coupling. The form-encoded path also accepts
                                ``name`` as a synonym for ``source`` (legacy field
                                — pre-1.x feeders use it).
-    POST /taste              — cross-corpus match (JSON or form: {"text": "...", "top": 5})
+    POST /taste              — cross-corpus match (JSON or form: {"text": "...",
+                               "top": 5, "no_heat": true})  no_heat marks the caller
+                               AMBIENT for this request only; omit when it chose.
     POST /match              — tight recall (JSON: {"text": "...", "top": 3})
     POST /re-eat             — maintenance cycle (gardener + assessment + growth)
 
@@ -296,11 +298,13 @@ class FishHandler(BaseHTTPRequestHandler):
             if fmt == "json":
                 self._respond(
                     200,
-                    json.dumps(self.engine.taste_dict(text, top=top)),
+                    json.dumps(self.engine.taste_dict(
+                        text, top=top, no_heat=body.get("no_heat"))),
                     content_type="application/json",
                 )
             else:
-                self._respond(200, self.engine.taste(text, top=top))
+                self._respond(200, self.engine.taste(
+                    text, top=top, no_heat=body.get("no_heat")))
 
         elif self.path == "/match":
             text = body.get("text", "")
@@ -308,7 +312,8 @@ class FishHandler(BaseHTTPRequestHandler):
             if not text:
                 self._respond(400, "Missing 'text' field")
                 return
-            self._respond(200, self.engine.match(text, top=top))
+            self._respond(200, self.engine.match(
+                text, top=top, no_heat=body.get("no_heat")))
 
         elif self.path == "/msg":
             self._handle_msg_send(body)

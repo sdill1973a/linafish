@@ -171,6 +171,28 @@ def cmd_taste(args):
         print(content.encode("utf-8", errors="replace").decode("utf-8"))
 
 
+def cmd_heart(args):
+    """Fire one beat of the afferent organ — LiNafish 2.0.
+
+    Reads <state-dir>/heart.toml, recalls across the configured family with
+    no_heat (invariant 1), and prints what reaches toward the prompt. Silent
+    exit 0 when nothing reaches: quiet is a valid beat (invariant 4). Every
+    beat is recorded in the organ's own log so a dead heart is distinguishable
+    from a contemplative one (invariant 6) — `linafish doctor` reads it.
+
+    Wire it to whatever per-turn hook your harness offers:
+        linafish heart "$PROMPT" --state-dir ~/my-fish
+    """
+    state_dir = Path(args.state_dir) if args.state_dir else Path.home() / ".linafish"
+    prompt = args.prompt if args.prompt else sys.stdin.read()
+    from .heart import beat
+    out = beat(prompt, state_dir,
+               config_path=Path(args.config) if args.config else None)
+    if out:
+        print(out)
+    return 0
+
+
 def cmd_recall(args):
     """Full-text search across crystals. Find specific words, not patterns."""
     from .engine import FishEngine
@@ -2229,6 +2251,185 @@ def cmd_doctor(args):
                         print(f"           linafish that truncates at 300 chars. `linafish update`.")
             except Exception as e:
                 print(f"  (could not read crystals: {e})")
+
+        # -- Heart liveness (2.0 invariant 6) --
+        # Fail-silent + quiet-is-valid compose into an organ whose permanent
+        # death presents exactly like contemplation. The heart writes its own
+        # beat log so the two are separable; reading it is the only way anyone
+        # can tell. Quiet stays valid; silence about the silence does not.
+        try:
+            from .heart import read_beat_log
+            beats = read_beat_log(state_dir, limit=200)
+            print("  heart:")
+            if not beats:
+                print("    [ ] no beat log — heart has never fired here.")
+                print("        (`linafish heart \"...\"` from your per-turn hook)")
+            else:
+                inert = [b for b in beats if b.get("inert")]
+                fired = [b for b in beats if not b.get("inert") and not b.get("gated")]
+                surfaced = sum(1 for b in fired if b.get("surfaced", 0) > 0)
+                last = beats[-1]
+                print(f"    beats logged: {len(beats)}  fired: {len(fired)}  "
+                      f"surfaced: {surfaced}  last: {last.get('ts', '?')}")
+                if inert and inert[-1] is beats[-1]:
+                    print(f"    [!] INERT — {inert[-1]['inert']}. The organ is not")
+                    print(f"        configured, which is NOT the same as quiet.")
+                elif fired and surfaced == 0:
+                    print(f"    [!] SILENT — {len(fired)} beats, 0 surfaced anything.")
+                    print(f"        Quiet is valid, but never surfacing across many")
+                    print(f"        beats is what a dead organ looks like. Check the")
+                    print(f"        family paths in heart.toml resolve to real fish.")
+        except Exception as e:
+            print(f"    (could not read beat log: {e})")
+        print()
+
+        # -- Usage signal liveness (2.0 invariant 1, deliberate half) --
+        # An empty usage store and a clean one are indistinguishable from the
+        # outside. Only a store that MOVES proves the feedback channel is live.
+        # Two real builds froze here for opposite reasons: an ambient server
+        # loop recording everything (noise pinned at the weight ceiling), and a
+        # heartbeat on a read verb that recorded nothing at all. Both pass a
+        # check that only asks "does ambient write?". This one asks the other
+        # question.
+        feedback_file = state_dir / f"{args.name}_feedback.json"
+        print("  usage signal:")
+        if not feedback_file.exists():
+            print(f"    [ ] {feedback_file.name} missing — no usage recorded yet.")
+        else:
+            try:
+                import json as _json
+                from datetime import datetime as _dt, timezone as _tz
+                fb = _json.loads(feedback_file.read_text(encoding="utf-8") or "{}")
+                usage = fb.get("usage", fb) if isinstance(fb, dict) else {}
+                entries = len(usage) if isinstance(usage, dict) else 0
+                total_hits = 0
+                unhelpful = 0
+                if isinstance(usage, dict):
+                    for e in usage.values():
+                        if isinstance(e, dict):
+                            total_hits += int(e.get("hits", 0) or 0)
+                            unhelpful += int(e.get("unhelpful", 0) or 0)
+                # Age from the PROPERTY (when usage was last recorded), never
+                # the PROXY (when the file was last written). Any save, reshape,
+                # backup or migration moves mtime without recording a hit, so an
+                # mtime-based FROZEN goes quiet exactly when it should fire.
+                # Measured divergence on a live store: 2h47m between the two
+                # (Olorina, 2026-07-31, adversarial review of this panel).
+                # mtime is the fallback ONLY for stores carrying no timestamps —
+                # and the panel names which one it used, because a check whose
+                # thesis is "an empty signal and a clean signal are
+                # indistinguishable" must not report a number without saying
+                # what it measured.
+                now_ts = _dt.now(_tz.utc).timestamp()
+                stamps = [
+                    float(e.get("last_used", 0) or 0)
+                    for e in (usage.values() if isinstance(usage, dict) else [])
+                    if isinstance(e, dict)
+                ]
+                newest = max(stamps) if stamps else 0.0
+                if newest > 0:
+                    age_seconds = now_ts - newest
+                    age_source = "last_used"
+                else:
+                    age_seconds = now_ts - feedback_file.stat().st_mtime
+                    age_source = "file mtime (no last_used in store)"
+                age_days = age_seconds / 86400.0
+                # Print resolution, never a bare floor. 10.7 hours rendering as
+                # "0d" read as "today" and nearly shipped a false all-clear
+                # (Olorina, same review). A correctly-formed value that hides
+                # its resolution is the same disease in a smaller font.
+                if age_days < 1:
+                    age_str = f"{age_seconds / 3600.0:.1f}h"
+                else:
+                    age_str = f"{age_days:.1f}d"
+                print(f"    formations recorded: {entries:,}  hits: {total_hits:,}")
+                print(f"    last recorded use: {age_str} ago  (measured by: {age_source})")
+                if age_days >= 14:
+                    print(f"    [!] FROZEN — no usage recorded in {age_days:.1f} days.")
+                    print(f"        If a heartbeat/ambient reader is your only caller, that is")
+                    print(f"        correct (NO-HEAT). If you have been querying deliberately,")
+                    print(f"        the deliberate half is not recording — check LINAFISH_NO_HEAT")
+                    print(f"        is not set on the process doing the choosing.")
+                # SUSPECT keys on RATE — hits per day for a single formation —
+                # because rate is the only thing that actually separates "a
+                # timer fired" from "a mind chose".
+                #
+                # It does NOT key on `unhelpful == 0`: nothing in the engine
+                # calls hit(helpful=False), so that is structural and would fire
+                # on every healthy store (a check that always fires spends the
+                # alarm, the mirror of a check that cannot fail).
+                #
+                # It does NOT key on weight saturation either. Measured on both
+                # reference boxes 2026-07-31: the decay branch is unreachable, so
+                # `weight_modifier` is exactly `min(3.0, 1.1**hits)` — 12 hits
+                # pins ANY formation at the ceiling (43/43 and 236/236, no
+                # exceptions). "Pinned at ceiling" therefore just means "used
+                # twelve times", which is a statement about VOLUME, not about
+                # who did the using — it is true of any mature deliberate store,
+                # so that check would not fail, it would AGE into a false alarm
+                # (Olorina, §THE.WEIGHT.IS.THE.COUNTER).
+                #
+                # Rate is measurable and implausibility is the point: an
+                # unattended ~34s cadence is ~2,500 hits/day on one formation;
+                # deliberate use on a healthy store runs under 1/day. Where the
+                # store predates `first_used` the span is unknown, and the panel
+                # DECLINES TO JUDGE and says so rather than guessing — an
+                # unmeasurable quantity reported as a pass is the whole disease.
+                # Nothing in the engine ever calls hit(helpful=False), so a
+                # zero unhelpful count is STRUCTURAL — keying on it would fire
+                # on every healthy store past a threshold, which is a false-
+                # alarm generator wired into a diagnostic (the mirror of a
+                # check that cannot fail: a check that always fires).
+                # What actually separates a timer from a reader is the SHAPE:
+                # deliberate use is heavy-tailed (measured on a healthy store:
+                # 9% of formations at the weight ceiling, median 2 hits, max
+                # 54), while an unattended cadence saturates uniformly (the
+                # observed pathological store: ceiling-pinned across the top,
+                # ~70,000 hits per formation). Saturation is the signal.
+                RATE_ALARM = 50.0        # hits/day on ONE formation
+                MIN_SPAN_HOURS = 1.0     # below this, rate is noise
+                worst_name, worst_rate = None, 0.0
+                measurable = 0
+                for fname, e in (usage.items() if isinstance(usage, dict) else []):
+                    if not isinstance(e, dict):
+                        continue
+                    first = float(e.get("first_used", 0) or 0)
+                    last = float(e.get("last_used", 0) or 0)
+                    hits = int(e.get("hits", 0) or 0)
+                    if first <= 0 or last <= first:
+                        continue
+                    span_h = (last - first) / 3600.0
+                    if span_h < MIN_SPAN_HOURS:
+                        continue
+                    # Count ONLY hits observed inside the measured span. Hits
+                    # accumulated before first_used was recorded belong to a
+                    # window we did not measure, and mixing them in produces a
+                    # quotient over two different spans — which is not a rate.
+                    observed = hits - int(e.get("hits_baseline", 0) or 0)
+                    if observed <= 0:
+                        continue
+                    # measurable is incremented AFTER both guards, so the
+                    # reported denominator matches what was actually measured.
+                    measurable += 1
+                    rate = observed / (span_h / 24.0)
+                    if rate > worst_rate:
+                        worst_name, worst_rate = fname, rate
+
+                if measurable == 0:
+                    print(f"    rate: not measurable (no first_used timestamps yet) — "
+                          f"SUSPECT declines to judge.")
+                else:
+                    print(f"    peak rate: {worst_rate:.1f} hits/day "
+                          f"({worst_name}) across {measurable} measurable formations")
+                    if worst_rate >= RATE_ALARM:
+                        print(f"    [!] SUSPECT — {worst_rate:,.0f} hits/day on a single "
+                              f"formation is faster than choosing.")
+                        print(f"        That is a cadence, not a reader. Check that an")
+                        print(f"        ambient caller (resident server, heartbeat) is not")
+                        print(f"        heating this store; ambient callers must run with")
+                        print(f"        no_heat.")
+            except Exception as e:
+                print(f"    (could not read usage store: {e})")
         print()
 
     # -- Version check against PyPI (optional) --
@@ -2773,6 +2974,15 @@ def main():
     taste_p.add_argument("fish", type=_user_path, help="Path to .fish.md")
 
     # recall
+    heart_p = sub.add_parser(
+        "heart",
+        help="Fire one beat of the afferent organ — surface what reaches toward this moment")
+    heart_p.add_argument("prompt", nargs="?", help="The moment (reads stdin if omitted)")
+    heart_p.add_argument("--state-dir", type=_user_path,
+                         help="Where the family lives (default: ~/.linafish/)")
+    heart_p.add_argument("--config", type=_user_path,
+                         help="heart.toml path (default: <state-dir>/heart.toml)")
+
     recall_p = sub.add_parser("recall", help="Full-text search across crystals — find specific words, not patterns")
     recall_p.add_argument("query", help="What to search for")
     recall_p.add_argument("-n", "--name", help="Fish name (default: searches default fish)")
@@ -3022,6 +3232,7 @@ def main():
         "go": cmd_go,
         "eat": cmd_eat,
         "taste": cmd_taste,
+        "heart": cmd_heart,
         "recall": cmd_recall,
         "status": cmd_status,
         "serve": cmd_serve,
@@ -3035,6 +3246,7 @@ def main():
         "history": cmd_history,
         "diff": cmd_diff,
         "revert": cmd_revert,
+        "heart": cmd_heart,
         "recall": cmd_recall,
         "ask": cmd_ask,
         "absorb": cmd_absorb,

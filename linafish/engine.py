@@ -167,7 +167,8 @@ class FishEngine:
                  commit_every_n_eats: int = 0,
                  save_state_every_n_eats: int = 1,
                  living_vocab: bool = False,
-                 origin: Optional[Dict[str, str]] = None):
+                 origin: Optional[Dict[str, str]] = None,
+                 no_heat: bool = False):
         self.name = name
         self.state_dir = state_dir or Path.home() / ".linafish"
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -388,6 +389,24 @@ class FishEngine:
             FeedbackLoop(state_path=self.state_dir / f"{name}_feedback.json")
             if HAS_FEEDBACK else None
         )
+
+        # NO-HEAT — 2.0 invariant 1 (READ-ONLY AMBIENT). An engine serving an
+        # AMBIENT reader (a per-turn heartbeat, a resident server, any caller that
+        # did not CHOOSE to look) must never record usage. Deliberate views heat;
+        # heartbeats never do. "Accessed" must mean *chosen*, or it means nothing.
+        #
+        # Measured on olorina/.35, 2026-07-30, before this existed: the resident
+        # server heated on every served taste while the deliberate CLI heated on
+        # none — the polarity exactly INVERTED. Two formations sat at 71,353 and
+        # 70,456 hits, `unhelpful: 0`, `weight_modifier` pinned at its 3.0 ceiling,
+        # accumulated at one ambient tick per ~34s for roughly a month. Every one
+        # of those marks was made by something that never chose; every deliberate
+        # query made none. The usage signal was not polluted, it was inverted:
+        # all noise, zero signal, and it silently outranked the codebook.
+        #
+        # Off by default — this changes no existing behavior unless asked for.
+        self._no_heat = bool(no_heat) or os.environ.get(
+            "LINAFISH_NO_HEAT", "").strip().lower() in ("1", "true", "yes")
 
         self._git_init()
         self._load_fish_md()
@@ -2653,7 +2672,8 @@ class FishEngine:
             crystals=self.fish.crystals,
         )
 
-    def taste_dict(self, text: str, top: int = 5) -> dict:
+    def taste_dict(self, text: str, top: int = 5,
+                   no_heat: bool | None = None) -> dict:
         """Structured cross-corpus match. Returns a JSON-serializable dict.
 
         Schema:
@@ -2728,7 +2748,7 @@ class FishEngine:
                 "keywords": list(c.keywords) if c.keywords else [],
             })
             top_crystal_ids.add(c.id)
-        self._record_feedback_hits(top_crystal_ids)
+        self._record_feedback_hits(top_crystal_ids, no_heat=no_heat)
 
         return {
             "ok": True,
@@ -2738,14 +2758,15 @@ class FishEngine:
             "matches": matches,
         }
 
-    def taste(self, text: str, top: int = 5) -> str:
+    def taste(self, text: str, top: int = 5,
+              no_heat: bool | None = None) -> str:
         """Cross-corpus matching. What does the fish know about this text?
 
         Returns a human-readable text rendering. For structured data
         (used by guppies and other federation tooling), call
         ``taste_dict()`` instead.
         """
-        result = self.taste_dict(text, top=top)
+        result = self.taste_dict(text, top=top, no_heat=no_heat)
 
         if not result["ok"]:
             messages = {
@@ -2779,7 +2800,8 @@ class FishEngine:
 
         return "\n".join(results)
 
-    def recall(self, query: str, top: int = 10) -> str:
+    def recall(self, query: str, top: int = 10,
+               no_heat: bool | None = None) -> str:
         """Full-text search across all crystals using BM25 ranking.
 
         BM25 scores each crystal by term frequency, inverse document frequency,
@@ -2846,6 +2868,21 @@ class FishEngine:
         if not hits:
             return f"No crystals contain '{query}'."
 
+        # THE DELIBERATE HALF of 2.0 invariant 1. NO-HEAT silences ambient
+        # readers; this is the other side of the same split — a view that was
+        # CHOSEN must record, or the usage store freezes and an empty signal
+        # becomes indistinguishable from a clean one. Before this, recall() had
+        # no write path at all: a heartbeat built on recall satisfied invariant
+        # 1 for free AND recorded nothing on deliberate use, silently. Measured
+        # on the reference box: two fish queried on purpose for eight weeks,
+        # feedback last written 2026-06-04. The gate is the SAME `no_heat` flag
+        # (checked inside _record_feedback_hits) — ambient callers set it,
+        # deliberate callers don't, and one flag now governs both halves.
+        self._record_feedback_hits(
+            {c.id for _, _, c in hits[:top] if getattr(c, "id", None) is not None},
+            no_heat=no_heat,
+        )
+
         results = [f"Found {len(hits)} crystals matching '{query}':\n"]
         for score, term_count, c in hits[:top]:
             source = c.source or "unknown"
@@ -2865,7 +2902,8 @@ class FishEngine:
 
         return "\n".join(results)
 
-    def match(self, text: str, top: int = 3) -> str:
+    def match(self, text: str, top: int = 3,
+              no_heat: bool | None = None) -> str:
         """Tight recall. Higher threshold than taste."""
         if not self.fish.crystals or not self.fish.frozen:
             return "Fish is empty or not frozen."
@@ -2895,11 +2933,12 @@ class FishEngine:
             results.append(f"[{g:.3f}] {', '.join(c.keywords)}")
             results.append(f"  {c.text[:300]}\n")
             top_crystal_ids.add(c.id)
-        self._record_feedback_hits(top_crystal_ids)
+        self._record_feedback_hits(top_crystal_ids, no_heat=no_heat)
 
         return "\n".join(results)
 
-    def _record_feedback_hits(self, top_crystal_ids: set) -> None:
+    def _record_feedback_hits(self, top_crystal_ids: set,
+                              no_heat: bool | None = None) -> None:
         """Map top-hit crystals to their formations and record the usage signal.
 
         Closes the access-IS-integration loop. Each unique formation that
@@ -2908,6 +2947,15 @@ class FishEngine:
         PR #21 review: taste()/match() were returning answers without ever
         recording which formations did the work.
         """
+        # Per-CALL override beats the per-PROCESS setting. A resident server
+        # can take ambient AND deliberate traffic on the same engine; a
+        # process-wide flag would silence both, which is invariant 1(b) wearing
+        # a compliance costume (the ambient half correctly quiet, the deliberate
+        # half frozen, the invariant reading green). The caller that knows
+        # whether it CHOSE is the only one that can answer, so it gets to say.
+        gate = self._no_heat if no_heat is None else bool(no_heat)
+        if gate:
+            return  # ambient reader — see NO-HEAT in __init__ (2.0 invariant 1)
         if self.feedback is None or not top_crystal_ids or not self.formations:
             return
         seen = set()
