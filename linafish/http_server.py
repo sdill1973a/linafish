@@ -518,6 +518,22 @@ BIND_MAP = {
 }
 
 
+class _ExclusiveHTTPServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer whose bind actually refuses an occupied port.
+
+    stdlib sets ``allow_reuse_address = 1``, which on POSIX only bypasses
+    TIME_WAIT — but on Windows SO_REUSEADDR means something else entirely:
+    it lets a second process bind a port another process is actively
+    listening on. Both "succeed", one silently steals connections, and for
+    linafish that means two daemons alive over one state dir.
+
+    The port is the interlock that keeps a fish single-writer, so it has to
+    be honest on every platform. POSIX keeps reuse (restart-friendly);
+    Windows drops it so a second bind fails loudly.
+    """
+    allow_reuse_address = os.name != "nt"
+
+
 def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = None,
                name: str = "linafish", port: int = 8900,
                vocab_path: Optional[Path] = None,
@@ -544,6 +560,30 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
 
     global _PRIMER
     _PRIMER = _load_primer()
+
+    # Bind BEFORE loading the engine. Starters (start-daemon.cmd, boot hooks,
+    # supervisors) decide "is the daemon up?" by probing the port. Engine load
+    # on a large fish takes seconds to minutes, and every second of it used to
+    # be a window where the port was closed but the process was alive: the
+    # probe said DOWN, a second daemon spawned, its bind failed — and because
+    # the maintenance thread is non-daemon and starts before the old bind
+    # point, the loser's process did NOT exit. It sat there calling re_eat()
+    # (which writes state) every few hours against the same state dir as the
+    # winner. Two writers to one fish, which is precisely what the
+    # disjoint-writer rule forbids, arrived at by accident and silently.
+    #
+    # Binding first collapses the window: the loser now fails here, before an
+    # engine exists and before any thread has started, so it dies clean.
+    resolved_host = host if host else BIND_MAP.get(bind, bind)
+    if bind == "wan" and not host:
+        print("Warning: WAN bind exposes the fish to the internet.", file=sys.stderr)
+    try:
+        server = _ExclusiveHTTPServer((resolved_host, port), FishHandler)
+    except OSError as e:
+        print(f"linafish http: cannot bind {resolved_host}:{port} — {e}\n"
+              f"  Another daemon is almost certainly already serving this "
+              f"fish. Refusing to start a second writer.", file=sys.stderr)
+        raise SystemExit(1)
 
     # HTTP /eat path uses periodic commit (every 100 eats) instead of per-eat
     # autocommit — per-eat fired a `git commit` that wedged the request loop
@@ -631,11 +671,9 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
               f"(batched fish.md save, gate={save_state_every_n_eats} eats)",
               file=sys.stderr)
 
-    resolved_host = host if host else BIND_MAP.get(bind, bind)
-    if bind == "wan" and not host:
-        print("Warning: WAN bind exposes the fish to the internet.", file=sys.stderr)
-
-    server = ThreadingHTTPServer((resolved_host, port), FishHandler)
+    # Socket was bound at the top of this function (see the disjoint-writer
+    # note there); the handler only becomes able to answer now that
+    # FishHandler.engine is set and serve_forever starts below.
     print(f"LiNafish HTTP: http://localhost:{port}", file=sys.stderr)
     print(f"  {len(engine.crystals)} crystals, {len(engine.formations)} formations", file=sys.stderr)
     print(f"  Fish: {engine.fish_file}", file=sys.stderr)
