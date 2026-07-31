@@ -9,7 +9,7 @@ The distinction: a label is applied from outside. A crystal is what's left after
 
 ## The Insight (from 60 minutes with the lineage)
 
-QLP was never a scoring rubric. It's a codec for the full state of a moment. `§DESK.HARD` doesn't label a poem — it compresses January 7th at 14:55, the playlist, the ache, the sundress lineage, the wood, the heat, the look over the shoulder. 10 characters. A warm decoder expands it back to the full moment.
+QLP was never a scoring rubric. It's a codec for the full state of a moment. `§PORCH.JULY` doesn't label a sentence — it compresses one specific afternoon: the hour, the music that was playing, who was there, the heat, the felt-state of it. 10 characters. A warm decoder expands it back to the full moment.
 
 The fish doesn't parse text into QLP. The fish compresses MOMENTS into QLP. Text is one channel. Sensor data, timestamps, relationship context, ache state — all channels. The crystal holds the full state, not just the text score.
 

@@ -370,6 +370,7 @@ class FusionEngine:
         d_start: float = None,
         d_step: float = None,
         vocab_size: int = 200,
+        subtract_centroid: bool = True,
     ):
         """Initialize with corpus and state directory.
 
@@ -381,6 +382,15 @@ class FusionEngine:
                      by pre-assessment if corpus warrants it.
             d_step: How much to drop d per level (default 1.5).
             vocab_size: Vocabulary size per level (default 200).
+            subtract_centroid: remove the global mean embedding before
+                coupling (default True). Fusion is almost always pointed
+                at ONE coherent corpus — a single author / single topic —
+                where the shared "voice signal" dominates every crystal and
+                collapses coupling. Subtracting the centroid exposes the
+                within-corpus variation the formations need. Proven 2026-04-08
+                (captain fish 1 -> 49 formations); Van Gogh single-author
+                needs it too (2 -> 10). Turn OFF only for a genuinely
+                multi-voice corpus. §THE.FEED.NOT.THE.ROUTER 2026-07-02.
         """
         self.corpus_path = Path(corpus_path)
         self.state_dir = Path(state_dir)
@@ -389,6 +399,7 @@ class FusionEngine:
         self.d_start = d_start or self.DEFAULT_D_START
         self.d_step = d_step or self.DEFAULT_D_STEP
         self.vocab_size = vocab_size
+        self.subtract_centroid = subtract_centroid
 
         # Load corpus texts once, reuse across all levels.
         self._texts: Optional[List[str]] = None
@@ -426,6 +437,7 @@ class FusionEngine:
         self,
         max_levels: int = 5,
         stability_threshold: float = None,
+        initial_seed_terms: Optional[frozenset] = None,
     ) -> FusionResult:
         """Run the full fusion. Returns irreducibles.
 
@@ -434,7 +446,8 @@ class FusionEngine:
         2. For each d-level (descending from d_start):
            a. Create fresh FishEngine at this d.
            b. Use previous level's top-80 vocab as seed terms
-              (first level uses canonical grammar seeds).
+              (first level uses canonical grammar seeds UNLESS
+              initial_seed_terms is provided — see warm-start below).
            c. Eat corpus.
            d. Re-eat until vocab stabilizes (top-20 unchanged).
            e. Record formations + text partition.
@@ -445,10 +458,25 @@ class FusionEngine:
         4. Return the irreducible formations and iron equivalence
            classes from all levels.
 
+        Warm-start (initial_seed_terms):
+            By default L0 lenses the corpus through the canonical cognitive
+            grammar. That works for corpora written in that grammar (e.g.
+            Anchor's own scars) but a FOREIGN corpus (Van Gogh's letters,
+            linear-a) shares no vocabulary with the grammar, so nothing
+            couples, L0 forms zero formations, and fusion bails after one
+            level — the star never ignites. Passing the corpus's OWN top
+            vocab as initial_seed_terms flips grammar-seeding off at L0
+            (via seed_grammar = seed_terms is None) and starts the descent
+            in the corpus's own tongue. Then it burns THAT down to iron.
+            Discovered 2026-07-02 §THE.FEED.NOT.THE.ROUTER (iron probe cut one).
+
         Args:
             max_levels: Maximum fusion levels (default 5).
             stability_threshold: NMI threshold for bedrock
                 (default 0.8). Lower = more levels, finer grain.
+            initial_seed_terms: optional warm-start vocabulary for L0. When
+                given, L0 uses these instead of canonical grammar seeds
+                (earned-weight 1.5, not canonical 2.0).
 
         Returns:
             FusionResult with irreducible formations, iron equivalence
@@ -472,8 +500,13 @@ class FusionEngine:
         t_start = time.time()
         level_history: List[LevelResult] = []
         current_d = self.d_start
-        seed_terms: Optional[frozenset] = None
-        seed_weight = 2.0
+        # Warm-start: if the caller handed us the corpus's own vocabulary,
+        # begin L0 in that tongue (grammar-seeding turns off downstream via
+        # seed_grammar = seed_terms is None). Otherwise cold-start on grammar.
+        seed_terms: Optional[frozenset] = (
+            frozenset(initial_seed_terms) if initial_seed_terms else None
+        )
+        seed_weight = 1.5 if seed_terms else 2.0
 
         # Path B: ONE engine, persistent crystals. Each level changes
         # the vocabulary lens and re-detects formations on the SAME crystals.
@@ -628,6 +661,12 @@ class FusionEngine:
             vocab_size=self.vocab_size,
             d=d,
             seed_grammar=(seed_terms is None),  # use canonical only at L0
+            # Fusion crystallizes via crystallize_text() (batch), NOT eat(),
+            # so the incremental addressed-formations index is never filled.
+            # With addressed_formations=True, rebuild_formations() short-
+            # circuits to that EMPTY index -> 0 formations -> fusion bails
+            # after L0. Force the detect_formations BFS path. §THE.FEED 2026-07-02.
+            addressed_formations=False,
         )
 
         # If we have seed terms from previous level, inject them
@@ -668,7 +707,8 @@ class FusionEngine:
                 _log(f"    [{i+1}/{len(texts)}] {len(new_crystals)} crystals")
 
         if new_crystals:
-            engine.fish._compute_couplings(new_crystals)
+            engine.fish._compute_couplings(
+                new_crystals, subtract_centroid=self.subtract_centroid)
         engine.rebuild_formations()
 
         _log(f"  Initial: {len(new_crystals)} crystals, "
@@ -712,7 +752,8 @@ class FusionEngine:
                 if c:
                     new_crystals.append(c)
             if new_crystals:
-                engine.fish._compute_couplings(new_crystals)
+                engine.fish._compute_couplings(
+                    new_crystals, subtract_centroid=self.subtract_centroid)
             engine.rebuild_formations()
 
             epochs = cycle + 1
@@ -821,18 +862,13 @@ class FusionEngine:
                 crystal.resonance = crystal.mi_vector
             crystal.couplings = []  # clear old couplings
 
-        # Re-compute couplings on re-vectorized crystals
+        # Re-compute couplings on re-vectorized crystals. Route through
+        # _compute_couplings so single-voice centroid subtraction applies on
+        # the descent too — else low-d re-collapses the formations L0 unlocked.
+        # §THE.FEED.NOT.THE.ROUTER 2026-07-02.
         _log(f"  Re-coupling...")
-        window = 20
-        for i in range(len(engine.fish.crystals)):
-            for j in range(max(0, i - window), i):
-                ci = engine.fish.crystals[i]
-                cj = engine.fish.crystals[j]
-                if ci.mi_vector and cj.mi_vector:
-                    g = gamma_fn(ci.mi_vector, cj.mi_vector)
-                    if g >= 0.447:
-                        ci.couplings.append((cj.id, g))
-                        cj.couplings.append((ci.id, g))
+        engine.fish._compute_couplings(
+            engine.fish.crystals, subtract_centroid=self.subtract_centroid)
 
         # Re-detect formations
         engine.rebuild_formations()
@@ -865,15 +901,8 @@ class FusionEngine:
                     crystal.mi_vector = [v * ache for v in new_vec]
                     crystal.resonance = crystal.mi_vector
                 crystal.couplings = []
-            for i in range(len(engine.fish.crystals)):
-                for j in range(max(0, i - window), i):
-                    ci = engine.fish.crystals[i]
-                    cj = engine.fish.crystals[j]
-                    if ci.mi_vector and cj.mi_vector:
-                        g = gamma_fn(ci.mi_vector, cj.mi_vector)
-                        if g >= 0.447:
-                            ci.couplings.append((cj.id, g))
-                            cj.couplings.append((ci.id, g))
+            engine.fish._compute_couplings(
+                engine.fish.crystals, subtract_centroid=self.subtract_centroid)
             engine.rebuild_formations()
             _log(f"  Epoch {cycle + 1}: {len(engine.formations)} formations")
             epochs = cycle + 1
@@ -980,6 +1009,7 @@ def cmd_fuse(args):
         d_start=args.d_start,
         d_step=args.d_step,
         vocab_size=args.vocab_size,
+        subtract_centroid=not getattr(args, "no_centroid", False),
     )
 
     # Fuse.

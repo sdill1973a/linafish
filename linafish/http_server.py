@@ -9,10 +9,18 @@ a URL can read the fish. Serves the same engine as the MCP server.
     GET  /emerge             — emergence metrics (ν, μ, ρ, Ψ, phase)
     GET  /growth             — R(n) curve, coupling density, dimension entropy
     GET  /fish               — raw fish.md contents
-    POST /eat                — feed text (JSON: {"text": "...", "source": "..."})
-    POST /taste              — cross-corpus match (JSON: {"text": "...", "top": 5,
-                               "no_heat": true})  no_heat marks the caller AMBIENT
-                               for this request only; omit it when the caller chose.
+    POST /eat                — feed text. Accepts JSON body or form-encoded data:
+                               {"text": "...", "source": "...",
+                                "chain_id": "...", "chain_seq": 123}
+                               chain_id/chain_seq are optional — chaincode marriage
+                               spec 2026-03-25. When present, the crystal records
+                               its position in the chaincode chain for temporal
+                               coupling. The form-encoded path also accepts
+                               ``name`` as a synonym for ``source`` (legacy field
+                               — pre-1.x feeders use it).
+    POST /taste              — cross-corpus match (JSON or form: {"text": "...",
+                               "top": 5, "no_heat": true})  no_heat marks the caller
+                               AMBIENT for this request only; omit when it chose.
     POST /match              — tight recall (JSON: {"text": "...", "top": 3})
     POST /re-eat             — maintenance cycle (gardener + assessment + growth)
 
@@ -50,6 +58,61 @@ def _load_primer() -> str:
     return ""
 
 
+def _parse_request_body(content_type: str, raw: bytes):
+    """Parse a POST body as JSON or x-www-form-urlencoded.
+
+    Returns a dict on success, ``None`` on parse failure. Empty bodies
+    return ``{}``. The fish accepts both shapes because SovereignCore_
+    Runtime feeders predate the 1.x JSON contract — breaking them on
+    deploy is worse than accepting two encodings on the wire.
+
+    Explicit Content-Type is respected: ``application/json`` only tries
+    JSON, ``application/x-www-form-urlencoded`` only tries form. With
+    no/unknown Content-Type we try JSON first (1.x contract), then form
+    if-and-only-if it parses to a non-trivial dict (any key with no '='
+    in the raw bytes wouldn't have produced a dict from form-encoding,
+    so this gate keeps random garbage from looking like a single-key
+    form payload).
+    """
+    if not raw:
+        return {}
+
+    ctype = (content_type or "").split(";", 1)[0].strip().lower()
+
+    def _form_parse():
+        try:
+            from urllib.parse import parse_qs
+            text = raw.decode("utf-8", errors="replace")
+        except Exception:
+            return None
+        # Require at least one '=' before treating the body as form-
+        # encoded. parse_qs is otherwise happy to return {raw: ''} for
+        # any non-empty bytes, which would mask malformed payloads.
+        if "=" not in text:
+            return None
+        qs = parse_qs(text, keep_blank_values=True)
+        if not qs:
+            return None
+        return {k: (v[-1] if v else "") for k, v in qs.items()}
+
+    def _json_parse():
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    if ctype == "application/x-www-form-urlencoded":
+        return _form_parse()  # respect explicit Content-Type
+
+    if ctype == "application/json":
+        return _json_parse()  # respect explicit Content-Type
+
+    # No / unknown Content-Type: try JSON first (the 1.x contract),
+    # fall back to form. Returns None if both fail.
+    return _json_parse() or _form_parse()
+
+
 _PRIMER = ""  # loaded at server start
 
 
@@ -68,7 +131,7 @@ def _messages_file(engine: FishEngine) -> Path:
     Override: LINAFISH_MESSAGES_FILE env var (absolute path).
 
     The override is what lets a peer node cut over to master http_server while
-    keeping the existing /home/sdill/fish_messages.jsonl as the authoritative
+    keeping the existing <state-dir>/fish_messages.jsonl as the authoritative
     message log — no migration of historical DMs needed.
     """
     override = os.environ.get("LINAFISH_MESSAGES_FILE")
@@ -181,18 +244,48 @@ class FishHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             length = int(self.headers.get("Content-Length", 0))
-            body = json.loads(self.rfile.read(length)) if length else {}
-        except (json.JSONDecodeError, ValueError):
-            self._respond(400, "Invalid JSON")
+            raw = self.rfile.read(length) if length else b""
+        except (OSError, ValueError):
+            self._respond(400, "Failed to read request body")
+            return
+
+        # Accept JSON body or x-www-form-urlencoded. The pre-1.x feeders
+        # (feed_the_whole_man, feed_our_words, feed_noods_fish in
+        # SovereignCore_Runtime/scripts/) post form-encoded data with a
+        # 'name' field. linafish 1.x docs say JSON, but breaking the
+        # pre-1.x feeders the moment we deploy 1.x to the federation host is a worse
+        # tradeoff than accepting both shapes here.
+        body = _parse_request_body(self.headers.get("Content-Type", ""), raw)
+        if body is None:
+            self._respond(400, "Could not parse request body as JSON or form")
             return
 
         if self.path == "/eat":
             text = body.get("text", "")
-            source = body.get("source", "session")
+            # 'source' is the canonical field; 'name' is the pre-1.x
+            # feeder synonym still in use across SovereignCore_Runtime.
+            source = body.get("source") or body.get("name") or "session"
+            chain_id = body.get("chain_id")  # optional, chaincode marriage 2026-03-25
+            chain_seq_raw = body.get("chain_seq")
+            chain_seq = int(chain_seq_raw) if chain_seq_raw not in (None, "") else None
+            # chain_created_at — Phase 4 per 2026-04-26 morning revision
+            # notes. Optional ISO-8601 timestamp from chaincode.created_at;
+            # enables coupling_strength's time-decay term alongside the
+            # ordinal chain_seq decay.
+            chain_created_at = body.get("chain_created_at") or None
+            # chain_prev_hash — Phase 5. Parent's chain hash from
+            # chains.prev_hash. Detects direct parent-child links in
+            # the chaincode chain (the literal "this thought followed
+            # that thought" relationship), strictly stronger than
+            # ordinal distance 1.
+            chain_prev_hash = body.get("chain_prev_hash") or None
             if not text:
                 self._respond(400, "Missing 'text' field")
                 return
-            result = self.engine.eat(text, source=source)
+            result = self.engine.eat(text, source=source,
+                                     chain_id=chain_id, chain_seq=chain_seq,
+                                     chain_created_at=chain_created_at,
+                                     chain_prev_hash=chain_prev_hash)
             self._respond(200, json.dumps(result), content_type="application/json")
 
         elif self.path == "/taste":
@@ -240,6 +333,9 @@ class FishHandler(BaseHTTPRequestHandler):
                 if stop is not None:
                     stop.set()
                 try:
+                    # Capture eats deferred by the latency-batching gate,
+                    # then commit a final rollback point.
+                    self.engine.flush()
                     self.engine.flush_commit("http shutdown endpoint")
                 except Exception as e:
                     print(f"flush_commit on shutdown: {e}", file=sys.stderr)
@@ -427,7 +523,9 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
                vocab_path: Optional[Path] = None,
                host: Optional[str] = None,
                bind: str = "local",
-               re_eat_interval_hours: float = 6.0):
+               re_eat_interval_hours: float = 6.0,
+               save_state_every_n_eats: int = 200,
+               flush_interval_secs: float = 30.0):
     """Serve the fish over HTTP.
 
     ``bind`` is the convenience shorthand mirroring ``converse``:
@@ -456,7 +554,18 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
     # Plus a SIGTERM/SIGINT handler below flushes uncommitted eats on
     # graceful shutdown so the final commit is captured even if N hasn't
     # rolled over.
-    engine = FishEngine(state_dir=state_dir, name=name, commit_every_n_eats=100)
+    # Eat-latency root-fix (runbook fish_engine_eat_latency_root_fix_2026-06-20):
+    # the per-eat full _save_state re-serialized the whole corpus into fish.md
+    # (O(N), ~2s on the 454K-crystal room) and under burst from several
+    # schedulers serialized past n8n's 10s timeout. Crystals stay durable every
+    # eat via the append-only JSONL; the engine now batches the expensive
+    # fish.md/codebook write behind save_state_every_n_eats and we drive it off
+    # the request path: a background flush thread on a short timer + the SIGTERM
+    # handler at shutdown. The gate doubles as a safety net (bounded staleness
+    # if the timer ever stalls). commit_every_n_eats keeps state-dir git history
+    # advancing for rollback; with the save batched, the commit is off-path too.
+    engine = FishEngine(state_dir=state_dir, name=name, commit_every_n_eats=100,
+                        save_state_every_n_eats=save_state_every_n_eats)
 
     _stop_maintenance = threading.Event()
 
@@ -469,6 +578,10 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
         engine._shutdown_pending = True
         if not engine._save_in_progress:
             try:
+                # Capture any eats deferred by the latency-batching gate
+                # (writes a fresh fish.md), then always commit a final
+                # rollback point — preserves the pre-fix shutdown guarantee.
+                engine.flush()
                 engine.flush_commit(f"http daemon shutdown (signal {signum})")
             except Exception as e:
                 print(f"flush_commit failed on shutdown: {e}", file=sys.stderr)
@@ -494,6 +607,29 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
         _maint.start()
         print(f"  Maintenance: every {re_eat_interval_hours:.1f}h "
               f"(QLP output to stderr)", file=sys.stderr)
+
+    # Eat-latency fix: drive the batched full save off the request path. The
+    # gate (save_state_every_n_eats) keeps the O(N) fish.md write out of eat();
+    # this thread performs it on a short timer so the derived codebook never
+    # lags more than flush_interval_secs. Crystals are already durable in the
+    # JSONL, so a missed tick only delays the fish.md refresh — never data.
+    if flush_interval_secs > 0:
+        def _flush_loop():
+            while not _stop_maintenance.wait(flush_interval_secs):
+                if getattr(engine, "_shutdown_pending", False) or \
+                        getattr(engine, "_save_in_progress", False):
+                    continue
+                try:
+                    engine.flush()
+                except Exception as e:
+                    print(f"[flush] error: {e}", file=sys.stderr, flush=True)
+        _flusher = threading.Thread(
+            target=_flush_loop, name="linafish-flush", daemon=True,
+        )
+        _flusher.start()
+        print(f"  Flush: every {flush_interval_secs:.0f}s "
+              f"(batched fish.md save, gate={save_state_every_n_eats} eats)",
+              file=sys.stderr)
 
     resolved_host = host if host else BIND_MAP.get(bind, bind)
     if bind == "wan" and not host:

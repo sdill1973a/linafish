@@ -149,7 +149,7 @@ def classify_health(formation: Formation) -> str:
         regime = "PATHOLOGY"
 
     # CONTAGION override: oversize PATHOLOGY with broadcast-template
-    # diversity. The "ALL MINDS" formation pattern that ate the .67
+    # diversity. The "ALL MINDS" formation pattern that ate the federation host
     # federation room.
     if (regime == "PATHOLOGY"
             and formation.crystal_count >= CONTAGION_MIN_SIZE

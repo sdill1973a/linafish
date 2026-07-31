@@ -38,6 +38,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import List, Optional, Dict
@@ -50,9 +51,14 @@ from .crystallizer_v3 import (
 )
 from .formations import (
     detect_formations, hierarchical_merge, formations_to_codebook_text,
-    Formation,
+    Formation, interpret_formation, formation_rank_key,
 )
 from .ingest import ingest_directory, ingest_file
+from . import episodic
+from .episodic import (
+    EpisodicMoment, load_episode, walk as episodic_walk,
+    score_moment, assemble_source_excerpt,
+)
 
 # ---------------------------------------------------------------------------
 # ASSESSMENT — graceful degradation if module not yet written
@@ -118,6 +124,13 @@ except ImportError:
 # notes_2026-05-22_living_vocabulary_phase5_design.md.
 DEFAULT_RECENCY_HALF_LIFE = 500
 
+# Origin / "crystal zero" provenance (v1.2 seed #6, docs/v12-seeds.md #6).
+# `source` and `formation` markers used to identify the one origin crystal
+# a fish may carry, and to keep it out of ordinary formation clustering
+# (it isn't content — it's a label on the spore casing).
+ORIGIN_SOURCE = "__crystal_zero__"
+ORIGIN_FORMATION = "__origin__"
+
 
 class FishEngine:
     """The fish. MI x ache math. No keywords. Pure compression.
@@ -152,7 +165,9 @@ class FishEngine:
                  dedupe: bool = False,
                  addressed_formations: bool = True,
                  commit_every_n_eats: int = 0,
+                 save_state_every_n_eats: int = 1,
                  living_vocab: bool = False,
+                 origin: Optional[Dict[str, str]] = None,
                  no_heat: bool = False):
         self.name = name
         self.state_dir = state_dir or Path.home() / ".linafish"
@@ -188,6 +203,25 @@ class FishEngine:
         # git_autocommit=False the daemon's state-dir git log silently
         # stops advancing, breaking the only built-in rollback safety net.
         self.commit_every_n_eats = max(0, int(commit_every_n_eats))
+        # save_state_every_n_eats: eat-latency root-fix (runbook
+        # fish_engine_eat_latency_root_fix_2026-06-20). The expensive full
+        # _save_state() (re-serializes the whole corpus into fish.md — O(N)
+        # in crystal count, ~2s on a 454K-crystal room) is decoupled from the
+        # per-eat hot path. Crystals stay durable every eat via the
+        # append-only JSONL (crystallize_text -> _persist_crystal); only the
+        # derived fish.md/codebook write is batched. 1 (default) = save every
+        # eat = legacy behavior, fully backward compatible. Daemons set this
+        # high and drive the full save off-request via flush() on a timer +
+        # at shutdown (see serve_http). Safety net: a save still fires once
+        # the gate is reached, so fish.md staleness is bounded even if the
+        # timer stalls.
+        self.save_state_every_n_eats = max(1, int(save_state_every_n_eats))
+        self._eat_count_since_save = 0
+        # Writer lock — serializes concurrent eat()s. Before the latency fix,
+        # ThreadingHTTPServer ran /eat with no lock, so concurrent eats
+        # mutated self.formations / self.fish.crystals unsynchronized. Cheap
+        # now that the O(N) save is off the hot path.
+        self._eat_lock = threading.Lock()
         self._eat_save_counter = 0
         # Reentrancy guard for signal-triggered flush_commit (codex round-2
         # 2026-05-02 BLOCKING). _save_state can be interrupted between
@@ -249,9 +283,11 @@ class FishEngine:
         # waiting for detect_formations to discover membership via BFS.
         # rebuild_formations short-circuits to a no-op in this mode
         # because formations are maintained incrementally on every eat.
-        # The flag default is False — existing callers keep the legacy
-        # behavior unchanged. Subsequent commits flip the default once
-        # migration tooling and the gardener pass land.
+        # The flag default is now True (flipped once migration tooling +
+        # the gardener pass landed) — every engine bootstraps its
+        # formation_index from disk on construction. Pass
+        # addressed_formations=False to opt back into the legacy
+        # detect-formations-via-BFS behavior.
         self.addressed_formations = addressed_formations
         self.formation_index: Dict[str, Formation] = {}
 
@@ -267,6 +303,17 @@ class FishEngine:
         if self.addressed_formations and self.fish.crystals:
             from .formations import formation_address as _fa
             for c in self.fish.crystals:
+                # Protected crystals (crystal-zero / origin provenance) keep the
+                # formation they were saved with (e.g. ORIGIN_FORMATION) and stay
+                # OUT of the addressed-formation index — they are provenance, not
+                # cognitive content. set_origin()'s contract requires
+                # formation-filing code (this loop IS such code) to skip them:
+                # crystal-zero has empty vectors, so without this skip it
+                # re-addresses to "UNKNOWN" on every reload and its
+                # "DO NOT DEPRECATE" text can surface as a formation's
+                # representative_text via /pfc. (1.6.0 cold-eye finding.)
+                if getattr(c, 'protected', False):
+                    continue
                 addr = _fa(
                     cognitive_vector=getattr(c, 'cognitive_vector', None),
                     resonance=getattr(c, 'resonance', None),
@@ -285,6 +332,20 @@ class FishEngine:
                 f.member_ids.append(c.id)
                 f.update_with(c)
             self.formations = list(self.formation_index.values())
+
+        # ---------------------------------------------------------------
+        # EPISODIC RECALL — the episode index (Cal SPEC_v0.2, #21)
+        # ---------------------------------------------------------------
+        # Maps episode_id -> {ordered_crystal_ids (in episode_seq order),
+        # episode_kind, created_at, last_updated, source_pointer}. Crystals
+        # are authoritative: the index is (re)built from the crystal scan
+        # here, kept current in-memory on eat(), and persisted in
+        # _save_state. The *_episodes.jsonl file is a cache — on cold load
+        # we rebuild from the JSONL crystals so the index can never drift
+        # from the source of truth (mirrors the formation bootstrap above).
+        self._episodes_path = self.state_dir / f"{name}_episodes.jsonl"
+        self.episode_index: Dict[str, dict] = {}
+        self._rebuild_episode_index()
 
         # ---------------------------------------------------------------
         # ASSESSMENT STATE — the RTI data layer
@@ -351,9 +412,87 @@ class FishEngine:
         self._load_fish_md()
         self._load_assessment_state()
 
+        # Origin / "crystal zero" provenance (v1.2 seed #6). Optional and
+        # backward compatible: only fires when a caller passes `origin=`.
+        # Idempotent — set_origin() is a no-op if this fish already has one
+        # (e.g. loaded from disk), so re-constructing an engine with the
+        # same origin kwarg every process start never duplicates it.
+        if origin:
+            self.set_origin(**origin)
+
     @property
     def crystals(self) -> List[Crystal]:
         return self.fish.crystals
+
+    # -------------------------------------------------------------------
+    # ORIGIN / "CRYSTAL ZERO" — v1.2 seed #6 (docs/v12-seeds.md #6)
+    # -------------------------------------------------------------------
+    # "Every fish should have crystal zero that says who built it, when,
+    # why, what it holds... Twelve seconds of writing that saves an hour
+    # of archaeology. The tardigrade labels its spore casing."
+    #
+    # Implemented as an ordinary Crystal (so it persists, loads, and
+    # round-trips through the exact same JSONL path every other crystal
+    # does — no new state file, no schema migration) marked
+    # `protected=True` so pruning/compaction/deprecation code can — and
+    # future such code MUST — skip it. Nothing in the engine currently
+    # deletes crystals (compact()/revectorize_all() only rebuild vocab
+    # and re-vectorize in place), so today `protected=True` is a forward
+    # contract; it costs nothing and closes the gap the moment any
+    # pruning path is added.
+
+    def get_origin(self) -> Optional[Crystal]:
+        """Return this fish's crystal-zero (origin/provenance record), or
+        None if `set_origin()` has never been called for this fish."""
+        for c in self.fish.crystals:
+            if c.source == ORIGIN_SOURCE:
+                return c
+        return None
+
+    def set_origin(self, built_by: str, why: str = "", holds: str = "",
+                    when: Optional[str] = None) -> Crystal:
+        """Record crystal zero: who built this fish, when, why, what it
+        holds. Idempotent — if an origin crystal already exists (this call
+        or a prior process), returns it unchanged rather than creating a
+        second one; a fish carries at most one crystal zero.
+
+        Args:
+            built_by: who built this fish — a name, an instance id, a
+                session/scar tag ("Anchor", "session_2026-07-01", ...).
+            why: why it exists / what problem it answers.
+            holds: a short description of what the fish holds.
+            when: ISO-8601 timestamp (default: now, UTC).
+
+        Returns:
+            the crystal-zero Crystal (pre-existing one if already set).
+        """
+        existing = self.get_origin()
+        if existing is not None:
+            return existing
+
+        from datetime import datetime, timezone
+        when = when or datetime.now(timezone.utc).isoformat()
+        text = (
+            f"CRYSTAL ZERO — Built by {built_by} on {when}. {why} "
+            f"Holds: {holds}. DO NOT DEPRECATE."
+        ).strip()
+
+        crystal = Crystal(
+            id=f"{self.name}-origin",
+            ts=when,
+            text=text,
+            source=ORIGIN_SOURCE,
+            mi_vector=[],
+            resonance=[],
+            keywords=[],
+            structural=True,
+            ache=0.0,
+            formation=ORIGIN_FORMATION,
+            protected=True,
+        )
+        self.fish.crystals.append(crystal)
+        self.fish._persist_crystal(crystal)
+        return crystal
 
     # -------------------------------------------------------------------
     # ASSESSMENT: PRE-ASSESSMENT
@@ -773,6 +912,377 @@ class FishEngine:
         state-dir git log.
         """
         self._git_commit(message)
+
+    def flush(self, commit: Optional[bool] = None) -> bool:
+        """Force the deferred full save (eat-latency fix, runbook
+        fish_engine_eat_latency_root_fix_2026-06-20).
+
+        Daemons run eat() with ``save_state_every_n_eats`` > 1 so the O(N)
+        fish.md/codebook serialization stays off the request path; this
+        drives that save on a background timer and at graceful shutdown.
+
+        No-op (returns False) when no eats are pending since the last save,
+        so an idle daemon's timer doesn't pointlessly re-serialize an
+        unchanged corpus, and so it never regresses an up-to-date fish.md.
+        Crystal durability does NOT depend on this — every eat already
+        appended to the JSONL via _persist_crystal.
+
+        commit: passed through to _save_state (True forces a git commit).
+        Returns True iff a save was performed.
+        """
+        with self._eat_lock:
+            if self._eat_count_since_save == 0:
+                return False
+            self._save_state(commit=commit)
+            self._eat_count_since_save = 0
+            return True
+
+    # -------------------------------------------------------------------
+    # EPISODIC RECALL — moment-with-context (Cal SPEC_v0.2, arena-engine#21)
+    # -------------------------------------------------------------------
+
+    def _rebuild_episode_index(self) -> None:
+        """Build the episode index from the crystal scan (authoritative).
+
+        Groups every crystal carrying an episode_id, orders each group by
+        episode_seq (None sorts last, stably), and records the ordered
+        crystal-id list. Run at __init__ and after a full re-eat. Crystals
+        are the source of truth, so this can never drift from disk.
+        """
+        groups: Dict[str, list] = {}
+        for c in self.fish.crystals:
+            eid = getattr(c, "episode_id", None)
+            if eid is None:
+                continue
+            groups.setdefault(eid, []).append(c)
+
+        index: Dict[str, dict] = {}
+        for eid, crystals in groups.items():
+            crystals.sort(key=lambda c: (c.episode_seq is None,
+                                         c.episode_seq if c.episode_seq is not None else 0))
+            first = crystals[0]
+            index[eid] = {
+                "episode_id": eid,
+                "episode_kind": getattr(first, "episode_kind", None) or "unknown",
+                "created_at": episodic._crystal_ts(first),
+                "last_updated": episodic._crystal_ts(crystals[-1]),
+                "ordered_crystal_ids": [c.id for c in crystals],
+                "source_pointer": eid,
+            }
+        self.episode_index = index
+
+    def _index_episode_crystal(self, crystal) -> None:
+        """Append a freshly-eaten crystal to its episode in the in-memory
+        index, creating the entry if new (spec §5.3 maintenance protocol)."""
+        eid = crystal.episode_id
+        ts = episodic._crystal_ts(crystal)
+        entry = self.episode_index.get(eid)
+        if entry is None:
+            self.episode_index[eid] = {
+                "episode_id": eid,
+                "episode_kind": getattr(crystal, "episode_kind", None) or "unknown",
+                "created_at": ts,
+                "last_updated": ts,
+                "ordered_crystal_ids": [crystal.id],
+                "source_pointer": eid,
+            }
+        else:
+            if crystal.id not in entry["ordered_crystal_ids"]:
+                entry["ordered_crystal_ids"].append(crystal.id)
+            entry["last_updated"] = ts
+
+    def _persist_episode_index(self) -> None:
+        """Write the episode index to <fish>_episodes.jsonl (one record per
+        episode). Small (episodes << crystals) — called from _save_state, not
+        the per-eat hot path."""
+        path = getattr(self, "_episodes_path", None)
+        if path is None:
+            return
+        try:
+            self.state_dir.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(path.suffix + ".tmp")
+            with open(tmp, "w", encoding="utf-8") as f:
+                for entry in self.episode_index.values():
+                    f.write(json.dumps(entry, default=str) + "\n")
+            os.replace(tmp, path)
+        except Exception as e:  # never let index persistence break a save
+            print(f"episode index persist failed: {e}", file=sys.stderr)
+
+    def _pivot_crystals(self, text: str, top: int = 5,
+                        min_gamma: float = 0.0):
+        """Rank crystals by semantic gamma against the query, returning the
+        top (gamma, crystal) pairs. Reuses the match()/taste() vectorize +
+        gamma machinery; the threshold is a low floor so small corpora and
+        episodic walks aren't starved by match()'s hard 0.4 cutoff."""
+        if not self.fish.crystals or not self.fish.frozen:
+            return []
+        probe = v3_crystallize(text, self.fish.vectorizer,
+                               source="query", vocab=self.fish.vocab)
+        if not probe or not probe.mi_vector:
+            return []
+        scores = []
+        for c in self.fish.crystals:
+            vec = c.mi_vector if c.mi_vector else c.resonance
+            if not vec:
+                continue
+            g = gamma(probe.mi_vector, vec)
+            if g > min_gamma:
+                scores.append((g, c))
+        scores.sort(key=lambda x: x[0], reverse=True)
+        return scores[:top]
+
+    def recall_episodic(self, text: str, k: int = 5,
+                        max_before: int = 5, max_after: int = 5,
+                        time_horizon_sec: int = 86400,
+                        include_source: bool = False,
+                        min_gamma: float = 0.0,
+                        weights: Optional[dict] = None) -> List[EpisodicMoment]:
+        """Moment-with-context retrieval (spec §6-§8).
+
+        Semantic query -> top-k pivot crystals -> walk each pivot's episode
+        for before/after context -> dedup pivots sharing an episode (walk from
+        the earliest) -> score + rank. Pivots with no episode return orphan
+        moments so legacy fish still answer (degraded, not broken).
+        Returns EpisodicMoment objects; the HTTP layer serializes via
+        to_dict().
+        """
+        from datetime import datetime, timezone
+
+        pivots = self._pivot_crystals(text, top=k, min_gamma=min_gamma)
+        if not pivots:
+            return []
+
+        crystal_by_id = {c.id: c for c in self.fish.crystals}
+        now = datetime.now(timezone.utc)
+
+        # Group non-orphan pivots by episode for dedup; orphans stand alone.
+        by_episode: Dict[str, list] = {}
+        orphans = []
+        for g, p in pivots:
+            eid = getattr(p, "episode_id", None)
+            if eid and eid in self.episode_index:
+                by_episode.setdefault(eid, []).append((g, p))
+            else:
+                orphans.append((g, p))
+
+        moments: List[EpisodicMoment] = []
+
+        for eid, group in by_episode.items():
+            # Walk from the EARLIEST pivot (lowest episode_seq) so before/after
+            # preserves the chronological start of the matched region (spec §7).
+            group.sort(key=lambda gp: (gp[1].episode_seq is None,
+                                       gp[1].episode_seq if gp[1].episode_seq is not None else 0))
+            best_gamma = max(g for g, _ in group)
+            earliest = group[0][1]
+            episode = load_episode(eid, self.episode_index, crystal_by_id)
+            moment = episodic_walk(earliest, episode, max_before=max_before,
+                                   max_after=max_after,
+                                   time_horizon_sec=time_horizon_sec)
+            # All matched pivots in this episode, in seq order.
+            moment.pivots = [p for _, p in group]
+            score_moment(moment, pivot_gamma=best_gamma, now=now, weights=weights)
+            if include_source:
+                assemble_source_excerpt(moment)
+            moments.append(moment)
+
+        for g, p in orphans:
+            moment = episodic_walk(p, None)
+            score_moment(moment, pivot_gamma=g, now=now, weights=weights)
+            if include_source:
+                assemble_source_excerpt(moment)
+            moments.append(moment)
+
+        moments.sort(key=lambda m: m.relevance, reverse=True)
+        return moments
+
+    def get_episode_source(self, episode_id: str):
+        """Return the full untruncated source for an episode as a ChainSource,
+        or None if the episode isn't indexed (spec §4.3 / §8 /moment).
+
+        v1 decision (documented in docs/episodic-recall.md): the source is
+        ASSEMBLED from the episode's crystals' own ``text`` (joined in
+        episode_seq order), which the crystallizer stores untruncated
+        (MAX_CRYSTAL_TEXT). The spec's separate append-only ``*_sources.jsonl``
+        store was motivated by "without bloating the crystal store" — a
+        concern that does not apply while crystals hold full text — and §4.3
+        flags it as a sync hazard. Deriving from the authoritative crystals
+        avoids the redundant file and the hazard. If crystal truncation
+        returns, the persisted ChainSource store becomes the v2 fallback.
+
+        This is the highest-fidelity content surface in linafish: it returns
+        ALL of an episode's text, unbounded. The caller (/moment) gates it
+        behind opt-in config + ACL.
+        """
+        crystal_by_id = {c.id: c for c in self.fish.crystals}
+        episode = load_episode(episode_id, self.episode_index, crystal_by_id)
+        if episode is None:
+            return None
+        full_text = "\n\n".join((getattr(c, "text", "") or "") for c in episode)
+        entry = self.episode_index.get(episode_id, {})
+        return episodic.ChainSource(
+            episode_id=episode_id,
+            episode_kind=entry.get("episode_kind", "unknown"),
+            created_at=entry.get("created_at") or "",
+            full_text=full_text,
+            metadata={
+                "crystal_count": len(episode),
+                "source_pointer": entry.get("source_pointer", episode_id),
+            },
+        )
+
+    # -------------------------------------------------------------------
+    # MEDITATE — the superthink verb (docs/session-instrument/meditate.md)
+    # -------------------------------------------------------------------
+
+    def meditate(self, theme: str, depth: str = "balanced", top: int = 5,
+                 time_window_days: Optional[float] = None,
+                 dormancy: bool = False,
+                 dormancy_threshold_days: float = 30.0,
+                 summarizer=None, weights: Optional[dict] = None,
+                 min_gamma: float = 0.0) -> dict:
+        """Bubble up real material from the fish on a theme — mechanically.
+
+        The fish is the voice; this makes consulting it a first-class verb. No
+        performed reflection, no confabulation: it surfaces actual crystals,
+        formations, and signals, or it surfaces nothing. Verifiable, not faith.
+
+        Modifiers (meditate.md):
+        - content: ``theme`` drives the surfacing query.
+        - time: ``time_window_days`` keeps only recent material; ``dormancy``
+          instead surfaces QUIET material (older than dormancy_threshold_days)
+          still matching the theme — the re-touching / rediscovery signal.
+        - model scaling: ``depth`` = "fast" (surface only) | "balanced"
+          (+ whisper + emergence phase) | "deep" (+ co-access neighbors +
+          feedback load-bearing). Cost scales with depth; cheapest by default.
+
+        linafish stays model-agnostic: prose framing is a pluggable
+        ``summarizer(result_dict) -> str`` the caller supplies. Without it,
+        meditate returns the structured surfaced material only.
+        """
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        depth = depth if depth in ("fast", "balanced", "deep") else "balanced"
+
+        result = {"theme": theme, "depth": depth, "surfaced": [], "count": 0}
+
+        # --- surface: pivots by semantic gamma (reuse the recall core) ---
+        # Pull a wider candidate set so time/dormancy filtering still has
+        # `top` to show.
+        candidates = self._pivot_crystals(theme, top=max(top * 4, top),
+                                          min_gamma=min_gamma)
+
+        def _age_days(c):
+            ts = episodic._parse_ts(episodic._crystal_ts(c))
+            if ts is None:
+                return None
+            return max(0.0, (now - ts).total_seconds() / 86400.0)
+
+        surfaced = []
+        for g, c in candidates:
+            age = _age_days(c)
+            if dormancy:
+                if age is None or age < dormancy_threshold_days:
+                    continue
+                why = f"quiet {int(age)}d, matches theme (gamma={g:.3f})"
+            elif time_window_days is not None:
+                if age is None or age > time_window_days:
+                    continue
+                why = f"within {int(time_window_days)}d, matches theme (gamma={g:.3f})"
+            else:
+                why = f"matches theme (gamma={g:.3f})"
+            text = (getattr(c, "text", "") or "").strip()
+            surfaced.append({
+                "id": c.id,
+                "source": getattr(c, "source", ""),
+                "text": text[:300],
+                "gamma": round(g, 4),
+                "formation": getattr(c, "formation", None),
+                "age_days": round(age, 1) if age is not None else None,
+                "why": why,
+            })
+            if len(surfaced) >= top:
+                break
+
+        result["surfaced"] = surfaced
+        result["count"] = len(surfaced)
+
+        # --- balanced: whisper (surprising-not-obvious) + emergence phase ---
+        if depth in ("balanced", "deep"):
+            result["whisper"] = self._meditate_whisper()
+            try:
+                result["emergence"] = self._check_emergence()
+            except Exception:
+                result["emergence"] = None
+
+        # --- deep: co-access neighbors + feedback load-bearing ---
+        if depth == "deep":
+            result["co_access"] = self._meditate_co_access(surfaced, top=3)
+            result["load_bearing"] = self._meditate_load_bearing(top=5)
+
+        # --- model-agnostic prose framing (pluggable, caller-supplied) ---
+        if summarizer is not None:
+            try:
+                result["meditation"] = summarizer(result)
+            except Exception as e:
+                result["meditation_error"] = str(e)
+
+        return result
+
+    def _meditate_whisper(self) -> Optional[dict]:
+        """The quiet-but-mattering formation — third-strongest by rank, like
+        cmd_whisper. Surprising, not the obvious biggest."""
+        if not self.formations:
+            return None
+        ranked = sorted(self.formations, key=formation_rank_key, reverse=True)
+        f = ranked[2] if len(ranked) >= 3 else ranked[-1]
+        return {
+            "formation": f.name,
+            "interpretation": interpret_formation(f),
+            "representative": (f.representative_text or "")[:200].strip(),
+            "crystal_count": f.crystal_count,
+        }
+
+    def _meditate_co_access(self, surfaced: list, top: int = 3) -> list:
+        """Co-access walk: follow each surfaced crystal's couplings to its
+        strongest related crystals (the superglyph-adjacent material)."""
+        by_id = {c.id: c for c in self.fish.crystals}
+        out = []
+        for item in surfaced:
+            c = by_id.get(item["id"])
+            if c is None or not getattr(c, "couplings", None):
+                continue
+            related = sorted(c.couplings, key=lambda t: t[1], reverse=True)[:top]
+            edges = []
+            for rid, g in related:
+                rc = by_id.get(rid)
+                if rc is None:
+                    continue
+                edges.append({
+                    "id": rid,
+                    "gamma": round(g, 4),
+                    "text": (getattr(rc, "text", "") or "").strip()[:160],
+                })
+            if edges:
+                out.append({"from_id": c.id, "related": edges})
+        return out
+
+    def _meditate_load_bearing(self, top: int = 5) -> list:
+        """Formations that have earned their weight through use — the feedback
+        loop's record of what actually gets reached for."""
+        fb = getattr(self, "feedback", None)
+        if fb is None or not getattr(fb, "usage", None):
+            return []
+        items = sorted(
+            fb.usage.items(),
+            key=lambda kv: kv[1].get("weight_modifier", 1.0),
+            reverse=True,
+        )
+        return [{
+            "formation": name,
+            "weight_modifier": round(entry.get("weight_modifier", 1.0), 3),
+            "hits": entry.get("hits", 0),
+        } for name, entry in items[:top] if entry.get("hits", 0) > 0]
 
     def session_start(self, name: str = ""):
         """Start a session branch. Returns branch name."""
@@ -1329,6 +1839,11 @@ class FishEngine:
         # Also save the v3 internal state (vectorizer, crystals)
         self.fish._save_state()
 
+        # Persist the episode index cache (episodic recall). Small — one
+        # record per episode, not per crystal. Rebuilt from the crystal scan
+        # on cold load regardless, so a missed write is never data loss.
+        self._persist_episode_index()
+
         # Also save assessment state
         self._save_assessment_state()
 
@@ -1363,13 +1878,27 @@ class FishEngine:
     # EAT — single document
     # -------------------------------------------------------------------
 
-    def eat(self, text: str, source: str = "session") -> dict:
+    def eat(self, text: str, source: str = "session",
+            chain_id: Optional[str] = None,
+            chain_seq: Optional[int] = None,
+            chain_created_at: Optional[str] = None,
+            chain_prev_hash: Optional[str] = None,
+            episode_id: Optional[str] = None,
+            episode_seq: Optional[int] = None,
+            episode_kind: Optional[str] = None) -> dict:
         """Feed text to the fish. Two-phase: learn then crystallize.
 
         If this is the first eat and assessment is available, runs
         pre-assessment on the single text to set initial parameters.
         Single-text pre-assessment is coarse — eat_path with a batch
         gives the assessment much more to work with.
+
+        chaincode marriage (spec 2026-03-25): chain_id / chain_seq
+        carry the chaincode position with the deposit. The ingest
+        the ingest pipeline looks up chain position by content_hash from
+        the chaincode DB before calling this method, so each crystal
+        knows where it lives in the chain. Pure-fish callers can leave
+        these as None — backward compatible.
         """
         if not text or len(text.strip()) < 10:
             return {"crystals_added": 0, "total_crystals": len(self.fish.crystals)}
@@ -1379,41 +1908,67 @@ class FishEngine:
                     "total_crystals": len(self.fish.crystals),
                     "sealed": True}
 
-        # Pre-assess on first eat if not already done
-        if not self._pre_assessed and HAS_ASSESSMENT:
-            self.pre_assess([text])
+        # Writer lock — serialize concurrent eats (ThreadingHTTPServer runs
+        # /eat without a lock; the eat-latency fix makes locking cheap by
+        # taking the O(N) save off the hot path).
+        with self._eat_lock:
+            # Pre-assess on first eat if not already done
+            if not self._pre_assessed and HAS_ASSESSMENT:
+                self.pre_assess([text])
 
-        # Phase 1: Learn co-occurrence stats
-        self.fish.learn([text])
+            # Phase 1: Learn co-occurrence stats
+            self.fish.learn([text])
 
-        # Phase 2: Freeze and crystallize (assessment-informed seeds)
-        if not self.fish.frozen:
-            self._rebuild_vocab()
-            self.fish.frozen = True
-            self.fish.epoch += 1
+            # Phase 2: Freeze and crystallize (assessment-informed seeds)
+            if not self.fish.frozen:
+                self._rebuild_vocab()
+                self.fish.frozen = True
+                self.fish.epoch += 1
 
-        prev_count = len(self.fish.crystals)
-        crystal = self.fish.crystallize_text(text, source=source)
-        if not crystal:
-            return {"crystals_added": 0, "total_crystals": len(self.fish.crystals)}
+            prev_count = len(self.fish.crystals)
+            crystal = self.fish.crystallize_text(text, source=source,
+                                                 chain_id=chain_id,
+                                                 chain_seq=chain_seq,
+                                                 chain_created_at=chain_created_at,
+                                                 chain_prev_hash=chain_prev_hash,
+                                                 episode_id=episode_id,
+                                                 episode_seq=episode_seq,
+                                                 episode_kind=episode_kind)
+            if not crystal:
+                return {"crystals_added": 0, "total_crystals": len(self.fish.crystals)}
 
-        self.docs_ingested += 1
-        self._last_source = source
-        self._last_new_crystals = len(self.fish.crystals) - prev_count
-        # §RECOUPLE.IN.PLACE addressed-formations: file the new crystal
-        # into its formation by grammar address. No-op when the flag is
-        # off — legacy callers still get the discovered-formations path
-        # via rebuild_formations below. With the flag on, formations are
-        # maintained incrementally and rebuild_formations short-circuits.
-        self._file_into_formation(crystal)
-        self.rebuild_formations()
-        self._save_state()
+            self.docs_ingested += 1
+            self._last_source = source
+            self._last_new_crystals = len(self.fish.crystals) - prev_count
+            # §RECOUPLE.IN.PLACE addressed-formations: file the new crystal
+            # into its formation by grammar address. No-op when the flag is
+            # off — legacy callers still get the discovered-formations path
+            # via rebuild_formations below. With the flag on, formations are
+            # maintained incrementally and rebuild_formations short-circuits.
+            self._file_into_formation(crystal)
+            # Episodic recall: keep the episode index current in-memory
+            # (O(1) append). Crystal already on disk via _persist_crystal;
+            # the index file is refreshed in _save_state and rebuilt from
+            # the crystal scan on cold load, so it can't drift.
+            if crystal.episode_id is not None:
+                self._index_episode_crystal(crystal)
+            self.rebuild_formations()
+            # Eat-latency fix: the crystal is already durable in the JSONL
+            # (crystallize_text -> _persist_crystal). Batch the expensive
+            # full _save_state (fish.md/codebook rebuild, O(N)) off the hot
+            # path — fire it only once the gate is reached. Default gate is 1
+            # (save every eat = legacy). Daemons set the gate high and flush()
+            # on a timer + at shutdown.
+            self._eat_count_since_save += 1
+            if self._eat_count_since_save >= self.save_state_every_n_eats:
+                self._save_state()
+                self._eat_count_since_save = 0
 
-        return {
-            "crystals_added": 1,
-            "total_crystals": len(self.fish.crystals),
-            "formations": len(self.formations),
-        }
+            return {
+                "crystals_added": 1,
+                "total_crystals": len(self.fish.crystals),
+                "formations": len(self.formations),
+            }
 
     # -------------------------------------------------------------------
     # EAT_MANY — batched in-memory ingest

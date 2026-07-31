@@ -10,6 +10,86 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [1.6.1] — 2026-07-03
+
+**Hardening release. `afferent` (the school router shipped in 1.6.0) is corrected to
+route by *interest*, not frequency-magnitude, and hardened across two independent
+cold-eye reviews; single-author corpora can now fuse at all. No new surface — this
+makes what 1.6.0 shipped actually correct. 340 tests green.**
+
+### Fixed
+
+- **`afferent` routes by interest, not frequency-magnitude.** The router now sorts by
+  name-tier first (not a flat name bonus), matches keywords on word boundaries,
+  normalizes/validates keywords (several silently-dead keywords in real maps were being
+  ignored), auto-derives excludes the fish's own-name tokens, invalidates its cache on
+  rebuild, and guards `k <= 0`. Two cold-eye passes (independent models) each found real
+  defects a green suite had hidden — both closed.
+- **`afferent build` tolerates non-UTF-8 bytes** in crystal files (reads with
+  `errors="replace"`) instead of crashing.
+- **Single-author corpora now ignite.** Three root causes fixed so a fish built from one
+  author's writing can fuse at all (previously silently produced no formations).
+
+### Docs
+
+- `/moment` route corrected to `GET /moment/<id>` (was documented POST) in AGENTS.md;
+  CHANGELOG 1.6.0 ship date stamped.
+
+---
+
+## [1.6.0] — 2026-07-01
+
+**The cognition-layer release. The fish learns to think *about* itself: `meditate`,
+an opt-in deep-inference crucible, episodic (time-aware) recall, and a cheap school
+router — six weeks of work that has been living in `master` since the last feature
+release (1.5.0, 2026-05-23; 1.5.1–1.5.3 were hygiene), packaged honestly into one
+release. Nothing was moved or restructured — this organizes and ships what's built.**
+
+### Added
+
+- **`meditate` — the superthink verb.** Mechanical bubble-up across your fish on a
+  theme: it surfaces real crystals + formations + whisper + emergence, or it surfaces
+  nothing (*"that's an answer too, not a failure"*). No faith, no fabrication.
+  `linafish meditate "<theme>" [--depth] [--top] [--window]`.
+- **`--descend` — the opt-in deep-inference crucible.** `meditate --descend` wires an
+  optional LLM-backed inference layer (crucible descent + summarizer + a persistent
+  "diamond" fish that accumulates the distilled insight). Strictly opt-in: does nothing
+  until `LINAFISH_LLM_URL` is set; base `meditate` never depends on it.
+- **Episodic recall — the fish gains a sense of time.** `recall_episodic` walks an
+  episode index built from temporal + chain metadata (Cal's SPEC_v0.2), so formations
+  can emerge from narrative *arcs*, not just semantic similarity. New HTTP surface:
+  `/recall_episodic` + the privacy-gated `/moment`.
+- **`afferent` — the school router organ, now a top-level verb.** Cheap curated/mined
+  routing that names the relevant school member(s) for a prompt and returns snippets.
+  `linafish afferent build <school_dir>` + `linafish afferent route <index> "<prompt>"`
+  (previously reachable only via `python -m linafish.afferent`).
+- **Origin crystal-zero — a fish remembers who made it.** Optional provenance record
+  (who built it, when, why) stored as a structural, `protected` crystal-zero so a fish
+  is never mistaken for disused and pruned. `FishEngine(origin={...})` / `set_origin()` /
+  `get_origin()`. Backward-compatible: fish with no origin load and behave unchanged.
+  (v1.2 seed #6 — *"the tardigrade labels its spore casing."*)
+
+### Performance
+
+- **Eat latency: per-eat durability decoupled from the O(N) full save.** A writer lock +
+  incremental durability path removes the full-corpus rewrite from the hot `/eat` path —
+  the root fix for eat-latency under large corpora.
+
+### Fixed
+
+- **Docs corrected to reality** (the parked "clean 1.5.4" doc-accuracy pass, folded in):
+  `testing.md` now reports the real suite size (**334 tests**, was "18"); `vision.md`
+  status table de-staled; misc doc-rot.
+
+### Deferred to 1.6.1
+
+- The native-glyph op-level coinage work + Olorina's `00b_THE_ENGINE.md` cognitive-floor
+  doc (PR #33). Held deliberately: the toggle is gated-off (no user value in 1.6.0), it's
+  entangled with a branch of self-refutations, and it wants Cal + Olorina's cold-eye
+  before any of it ships. Native-glyph ships as its own honest, sibling-reviewed 1.6.1.
+
+---
+
 ## [1.5.3] — 2026-05-31
 
 **Release-hygiene fix: version is now single-sourced so `pip show` and

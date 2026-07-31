@@ -843,6 +843,50 @@ def cmd_school(args):
         print(school.docket())
 
 
+def cmd_afferent(args):
+    """The afferent school-router organ (see linafish.afferent module docstring
+    for the full CURATED vs MINED explanation).
+
+    build: scan every member fish under a school directory and write a
+    precomputed routing index. Rare, deliberate, offline — the only step
+    that does real work.
+
+    route (alias: surface): given that index and a prompt, do the cheap
+    sub-millisecond per-turn lookup naming which member(s) should wake.
+
+    The module shipped tested but was only reachable via
+    ``python -m linafish.afferent``; this verb closes that gap so it's a
+    normal top-level ``linafish`` command like ``school`` or ``soul``.
+    """
+    from .afferent import build_index, surface_for
+
+    if args.action == "build":
+        school_dir = str(args.path)
+        index_path = args.prompt[0] if args.prompt else str(Path(school_dir) / "afferent_index.json")
+        idx = build_index(school_dir, index_path)
+        n = idx["_meta"]["n_members"]
+        mode = "auto-curated" if idx["_meta"].get("topics_auto") else "curated"
+        print(f"indexed {n} members ({mode} mode) -> {index_path}")
+        if idx["_meta"].get("topics_auto"):
+            print(f"  note: interest map auto-derived from mined vocab. For sharper "
+                  f"routing, curate {Path(school_dir) / 'afferent_topics.json'}")
+        for name, fp in sorted(idx["members"].items(), key=lambda x: -x[1]["n_crystals"])[:10]:
+            print(f"  {name:18s} {fp['n_crystals']:>6d}cr  ~{','.join(fp['vocab'][:7])}")
+    else:  # route / surface
+        index_path = str(args.path)
+        prompt = " ".join(args.prompt)
+        if not prompt:
+            print(f'Usage: linafish afferent {args.action} <index_path> "<prompt>"')
+            sys.exit(1)
+        woke = surface_for(prompt, index_path, k=args.k, mined_threshold=args.mined_threshold)
+        if not woke:
+            print("  (no member woke for this prompt)")
+            return
+        for name, info, snip in woke:
+            tag = ",".join(info) if isinstance(info, list) else f"score {info}"
+            print(f"  {name:16s} {tag:24s}  ~{snip[:70]}")
+
+
 def cmd_whisper(args):
     """One insight from your fish. What it noticed that you might not have."""
     engine = _resolve_engine(args)
@@ -884,6 +928,100 @@ def cmd_whisper(args):
             print(f"  (Your strongest pattern: {biggest_interp[:80]}")
             print(f"   This quieter one showed up less often. Sometimes the quiet ones matter more.)")
     print()
+
+
+def cmd_meditate(args):
+    """Bubble up real material from your fish on a theme — the superthink verb.
+
+    Mechanical, not faith-based: it surfaces actual crystals + formations +
+    signals, or it surfaces nothing. content/time/model knobs per
+    docs/session-instrument/meditate.md.
+    """
+    engine = _resolve_engine(args)
+    if not engine.fish.crystals:
+        print("Fish is empty. Feed it first.")
+        sys.exit(1)
+
+    out = engine.meditate(
+        args.theme, depth=args.depth, top=args.top,
+        time_window_days=args.window, dormancy=args.dormancy,
+        dormancy_threshold_days=args.dormancy_days,
+    )
+
+    # --descend: optional inference-layer crucible. deep is OPT-IN — it does
+    # nothing until an endpoint is configured (LINAFISH_LLM_URL). DeepNotConfigured
+    # is caught so base meditate never breaks when no endpoint is set.
+    descent = None
+    if getattr(args, "descend", False):
+        try:
+            from . import deep
+            memory = (deep.recall_diamonds(args.theme, fish=args.diamond_fish)
+                      if args.remember else "")
+            descent = deep.descend(args.theme, max_depth=args.descend_max,
+                                   wide=args.wide, memory=memory)
+            if args.remember and descent.get("diamond"):
+                deep.eat_diamond(args.theme, descent["diamond"],
+                                 descent["stop_reason"], fish=args.diamond_fish)
+            out["descent"] = descent
+        except Exception as e:
+            from . import deep as _d
+            out["descent_error"] = (
+                str(e) if isinstance(e, _d.DeepNotConfigured)
+                else f"descend failed: {e}")
+
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        pass
+
+    if args.json:
+        print(json.dumps(out, default=str, indent=2))
+        return
+
+    print()
+    print(f"  Meditating on: {out['theme']}   [{out['depth']}]")
+    print()
+    if not out["surfaced"]:
+        print("  Nothing surfaced. The fish holds no material on this — "
+              "that's an answer too, not a failure.")
+        return
+    for i, s in enumerate(out["surfaced"], 1):
+        print(f"  {i}. ({s['why']})")
+        print(f"     {s['text']}")
+        print()
+
+    w = out.get("whisper")
+    if w:
+        print(f"  Whisper — {w['interpretation']}")
+        if w.get("representative"):
+            print(f"    \"{w['representative']}\"")
+        print()
+
+    em = out.get("emergence")
+    if em and em.get("highest_phase_label"):
+        print(f"  Emergence: phase {em.get('highest_phase')} "
+              f"({em['highest_phase_label']})")
+        print()
+
+    if out.get("load_bearing"):
+        print("  Load-bearing (formations earned through use):")
+        for lb in out["load_bearing"]:
+            print(f"    {lb['formation']}  "
+                  f"(weight={lb['weight_modifier']}, hits={lb['hits']})")
+        print()
+
+    # --descend output (the crucible's descent, if requested)
+    if descent:
+        print(f"  Descent ({descent['stop_reason']}):")
+        for r in descent["rungs"]:
+            print(f"    rung {r['n']} [{r['status']}] {r['core']}")
+        if descent.get("diamond"):
+            print()
+            print(f"  ◆ Diamond (rung {descent['diamond_rung']}): {descent['diamond']}")
+        print()
+    elif out.get("descent_error"):
+        print(f"  [--descend unavailable] {out['descent_error']}")
+        print()
 
 
 def cmd_soul(args):
@@ -2663,6 +2801,41 @@ def main():
     conv_p.add_argument("--mind", help="This mind's name (default: hostname)")
 
     # whisper — one insight
+    meditate_p = sub.add_parser(
+        "meditate",
+        help="Bubble up real material from your fish on a theme — the superthink verb")
+    meditate_p.add_argument("theme", help="What to meditate on (free text)")
+    meditate_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    meditate_p.add_argument("--state-dir", type=_user_path, help="State directory")
+    meditate_p.add_argument(
+        "--depth", default="balanced", choices=["fast", "balanced", "deep"],
+        help="Model scaling: fast=surface only, balanced=+whisper+emergence, "
+             "deep=+co-access+load-bearing")
+    meditate_p.add_argument("--top", type=int, default=5, help="How many to surface")
+    meditate_p.add_argument("--window", type=float, default=None,
+                            help="Only surface material within the last N days")
+    meditate_p.add_argument("--dormancy", action="store_true",
+                            help="Instead surface QUIET material older than --dormancy-days "
+                                 "(the rediscovery / re-touching signal)")
+    meditate_p.add_argument("--dormancy-days", type=float, default=30.0,
+                            help="Dormancy threshold in days (default: 30)")
+    meditate_p.add_argument("--json", action="store_true",
+                            help="Emit structured JSON instead of framed text")
+    meditate_p.add_argument("--descend", action="store_true",
+                            help="Descend the theme to its diamond via the crucible "
+                                 "(linafish.deep). OPT-IN: needs an inference endpoint "
+                                 "(set LINAFISH_LLM_URL). Off by default — base meditate "
+                                 "stays inference-free.")
+    meditate_p.add_argument("--wide", type=int, default=0, metavar="K",
+                            help="With --descend: fan K diverse lenses before the descent (max 6)")
+    meditate_p.add_argument("--descend-max", type=int, default=6,
+                            help="With --descend: hard depth ceiling (default 6)")
+    meditate_p.add_argument("--remember", action="store_true",
+                            help="With --descend: recall past diamonds to seed the descent, "
+                                 "and eat the new one into the diamond-fish (accumulation)")
+    meditate_p.add_argument("--diamond-fish", default="diamante-pisco",
+                            help="With --remember: diamond-fish name (default: diamante-pisco)")
+
     whisper_p = sub.add_parser("whisper", help="One insight from your fish. The quiet ones matter more.")
     whisper_p.add_argument("-n", "--name", default="linafish", help="Fish name")
     whisper_p.add_argument("--state-dir", type=_user_path, help="State directory")
@@ -2875,6 +3048,11 @@ def main():
                         help="Maximum fusion levels (default: 5)")
     fuse_p.add_argument("--threshold", type=float, default=0.8,
                         help="Formation stability threshold for bedrock (default: 0.8)")
+    fuse_p.add_argument("--no-centroid", action="store_true",
+                        help="Disable centroid subtraction. Fusion subtracts the "
+                             "corpus centroid by default because it is almost always "
+                             "pointed at ONE coherent (single-voice) corpus; pass this "
+                             "only for a genuinely multi-voice corpus.")
 
     # room — the supermind listener
     room_p = sub.add_parser(
@@ -3005,6 +3183,24 @@ def main():
     school_p.add_argument("--centroid", action="store_true", help="Enable centroid subtraction for add")
     school_p.add_argument("--min-gamma", type=float, default=None, help="Min gamma override for add")
 
+    # afferent — the school router organ (cheap per-turn member routing)
+    afferent_p = sub.add_parser("afferent",
+        help="The school router organ. build=precompute a routing index over "
+             "a school directory. route/surface=given the index + a prompt, "
+             "name which member(s) wake (sub-millisecond, no compute).")
+    afferent_p.add_argument("action", choices=["build", "route", "surface"],
+        help="build=scan a school dir and write a precomputed index (rare, offline). "
+             "route/surface=given an index + prompt, name which member(s) are relevant.")
+    afferent_p.add_argument("path", type=_user_path,
+        help="For build: the school directory. For route/surface: the afferent index JSON.")
+    afferent_p.add_argument("prompt", nargs="*",
+        help="For build: optional output index path (single word, default: "
+             "<school_dir>/afferent_index.json). For route/surface: the prompt to route.")
+    afferent_p.add_argument("-k", type=int, default=2,
+        help="Max members to surface (route/surface only, default: 2)")
+    afferent_p.add_argument("--mined-threshold", type=float, default=4.0,
+        help="Minimum MINED-mode score to wake a member (route/surface only, default: 4.0)")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -3060,6 +3256,7 @@ def main():
         "compact": cmd_compact,
         "converse": cmd_converse,
         "whisper": cmd_whisper,
+        "meditate": cmd_meditate,
         "check": cmd_check,
         "classify": cmd_classify,
         "bridge": cmd_bridge,
@@ -3068,6 +3265,7 @@ def main():
         "style": cmd_style,
         "soul": cmd_soul,
         "school": cmd_school,
+        "afferent": cmd_afferent,
         "hunt": cmd_hunt,
         "emerge": cmd_emerge,
         "feedback": cmd_feedback,

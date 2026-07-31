@@ -22,7 +22,7 @@ order. Safe to run after schema changes.
 
 Usage:
     python scripts/migrate_to_addressed_formations.py \\
-        --state-dir /home/sdill/codebooks \\
+        --state-dir ~/.linafish \\
         --name anchor
 
 The script does NOT mutate the input state until the final save_state.
@@ -187,7 +187,7 @@ def main():
     parser.add_argument(
         "--state-dir", required=True, type=Path,
         help="Path to the fish state directory "
-             "(e.g. /home/sdill/codebooks or ~/.linafish/).",
+             "(e.g. ~/.linafish/ or /path/to/codebooks).",
     )
     parser.add_argument(
         "--name", required=True,

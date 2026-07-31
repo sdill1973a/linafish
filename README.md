@@ -84,6 +84,17 @@ linafish go ~/my-writing
 
 Point it at your writing. Journals, emails, notes, code, docs — anything you've written. The fish eats it all and produces a portrait of how you think.
 
+## New in 1.6.0 — ask the fish things
+
+Once you have a fish, `go` isn't the only verb:
+
+- **`linafish meditate "<theme>"`** — the fish bubbles up the real material it holds on a theme, or honestly tells you it holds nothing (*"that's an answer too, not a failure"*). Add `--descend` for an optional deeper inference pass.
+- **Episodic recall** — the fish can walk your material in *time*, surfacing narrative arcs, not just passages that look similar.
+- **`linafish afferent`** — across a folder of fish, cheaply answer *"which one knows about this?"*
+- **Origin** — a fish can remember who made it, when, and why, so it's never mistaken for junk.
+
+Run `linafish --help` for the full verb list, or `linafish introduce` if you're an AI landing on someone's box.
+
 ## What You'll See
 
 ```
