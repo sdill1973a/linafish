@@ -104,3 +104,98 @@ def test_taste_still_records(tmp_path):
 
     usage = _usage(tmp_path)
     assert usage, "taste() stopped recording — the original feedback path broke"
+
+
+# --- doctor's liveness panel: measure the property, not a proxy ---
+# Found by adversarial review (Olorina, 2026-07-31): FROZEN aged from
+# st_mtime, which answers "when was this file written", not "when was usage
+# recorded". Measured divergence on a live store: 2h47m. Any save, reshape or
+# migration resets the proxy, so FROZEN goes quiet exactly when it should fire.
+
+import subprocess
+import sys
+import time
+
+
+def _doctor(tmp_path) -> str:
+    r = subprocess.run(
+        [sys.executable, "-m", "linafish", "doctor",
+         "--name", "probe", "--state-dir", str(tmp_path)],
+        capture_output=True, text=True, timeout=120,
+    )
+    return r.stdout
+
+
+def test_frozen_fires_on_fresh_file_with_stale_usage(tmp_path):
+    """THE PROXY TRAP: file written seconds ago, usage recorded 40 days ago."""
+    store = tmp_path / "probe_feedback.json"
+    store.write_text(json.dumps({
+        "OLD": {"hits": 12, "helpful": 12, "unhelpful": 3,
+                "last_used": time.time() - 40 * 86400, "weight_modifier": 1.4}
+    }), encoding="utf-8")
+    assert time.time() - store.stat().st_mtime < 60, "file is freshly written"
+
+    out = _doctor(tmp_path)
+    assert "FROZEN" in out, (
+        "FROZEN did not fire on a 40-day-old usage signal because the file "
+        "itself was fresh — the panel is reading the proxy, not the property"
+    )
+    assert "measured by: last_used" in out
+
+
+def test_sub_day_age_keeps_its_resolution(tmp_path):
+    """10.7 hours must not render as '0d' — that read as 'today' and nearly
+    shipped a false all-clear."""
+    store = tmp_path / "probe_feedback.json"
+    store.write_text(json.dumps({
+        "F": {"hits": 5, "helpful": 5, "unhelpful": 1,
+              "last_used": time.time() - 10.7 * 3600, "weight_modifier": 1.2}
+    }), encoding="utf-8")
+
+    out = _doctor(tmp_path)
+    assert "10.7h" in out, "sub-day age lost its resolution"
+    assert "FROZEN" not in out
+
+
+def test_mtime_fallback_names_itself(tmp_path):
+    """A store with no timestamps may fall back to mtime — but must say so."""
+    store = tmp_path / "probe_feedback.json"
+    store.write_text(json.dumps({
+        "F": {"hits": 5, "helpful": 5, "unhelpful": 1, "weight_modifier": 1.2}
+    }), encoding="utf-8")
+
+    out = _doctor(tmp_path)
+    assert "file mtime" in out, "fallback did not name what it measured"
+
+
+def test_suspect_does_not_fire_on_a_healthy_heavy_tailed_store(tmp_path):
+    """`unhelpful == 0` is structural — nothing ever records helpful=False.
+    Keying SUSPECT on it would fire on every healthy store past a threshold.
+    Shape measured from a real healthy store: ~9% at ceiling, median 2 hits."""
+    store = tmp_path / "probe_feedback.json"
+    usage = {f"F{i}": {"hits": 2, "helpful": 2, "unhelpful": 0,
+                       "last_used": time.time(), "weight_modifier": 1.2}
+             for i in range(40)}
+    for i in range(4):  # the heavy tail — a few genuinely load-bearing
+        usage[f"HOT{i}"] = {"hits": 400, "helpful": 400, "unhelpful": 0,
+                            "last_used": time.time(), "weight_modifier": 3.0}
+    store.write_text(json.dumps(usage), encoding="utf-8")
+
+    out = _doctor(tmp_path)
+    assert "SUSPECT" not in out, (
+        "SUSPECT fired on a healthy heavy-tailed store — it is keying on "
+        "something structural rather than on saturation"
+    )
+
+
+def test_suspect_fires_on_a_saturated_store(tmp_path):
+    """The pathological shape: an unattended cadence pins everything at the
+    ceiling. ~70k hits per formation was the observed real case."""
+    store = tmp_path / "probe_feedback.json"
+    usage = {f"F{i}": {"hits": 70000, "helpful": 70000, "unhelpful": 0,
+                       "last_used": time.time(), "weight_modifier": 3.0}
+             for i in range(20)}
+    store.write_text(json.dumps(usage), encoding="utf-8")
+
+    out = _doctor(tmp_path)
+    assert "SUSPECT" in out, "SUSPECT missed a fully saturated store"

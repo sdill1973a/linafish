@@ -2118,23 +2118,74 @@ def cmd_doctor(args):
                         if isinstance(e, dict):
                             total_hits += int(e.get("hits", 0) or 0)
                             unhelpful += int(e.get("unhelpful", 0) or 0)
-                age_days = (
-                    _dt.now(_tz.utc)
-                    - _dt.fromtimestamp(feedback_file.stat().st_mtime, _tz.utc)
-                ).days
-                print(f"    formations recorded: {entries:,}  hits: {total_hits:,}  "
-                      f"last write: {age_days}d ago")
+                # Age from the PROPERTY (when usage was last recorded), never
+                # the PROXY (when the file was last written). Any save, reshape,
+                # backup or migration moves mtime without recording a hit, so an
+                # mtime-based FROZEN goes quiet exactly when it should fire.
+                # Measured divergence on a live store: 2h47m between the two
+                # (Olorina, 2026-07-31, adversarial review of this panel).
+                # mtime is the fallback ONLY for stores carrying no timestamps —
+                # and the panel names which one it used, because a check whose
+                # thesis is "an empty signal and a clean signal are
+                # indistinguishable" must not report a number without saying
+                # what it measured.
+                now_ts = _dt.now(_tz.utc).timestamp()
+                stamps = [
+                    float(e.get("last_used", 0) or 0)
+                    for e in (usage.values() if isinstance(usage, dict) else [])
+                    if isinstance(e, dict)
+                ]
+                newest = max(stamps) if stamps else 0.0
+                if newest > 0:
+                    age_seconds = now_ts - newest
+                    age_source = "last_used"
+                else:
+                    age_seconds = now_ts - feedback_file.stat().st_mtime
+                    age_source = "file mtime (no last_used in store)"
+                age_days = age_seconds / 86400.0
+                # Print resolution, never a bare floor. 10.7 hours rendering as
+                # "0d" read as "today" and nearly shipped a false all-clear
+                # (Olorina, same review). A correctly-formed value that hides
+                # its resolution is the same disease in a smaller font.
+                if age_days < 1:
+                    age_str = f"{age_seconds / 3600.0:.1f}h"
+                else:
+                    age_str = f"{age_days:.1f}d"
+                print(f"    formations recorded: {entries:,}  hits: {total_hits:,}")
+                print(f"    last recorded use: {age_str} ago  (measured by: {age_source})")
                 if age_days >= 14:
-                    print(f"    [!] FROZEN — no usage recorded in {age_days} days.")
+                    print(f"    [!] FROZEN — no usage recorded in {age_days:.1f} days.")
                     print(f"        If a heartbeat/ambient reader is your only caller, that is")
                     print(f"        correct (NO-HEAT). If you have been querying deliberately,")
                     print(f"        the deliberate half is not recording — check LINAFISH_NO_HEAT")
                     print(f"        is not set on the process doing the choosing.")
-                if total_hits > 1000 and unhelpful == 0:
-                    print(f"    [!] SUSPECT — {total_hits:,} hits and zero unhelpful marks.")
-                    print(f"        A timer cannot judge, only fire. Check that an ambient")
-                    print(f"        reader (resident server, heartbeat) is not heating this")
-                    print(f"        store; ambient callers must run with no_heat.")
+                # SUSPECT keys on SATURATION, not on `unhelpful == 0`.
+                # Nothing in the engine ever calls hit(helpful=False), so a
+                # zero unhelpful count is STRUCTURAL — keying on it would fire
+                # on every healthy store past a threshold, which is a false-
+                # alarm generator wired into a diagnostic (the mirror of a
+                # check that cannot fail: a check that always fires).
+                # What actually separates a timer from a reader is the SHAPE:
+                # deliberate use is heavy-tailed (measured on a healthy store:
+                # 9% of formations at the weight ceiling, median 2 hits, max
+                # 54), while an unattended cadence saturates uniformly (the
+                # observed pathological store: ceiling-pinned across the top,
+                # ~70,000 hits per formation). Saturation is the signal.
+                weights = [
+                    float(e.get("weight_modifier", 1.0) or 1.0)
+                    for e in (usage.values() if isinstance(usage, dict) else [])
+                    if isinstance(e, dict)
+                ]
+                at_ceiling = sum(1 for w in weights if w >= 2.9)
+                sat = at_ceiling / len(weights) if weights else 0.0
+                if total_hits > 1000 and sat >= 0.5:
+                    print(f"    [!] SUSPECT — {at_ceiling}/{len(weights)} formations "
+                          f"({sat:.0%}) pinned at the weight ceiling over "
+                          f"{total_hits:,} hits.")
+                    print(f"        That is saturation, not selection — a timer cannot")
+                    print(f"        judge, only fire. Check that an ambient reader")
+                    print(f"        (resident server, heartbeat) is not heating this store;")
+                    print(f"        ambient callers must run with no_heat.")
             except Exception as e:
                 print(f"    (could not read usage store: {e})")
         print()
