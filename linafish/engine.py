@@ -2043,7 +2043,8 @@ class FishEngine:
             crystals=self.fish.crystals,
         )
 
-    def taste_dict(self, text: str, top: int = 5) -> dict:
+    def taste_dict(self, text: str, top: int = 5,
+                   no_heat: bool | None = None) -> dict:
         """Structured cross-corpus match. Returns a JSON-serializable dict.
 
         Schema:
@@ -2118,7 +2119,7 @@ class FishEngine:
                 "keywords": list(c.keywords) if c.keywords else [],
             })
             top_crystal_ids.add(c.id)
-        self._record_feedback_hits(top_crystal_ids)
+        self._record_feedback_hits(top_crystal_ids, no_heat=no_heat)
 
         return {
             "ok": True,
@@ -2128,14 +2129,15 @@ class FishEngine:
             "matches": matches,
         }
 
-    def taste(self, text: str, top: int = 5) -> str:
+    def taste(self, text: str, top: int = 5,
+              no_heat: bool | None = None) -> str:
         """Cross-corpus matching. What does the fish know about this text?
 
         Returns a human-readable text rendering. For structured data
         (used by guppies and other federation tooling), call
         ``taste_dict()`` instead.
         """
-        result = self.taste_dict(text, top=top)
+        result = self.taste_dict(text, top=top, no_heat=no_heat)
 
         if not result["ok"]:
             messages = {
@@ -2169,7 +2171,8 @@ class FishEngine:
 
         return "\n".join(results)
 
-    def recall(self, query: str, top: int = 10) -> str:
+    def recall(self, query: str, top: int = 10,
+               no_heat: bool | None = None) -> str:
         """Full-text search across all crystals using BM25 ranking.
 
         BM25 scores each crystal by term frequency, inverse document frequency,
@@ -2246,9 +2249,10 @@ class FishEngine:
         # feedback last written 2026-06-04. The gate is the SAME `no_heat` flag
         # (checked inside _record_feedback_hits) — ambient callers set it,
         # deliberate callers don't, and one flag now governs both halves.
-        self._record_feedback_hits({
-            c.id for _, _, c in hits[:top] if getattr(c, "id", None) is not None
-        })
+        self._record_feedback_hits(
+            {c.id for _, _, c in hits[:top] if getattr(c, "id", None) is not None},
+            no_heat=no_heat,
+        )
 
         results = [f"Found {len(hits)} crystals matching '{query}':\n"]
         for score, term_count, c in hits[:top]:
@@ -2269,7 +2273,8 @@ class FishEngine:
 
         return "\n".join(results)
 
-    def match(self, text: str, top: int = 3) -> str:
+    def match(self, text: str, top: int = 3,
+              no_heat: bool | None = None) -> str:
         """Tight recall. Higher threshold than taste."""
         if not self.fish.crystals or not self.fish.frozen:
             return "Fish is empty or not frozen."
@@ -2299,11 +2304,12 @@ class FishEngine:
             results.append(f"[{g:.3f}] {', '.join(c.keywords)}")
             results.append(f"  {c.text[:300]}\n")
             top_crystal_ids.add(c.id)
-        self._record_feedback_hits(top_crystal_ids)
+        self._record_feedback_hits(top_crystal_ids, no_heat=no_heat)
 
         return "\n".join(results)
 
-    def _record_feedback_hits(self, top_crystal_ids: set) -> None:
+    def _record_feedback_hits(self, top_crystal_ids: set,
+                              no_heat: bool | None = None) -> None:
         """Map top-hit crystals to their formations and record the usage signal.
 
         Closes the access-IS-integration loop. Each unique formation that
@@ -2312,7 +2318,14 @@ class FishEngine:
         PR #21 review: taste()/match() were returning answers without ever
         recording which formations did the work.
         """
-        if self._no_heat:
+        # Per-CALL override beats the per-PROCESS setting. A resident server
+        # can take ambient AND deliberate traffic on the same engine; a
+        # process-wide flag would silence both, which is invariant 1(b) wearing
+        # a compliance costume (the ambient half correctly quiet, the deliberate
+        # half frozen, the invariant reading green). The caller that knows
+        # whether it CHOSE is the only one that can answer, so it gets to say.
+        gate = self._no_heat if no_heat is None else bool(no_heat)
+        if gate:
             return  # ambient reader — see NO-HEAT in __init__ (2.0 invariant 1)
         if self.feedback is None or not top_crystal_ids or not self.formations:
             return

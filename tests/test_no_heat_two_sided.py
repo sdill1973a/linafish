@@ -250,3 +250,44 @@ def test_rate_still_catches_a_timer_after_baselining(tmp_path):
 
     out = _doctor(tmp_path)
     assert "[!] SUSPECT" in out, "baselining the numerator blinded the timer check"
+
+
+# --- per-request no_heat: the MIXED server (2.0 invariant 1, mandatory) ---
+# A resident server can take ambient AND deliberate traffic on one engine.
+# A process-wide flag silences both, which is 1(b) in a compliance costume.
+# The caller that knows whether it CHOSE is the only one who can answer.
+
+def test_per_request_ambient_is_silent_on_a_deliberate_engine(tmp_path):
+    e = _seeded(tmp_path)
+    for q in QUERIES:
+        e.taste(q, no_heat=True)
+        e.recall(q, no_heat=True)
+        e.match(q, no_heat=True)
+    assert _usage(tmp_path) is None, "per-request no_heat did not silence an ambient call"
+
+
+def test_per_request_deliberate_records_on_the_same_engine(tmp_path):
+    e = _seeded(tmp_path)
+    for q in QUERIES:
+        e.taste(q, no_heat=True)      # ambient traffic first
+    for q in QUERIES:
+        e.taste(q)                    # then a deliberate caller, same engine
+    assert _usage(tmp_path), "the deliberate half froze on a mixed engine"
+
+
+def test_per_call_flag_overrides_the_process_setting(tmp_path):
+    """The inverse direction: a no_heat PROCESS must still record when the
+    caller explicitly declares the read deliberate."""
+    _seeded(tmp_path)
+    e = _seeded(tmp_path, no_heat=True)
+    e.taste(QUERIES[0], no_heat=False)
+    assert _usage(tmp_path), "per-call override lost to the process-wide setting"
+
+
+def test_taste_forwards_the_flag_to_taste_dict(tmp_path):
+    """taste() renders taste_dict(); it must not drop the flag on the way.
+    It did, on the first implementation — caught only by testing the verbs
+    together rather than one at a time."""
+    e = _seeded(tmp_path)
+    e.taste(QUERIES[0], no_heat=True)
+    assert _usage(tmp_path) is None, "taste() dropped no_heat before taste_dict()"

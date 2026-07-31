@@ -199,11 +199,13 @@ class ConverseHandler(BaseHTTPRequestHandler):
             if fmt == "json":
                 self._respond(
                     200,
-                    json.dumps(self.engine.taste_dict(text, top=top)),
+                    json.dumps(self.engine.taste_dict(
+                        text, top=top, no_heat=body.get("no_heat"))),
                     "application/json",
                 )
             else:
-                self._respond(200, self.engine.taste(text, top=top))
+                self._respond(200, self.engine.taste(
+                    text, top=top, no_heat=body.get("no_heat")))
 
         elif parsed.path == "/msg":
             self._handle_msg_send(body)
