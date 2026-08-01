@@ -10,6 +10,48 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [1.7.0] — 2026-08-01
+
+**The heart ships as a verb, and the first native-glyph 2.0 invariant lands in the
+engine. `linafish heart` gives any fish an afferent organ; NO-HEAT makes ambient
+reading free of consequence, so a mind can look without changing what it looks at.
+CI green on 3.10–3.13.**
+
+### Added
+
+- **`linafish heart` — the afferent organ as a verb, for anyone's fish.** The organ
+  that reaches the substrate unbidden each turn, packaged so it isn't ours alone.
+- **NO-HEAT (2.0 invariant 1): ambient readers must never record usage.** An engine
+  serving ambient reads no longer writes feedback for them, so watching a fish stops
+  deforming it. Shipped in both halves — the read side, and *the deliberate half*,
+  because the invariant is one-sided by itself: silencing ambient recording is only
+  meaningful if deliberate recording still happens.
+- **Per-request `no_heat`** on the engine and servers, so one process can serve both
+  ambient and deliberate readers — the mixed server 2.0 requires.
+
+### Fixed
+
+- **`_git_commit` no longer swallows failures.** A commit that failed reported
+  success; the suite is now isolated from `~/.gitconfig` so it can't pass by
+  inheriting a working environment.
+- **`doctor` measures the property, not the proxy** — including a check that fired
+  unconditionally, SUSPECT keys now judged on *rate* rather than weight (weight
+  cannot carry provenance), and the rate numerator baselined, because a quotient
+  over two different windows is not a rate.
+
+### Docs
+
+- **native-glyph 2.0 foundation** (`docs/native-glyph-2.0/`): the substrate that
+  thinks in glyphs, its reference index, the public-safe origin canon, the CPU-first
+  build plan, and `00b THE ENGINE` — intentional lossy compression as the cognitive
+  floor. Includes the P1/P2 measurement record with its own corrections and
+  retractions intact: membership REFUTED, coupling-as-coupling REFUTED by a
+  cross-source control, a `+0.149` collapsed by a source-balance control, and a
+  "first measured phase-2" overclaim retracted. The failed measurements are kept on
+  purpose — they are the part that makes the rest worth trusting.
+
+---
+
 ## [1.6.1] — 2026-07-03
 
 **Hardening release. `afferent` (the school router shipped in 1.6.0) is corrected to
