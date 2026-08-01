@@ -33,6 +33,31 @@ from itertools import combinations
 # still bounding pathological inputs.
 MAX_CRYSTAL_TEXT = 32768
 
+_TRUNCATION_WARNED: set = set()
+
+
+def _warn_truncation(source: str, original_len: int) -> None:
+    """Say so when a crystal is cut. Once per source, so a big ingest reports
+    each offending document rather than every call.
+
+    The point is that the caller can act: chunk the file, or accept the loss
+    knowingly. Silently keeping the first 32KB of a book and calling it a
+    crystal is the failure this whole module already suffered once at 300
+    chars, and the fix then was a bigger number rather than a louder one.
+    """
+    key = (source, original_len // 4096)
+    if key in _TRUNCATION_WARNED:
+        return
+    _TRUNCATION_WARNED.add(key)
+    dropped = original_len - MAX_CRYSTAL_TEXT
+    import logging as _log
+    _log.getLogger(__name__).warning(
+        "[linafish] TRUNCATED %s: %d chars in, %d kept, %d (%.0f%%) DROPPED. "
+        "Split the source into smaller documents to keep it whole.",
+        source or "<unknown source>", original_len, MAX_CRYSTAL_TEXT,
+        dropped, 100.0 * dropped / original_len,
+    )
+
 
 # ---------------------------------------------------------------------------
 # DATA STRUCTURES
@@ -984,6 +1009,16 @@ def crystallize(text: str, vectorizer: MIVectorizer,
     # truncated every substantive deposit to a headline, leaving only
     # short telemetry texts fully represented. See exp/ai-usability doc
     # and 2026-04-13 session diagnosis for the full story.
+    #
+    # 2026-08-01: that bug was fixed by raising the number, not by making
+    # the truncation visible — so it recurred at the new size. Feeding a
+    # 70,000-character novel produced a crystal of exactly 32768 chars and
+    # said nothing; 53% of the book was gone, and the only way to notice
+    # was to go read the JSONL and spot two crystals at precisely the cap.
+    # A bound on pathological input is fine. A silent one is not.
+    if MAX_CRYSTAL_TEXT and len(text) > MAX_CRYSTAL_TEXT:
+        _warn_truncation(source, len(text))
+
     return Crystal(
         id=crystal_id,
         ts=ts,
