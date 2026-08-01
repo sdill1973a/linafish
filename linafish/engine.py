@@ -2316,6 +2316,120 @@ class FishEngine:
     # You don't stop teaching to test. The test IS the teaching viewed
     # through a different lens. Hattie d=1.29.
 
+    def maintain(self) -> dict:
+        """Scheduled self-maintenance. THIS is what the daemon's background
+        thread should call; re_eat was, and it did nothing.
+
+        re_eat gates everything behind pending texts, and nothing on any
+        engine path writes pending: eat() freezes before crystallizing, and
+        crystallize_text only appends to pending on its pre-freeze branch
+        (crystallizer_v3.py:1392). So eat / eat_many / eat_path leave it
+        empty forever, re_eat returns nothing_pending, and the three
+        operations that live only inside it — formative assessment, the
+        gardener pass, the GrowthTracker — never ran on any engine-backed
+        fish. Measured, not inferred (issue #48): no live fish has a
+        *_growth.json, and GrowthTracker.load() runs at every engine init.
+
+        maintain() runs those three whether or not anything is pending. If
+        pending IS non-empty it delegates to the full re-eat, so a fish
+        driven by the crystallizer's own ingest path keeps today's behaviour
+        exactly.
+
+        WHAT IT DELIBERATELY DOES NOT DO: re-freeze the vocabulary. That is
+        the other half of re_eat, and turning it on for a 6-hourly thread
+        would churn the vector space under crystals that keep their old
+        vectors — §THE.DIGEST.GAP, whose real fix is revectorize_all and is
+        neither free nor unattended. So formative assessment's seed-weight
+        recommendations are recorded here and applied at the next actual
+        freeze. They are absolute per-term weights (assigned, not summed),
+        so they do not compound while they wait.
+
+        Holds _eat_lock throughout. Not optional: FormationGardener.run
+        iterates engine.formation_index while eat() mutates it, and its own
+        docstring says a background driver MUST land an engine-level lock
+        before this. That lock is the prerequisite, not a nicety.
+        """
+        import os as _os
+
+        with self._eat_lock:
+            pending_path = self.fish.pending_path
+            has_pending = (_os.path.exists(pending_path)
+                           and _os.path.getsize(pending_path) > 0)
+            if has_pending:
+                result = self._re_eat_locked()
+                result["maintained"] = True
+                return result
+            return self._maintain_locked()
+
+    def _maintain_locked(self) -> dict:
+        """The maintenance operations, with no relearn and no re-freeze.
+
+        Caller MUST hold ``_eat_lock`` (see maintain).
+        """
+        result = {
+            "maintained": True,
+            "re_eat": False,
+            "relearned": False,
+            "refroze": False,
+            "crystal_count": len(self.fish.crystals),
+            "formation_count": len(self.formations),
+            "epoch": self.fish.epoch,
+        }
+
+        formative_result = self._formative_assess()
+        if formative_result:
+            result["formative"] = formative_result
+        result["r_n"] = self.r_n_history[-1] if self.r_n_history else None
+
+        if self.gardener is not None:
+            try:
+                garden_summary = self.gardener.run()
+                result["garden"] = {
+                    "grade": garden_summary.get("grade"),
+                    "counts": garden_summary.get("counts"),
+                    "fp_mean": garden_summary.get("fp_mean"),
+                    "oversize_count": garden_summary.get("oversize_count", 0),
+                    "contagion_top": garden_summary.get("contagion_top", []),
+                }
+            except Exception as _ge:
+                import logging as _log
+                _log.getLogger(__name__).warning(f"[gardener] pass failed: {_ge}")
+                result["garden_error"] = str(_ge)
+
+        if self.tracker is not None:
+            try:
+                tracker_delta = self.tracker.record(self)
+                self.tracker.save(self.state_dir / f"{self.name}_growth.json")
+                if self.tracker.snapshots:
+                    latest = self.tracker.snapshots[-1]
+                    growth = {
+                        "r_n": latest.r_n,
+                        "coupling_density": latest.coupling_density,
+                        "dimension_entropy": round(self.tracker.dimension_entropy(), 4),
+                    }
+                    # record() returns None on the first snapshot — there is
+                    # nothing to delta against yet. Caught on the live mimipc
+                    # corpus, where every cycle is the first one, because this
+                    # has never run. Report the levels and omit the deltas.
+                    if tracker_delta is not None:
+                        growth.update({
+                            "crystal_delta": tracker_delta.crystal_delta,
+                            "formation_delta": tracker_delta.formation_delta,
+                            "stability_ratio": tracker_delta.stability_ratio,
+                        })
+                    result["growth"] = growth
+            except Exception as _te:
+                import logging as _log
+                _log.getLogger(__name__).warning(f"[tracker] record failed: {_te}")
+                result["tracker_error"] = str(_te)
+
+        emergence = self._check_emergence()
+        if emergence is not None:
+            result["emergence"] = emergence
+
+        self._save_state()
+        return result
+
     def re_eat(self) -> dict:
         """Full re-eat cycle, serialized against every other writer.
 
