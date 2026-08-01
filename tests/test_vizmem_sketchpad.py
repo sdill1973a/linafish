@@ -106,3 +106,25 @@ def test_bindings_ignores_ordinary_crystals(tmp_path):
         + json.dumps({"text": "a real meaning\n(image#7 /tmp/a.png)"}) + "\n",
         encoding="utf-8")
     assert vizmem.bindings(tmp_path) == [(7, "/tmp/a.png", "a real meaning")]
+
+
+def test_sigil_prompt_uses_the_cognitive_grammar():
+    """A minted glyph for a dimension must rhyme with others of its family, or
+    the alphabet stops being readable as it grows."""
+    p = vizmem.sigil_prompt(["SELF-REFLECTION"])
+    assert vizmem.VISUAL_GRAMMAR["SELF-REFLECTION"] in p
+    assert vizmem.SIGIL_STYLE in p
+    assert "a single centered mark" in vizmem.sigil_prompt([])
+
+
+def test_parse_formation_recovers_primary_and_modulating_dims():
+    assert vizmem.parse_formation("STRUCTURING+RELATING_via_ACTING") == [
+        "STRUCTURING", "RELATING", "ACTING"]
+    assert vizmem.parse_formation("FEELING") == ["FEELING"]
+
+
+def test_every_grammar_dimension_matches_a_real_cognitive_label():
+    """The visual grammar must not drift from the engine's own dimensions."""
+    from linafish.formations import DIM_LABELS
+    engine_dims = {v.upper() for v in DIM_LABELS.values()}
+    assert set(vizmem.VISUAL_GRAMMAR) == engine_dims

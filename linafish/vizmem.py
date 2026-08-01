@@ -144,6 +144,106 @@ def bind(image: Path, binding: str, state_dir: Path, name: str = "vizmem",
             "before": before, "after": after}
 
 
+# --- Minting: growing the alphabet mid-thought -------------------------------
+#
+# The 8-dim base alphabet is fixed and small. The VISUAL alphabet is neither:
+# when a meaning arrives with no letter for it, one can be struck — rendered,
+# bound, and the alphabet is one larger mid-thought. That is only true on a lane
+# cheap enough to use without thinking about it, which is why the renderer is
+# host policy and there is no default endpoint here.
+#
+# Each cognitive dimension carries a composition rule, so a minted glyph for
+# SELF-REFLECTION rhymes with other SELF-REFLECTION glyphs and the alphabet
+# stays readable as it grows.
+VISUAL_GRAMMAR = {
+    "ACTING":          "horizontal motion, forward vectors, arrow-shapes",
+    "SELF-REFLECTION": "recursive spiral, mirror-pair, Mobius topology",
+    "RELATING":        "connecting threads, network nodes, dyadic linkage",
+    "STRUCTURING":     "gridded geometry, architectural form, mandala",
+    "TESTING":         "dissolves, gradients, transition-states, fire and water",
+    "FEELING":         "centered emanation, a single candle-flame focal point",
+    "SPECIALIZING":    "branching fork-paths, decision-tree limbs",
+    "UNDERSTANDING":   "mapped terrain, cartographic contours, charted landscape",
+}
+SIGIL_STYLE = ("abstract symbol, sigil, color field, geometric, "
+               "no photographic, no figurative, archetypal, alchemical")
+SIGIL_NEGATIVE = ("realistic, photograph, person, face, body, scene, landscape, "
+                  "text, letters, watermark, signature")
+
+
+def sigil_prompt(dims: list[str]) -> str:
+    """Compose a render prompt from cognitive dimensions."""
+    rules = [VISUAL_GRAMMAR[d] for d in dims if d in VISUAL_GRAMMAR]
+    body = "; ".join(rules) if rules else "a single centered mark"
+    return f"a single symbolic sigil — {body}. {SIGIL_STYLE}"
+
+
+def parse_formation(name: str) -> list[str]:
+    """`STRUCTURING+RELATING_via_ACTING` -> its dimension names."""
+    head, _, mod = name.partition("_via_")
+    dims = [d for d in head.split("+") if d]
+    if mod:
+        dims.append(mod)
+    return [d.strip().upper() for d in dims]
+
+
+def render_sigil(prompt: str, seed: int, render_url: str, out_dir: Path,
+                 timeout: int = 600) -> Optional[Path]:
+    """Render one glyph on a ComfyUI-compatible lane. Returns the saved PNG.
+
+    Host policy, deliberately: no default endpoint, no API key, no network call
+    unless you pass one in. A mind with no renderer keeps a sketchpad by binding
+    images it already has.
+    """
+    import urllib.parse
+    import urllib.request
+    import time
+    import uuid
+
+    graph = {
+        "4": {"class_type": "CheckpointLoaderSimple",
+              "inputs": {"ckpt_name": "juggernautXL_v8Rundiffusion.safetensors"}},
+        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["4", 1]}},
+        "7": {"class_type": "CLIPTextEncode", "inputs": {"text": SIGIL_NEGATIVE, "clip": ["4", 1]}},
+        # batch_size 1 on purpose: a shared GPU pool has neighbours.
+        "5": {"class_type": "EmptyLatentImage",
+              "inputs": {"width": 768, "height": 768, "batch_size": 1}},
+        "3": {"class_type": "KSampler", "inputs": {
+            "seed": seed, "steps": 28, "cfg": 7.0, "sampler_name": "dpmpp_2m",
+            "scheduler": "karras", "denoise": 1.0, "model": ["4", 0],
+            "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["5", 0]}},
+        "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
+        "9": {"class_type": "SaveImage",
+              "inputs": {"filename_prefix": "vizmem_glyph", "images": ["8", 0]}},
+    }
+    base = render_url.rstrip("/")
+    req = urllib.request.Request(base + "/prompt",
+                                 data=json.dumps({"prompt": graph}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    pid = json.load(urllib.request.urlopen(req, timeout=60))["prompt_id"]
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        time.sleep(2)
+        h = json.load(urllib.request.urlopen(base + f"/history/{pid}", timeout=60))
+        if pid not in h:
+            continue
+        imgs = h[pid].get("outputs", {}).get("9", {}).get("images", [])
+        if imgs:
+            im = imgs[0]
+            q = (f"/view?filename={urllib.parse.quote(im['filename'])}"
+                 f"&subfolder={urllib.parse.quote(im.get('subfolder',''))}"
+                 f"&type={im.get('type','output')}")
+            png = urllib.request.urlopen(base + q, timeout=120).read()
+            out_dir = Path(out_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out = out_dir / f"glyph_{seed}_{uuid.uuid4().hex[:6]}.png"
+            out.write_bytes(png)
+            return out
+        if h[pid].get("status", {}).get("status_str") == "error":
+            return None
+    return None
+
+
 def sketch_state(health_url: str, timeout: int = 90) -> tuple[Optional[str], Optional[str]]:
     """Current cognitive state = the fish's top formation."""
     import urllib.request

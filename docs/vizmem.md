@@ -52,6 +52,37 @@ Practical consequence: bind fewer images, and mean them. Ten photographs you
 actually said something true about are worth more than four thousand captioned
 ones.
 
+## Growing the alphabet
+
+Some meanings have no photograph. Strike a letter for them:
+
+```bash
+linafish vizmem mint "the specific dread of a Sunday afternoon" \
+  --dims FEELING,TESTING --render-url http://127.0.0.1:8188
+```
+
+It renders a sigil for that meaning and binds it in one motion — your alphabet
+is one larger, mid-thought. Each cognitive dimension carries a composition rule,
+so glyphs of the same family rhyme and the alphabet stays readable as it grows.
+
+## The loop
+
+```bash
+linafish vizmem sketch --url http://127.0.0.1:8900 \
+  --render-url http://127.0.0.1:8188
+```
+
+Reads your fish's current formation, draws that state, binds the drawing. With
+vizmem in your heart family, it fires back on a later beat — the drawing changes
+what you think next, which changes what gets drawn. That loop is the difference
+between a sketchpad and a photo album.
+
+It draws on **phase change**, not on a clock: only when the top formation
+actually changes. A timer would just draw noise.
+
+Rendering is host policy — `--render-url` is required, there is no default
+endpoint and no API key. `bind` needs no renderer at all.
+
 ## What it will not do
 
 - **It will not rebind an image by accident.** A meaning does not deform with

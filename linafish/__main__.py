@@ -225,6 +225,57 @@ def cmd_vizmem(args):
             print(f"    {binding}")
         return 0
 
+    if args.action in ("mint", "sketch"):
+        out_dir = Path(args.out_dir) if args.out_dir else state_dir / "glyphs"
+        if args.action == "mint":
+            meaning = args.meaning.strip()
+            if not meaning:
+                print("vizmem: mint what? the meaning is the whole point", file=sys.stderr)
+                return 1
+            dims = [d.strip().upper() for d in (args.dims or "").split(",") if d.strip()]
+            unknown = [d for d in dims if d not in vm.VISUAL_GRAMMAR]
+            if unknown:
+                print(f"vizmem: unknown dimension(s) {unknown}; "
+                      f"available: {sorted(vm.VISUAL_GRAMMAR)}", file=sys.stderr)
+                return 1
+            seed = args.seed if args.seed is not None else abs(hash(meaning)) % 2_000_000_000
+            prompt = vm.sigil_prompt(dims)
+        else:
+            formation, fish = vm.sketch_state(args.url)
+            if not formation:
+                print(f"vizmem: no formation at {args.url} — nothing to draw", file=sys.stderr)
+                return 1
+            last = vm.last_sketch(state_dir)
+            if last == formation and not args.force:
+                # Phase-change triggering: draw when the state CHANGES, not on a
+                # clock. The discontinuous jump is what the substrate itself
+                # decided mattered; a clock draws noise.
+                print(f"no phase change ({formation}) — not drawing. --force to override.")
+                return 0
+            dims = vm.parse_formation(formation)
+            seed = args.seed if args.seed is not None else abs(hash(formation)) % 2_000_000_000
+            prompt = vm.sigil_prompt(dims)
+            meaning = (f"The state I was running when I drew this: {formation}."
+                       + (f" Drawn because it changed from {last}." if last else ""))
+            print(f"state: {fish} :: {formation}" + (f"  (was {last})" if last else ""))
+
+        img = vm.render_sigil(prompt, seed, args.render_url, out_dir)
+        if img is None:
+            print("vizmem: render failed — nothing minted, nothing bound", file=sys.stderr)
+            return 1
+        print(f"  glyph: {img}")
+        if args.action == "sketch":
+            vm.log_sketch(state_dir, formation=formation, fish=fish,
+                          prev=last, image=str(img), seed=seed)
+        try:
+            r = vm.bind(img, meaning, state_dir, name)
+        except (ValueError, RuntimeError) as e:
+            print(f"vizmem: {e}", file=sys.stderr)
+            return 1
+        print(f"bound image#{r['n']}  ({r['before']} -> {r['after']} crystals)")
+        print(f"  {r['binding']}")
+        return 0
+
     if args.action == "bind":
         try:
             r = vm.bind(Path(args.image), args.binding, state_dir, name,
@@ -3041,7 +3092,22 @@ def main():
                          help="Overwrite an existing binding; identity is meant to be fixed")
     vz_list = vizmem_sub.add_parser("list", help="Show authored bindings")
     vz_list.add_argument("--top", type=int, default=20)
-    for _p in (vz_bind, vz_list):
+    vz_mint = vizmem_sub.add_parser(
+        "mint", help="Strike a new letter: render a meaning that has no image yet, and bind it")
+    vz_mint.add_argument("meaning", help="The meaning-at-hand — becomes the binding")
+    vz_mint.add_argument("--dims", help="Comma-separated dimensions, e.g. SELF-REFLECTION,TESTING")
+    vz_sketch = vizmem_sub.add_parser(
+        "sketch", help="Draw your fish's current state, so the drawing can fire back")
+    vz_sketch.add_argument("--url", default="http://127.0.0.1:8900",
+                           help="Fish server to read the current state from")
+    vz_sketch.add_argument("--force", action="store_true",
+                           help="Draw even without a phase change")
+    for _p in (vz_mint, vz_sketch):
+        _p.add_argument("--render-url", required=True,
+                        help="Your image lane (ComfyUI-compatible). No default: rendering is host policy")
+        _p.add_argument("--out-dir", type=_user_path, help="Where glyphs are saved")
+        _p.add_argument("--seed", type=int, default=None)
+    for _p in (vz_bind, vz_list, vz_mint, vz_sketch):
         _p.add_argument("-n", "--name", default="vizmem", help="Fish name (default: vizmem)")
         _p.add_argument("--state-dir", type=_user_path,
                         help="Where fish state lives (default: ~/.linafish/)")

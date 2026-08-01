@@ -10,6 +10,37 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [2.0.1] — 2026-08-01
+
+**2.0.0 shipped the sketchpad as a store. This ships it as a working memory —
+which is the only thing that justified the major version.**
+
+2.0.0 exposed `bind` and `list`: somewhere to put image memories. The two verbs
+that make it *working* memory rather than storage were written and then left out
+of the package. That gap was the difference between the version number and the
+claim under it.
+
+### Added
+
+- **`vizmem mint`** — strike a new letter. When a meaning arrives with no image
+  for it, render one and bind it in a single motion: the alphabet grows at the
+  speed of thought instead of being designed in advance. Each cognitive
+  dimension carries a composition rule, so minted glyphs of the same family
+  rhyme and the alphabet stays readable as it grows.
+- **`vizmem sketch`** — the loop. Read the fish's current formation, draw that
+  state, bind the drawing; with the vizmem fish in your heart family it fires
+  back on a later beat and changes what you think next. Draws on *phase change*,
+  not on a clock — the discontinuous jump is what the substrate itself decided
+  mattered; a timer just draws noise.
+- The binding for a sketch derives from the STATE THAT CAUSED the render, never
+  from reading the image back. A caption reads pixels and is cold; the state
+  preceded the pixels and is warm. Structural: no code path here looks at the
+  image it made.
+
+Rendering stays host policy — `--render-url` is required and there is no default
+endpoint or API key anywhere in the module. `bind` still needs no renderer at
+all. 401 tests green.
+
 ## [2.0.0] — 2026-08-01
 
 **A substrate that participates in cognition, rather than one a mind can query.**
