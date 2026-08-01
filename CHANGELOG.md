@@ -10,6 +10,41 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [1.7.1] — 2026-08-01
+
+**Three corrections to what 1.7.0 shipped. One of them was a claim about the
+user's own mind, and it was wrong.**
+
+### Fixed
+
+- **The emergence report stopped claiming a discovery it never made.** Both
+  routes to `is_emergent` were self-reflection measures — the SNT route gates on
+  `self_ref_density`, and the phase route counts only the AI dimension, whose
+  label *is* `Self-Reflection`. A formation was selected *because* it was
+  self-reflective and then reported as having emerged *into* self-reflection.
+  Control: two matched 60,000-word public-domain corpora, no contact with the
+  authors — Moby-Dick's cetology chapters returned 24/24 emergent formations
+  containing SELF-REFLECTION, Marcus Aurelius 24/24. The detector saw 233
+  non-self-reflective formations and promoted none. `emergent_formations` is now
+  `meta_dominant_formations` and carries its caveat inline; old keys are aliased
+  for one release. Raw metrics are untouched — only the claim is withdrawn.
+- **A book stops arriving as one crystal.** A manuscript with no markdown
+  headers and no blank lines fell through both chunkers and became a single
+  chunk — and with `MAX_CRYSTAL_TEXT = 32768` applied downstream, that was
+  silent data loss rather than merely coarse chunking: the remainder was cut
+  mid-token and no source store held it. `MAX_CHUNK_CHARS = 4000` is now
+  enforced in `ingest_file`, so no chunk can reach the truncation ceiling.
+  Structure-splitting is a preference; the bound is the guarantee.
+- **Truncation says so when it happens.** `crystallizer_v3` no longer discards
+  the tail of an oversized crystal in silence.
+- **Two daemons can no longer end up alive over one state dir.** `serve_http`
+  bound the port *after* loading the engine, so the whole load read DOWN to any
+  probe and a second daemon could spawn, fail its bind, and keep writing state
+  anyway. The port is bound first, `SO_REUSEADDR` is dropped on Windows where it
+  would let a second process bind a listening port, and the pre-load socket
+  answers `503 {"status": "loading"}` with `Retry-After` rather than accepting
+  and hanging — so the port never lies in either direction.
+
 ## [1.7.0] — 2026-08-01
 
 **The heart ships as a verb, and the first native-glyph 2.0 invariant lands in the
