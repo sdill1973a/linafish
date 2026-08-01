@@ -113,20 +113,41 @@ opts in:
 
 Even when enabled, deploy behind ACL / tailnet gating (see `privacy.md`).
 
-## v1 design decision — source assembled from crystals
+## v1 design decision — source assembled from crystals (and why it was made wrongly)
 
 The spec (§3, §11.3) describes a separate append-only `<fish>_sources.jsonl`
 `ChainSource` store, motivated by returning source text "without bloating the
-crystal store." In the current codebase **crystals store their text untruncated**
-(`MAX_CRYSTAL_TEXT`), so that motivation does not apply, and §4.3 of the spec
-itself flags the separate store as a synchronization hazard on re-eat.
+crystal store." §4.3 of the spec also flags that store as a synchronization
+hazard on re-eat.
 
-v1 therefore **assembles episode source from the authoritative crystals**
-(`get_episode_source` joins the episode's crystal text in `episode_seq` order)
-rather than maintaining a redundant, drift-prone file. The `ChainSource`
-dataclass exists as the response shape. If crystal truncation ever returns, the
-persisted `*_sources.jsonl` store becomes the v2 fallback. This is a deliberate
-deviation from the spec's v1 item list, flagged here for review.
+v1 **assembles episode source from the crystals** (`get_episode_source` joins
+the episode's crystal text in `episode_seq` order) rather than maintaining a
+redundant, drift-prone file. That much stands.
+
+The *justification* recorded here did not. It said crystals store their text
+untruncated "(`MAX_CRYSTAL_TEXT`)" and that the store would become the v2
+fallback "if crystal truncation ever returns." `MAX_CRYSTAL_TEXT` **is** the
+truncation — 32768 chars, applied at `crystallizer_v3.py:1019` — so the
+sentence cited the cap as evidence there was no cap, and the trigger for
+building the fallback had already been true for as long as the constant had
+existed. Measured 2026-08-01 across every live fish in the federation: the
+longest crystal in each is exactly 32768 chars, and no `*_sources.jsonl` file
+exists anywhere. A 70,407-char novel was ingested and roughly 53% of it is
+simply gone. Tracked as issue #45.
+
+Consequences for callers, as of this release:
+
+- `get_episode_source` reports fidelity instead of claiming completeness.
+  `metadata.complete` is `False` when any constituent crystal sits at the cap;
+  `metadata.at_cap_crystal_count` and `metadata.fidelity_warning` give detail.
+  Detection is by length — crystals carry no truncation flag — so a crystal
+  that is genuinely exactly 32768 chars reads as at-cap. Named for what is
+  measured, not what is inferred.
+- **This recovers nothing.** Text dropped at ingest is not in the crystal, not
+  in a sources file, not anywhere. Re-ingesting the source is the only repair.
+- Building the v2 `ChainSource` store remains open (#45 option 2). §4.3's
+  sync-hazard objection still needs answering; "redundant while crystals hold
+  full text" no longer does.
 
 ## Backward compatibility
 

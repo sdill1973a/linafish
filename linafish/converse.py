@@ -275,7 +275,12 @@ class ConverseHandler(BaseHTTPRequestHandler):
     def _handle_moment(self, parsed):
         """GET /moment/<episode_id> — HIGHEST-FIDELITY CONTENT SURFACE.
 
-        Returns the full untruncated source for an episode. DEFAULT OFF: a
+        Returns an episode's source assembled from its crystals. Highest
+        fidelity available, NOT guaranteed complete: crystals over
+        MAX_CRYSTAL_TEXT were cut at ingest and there is no sources store to
+        fall back to (issue #45). The response says so — check
+        ``metadata.complete`` and ``metadata.fidelity_warning`` before
+        treating the body as the whole document. DEFAULT OFF: a
         fish must opt in via expose_full_sources (serve_converse arg or
         LINAFISH_EXPOSE_FULL_SOURCES). When off, returns 403. Misconfigured
         ACL on this endpoint is the worst-case leak in linafish — see
