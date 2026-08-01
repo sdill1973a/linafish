@@ -11,6 +11,7 @@ Same math for text, light, whale clicks, C64.
 
 import math
 import hashlib
+import os
 import re
 from datetime import datetime, timezone
 from collections import Counter, defaultdict
@@ -33,7 +34,52 @@ from itertools import combinations
 # still bounding pathological inputs.
 MAX_CRYSTAL_TEXT = 32768
 
+# How many co-occurrence pairs MIVectorizer.save persists. The tail beyond
+# this is dropped from the file, and load() rebuilds pair_counts from the
+# file, so the drop is not a disk-size bound — it is amnesia. Every
+# save/load round trip on an over-cap fish permanently forgets its rarest
+# co-occurrences, and mi() reads a dropped pair as joint=0, which is
+# "these never occurred together", not "these are rare". Rare-and-surprising
+# is exactly what ache measures.
+#
+# Kept at 100000 because raising it blind trades one unmeasured cost for
+# another; LINAFISH_MAX_PAIR_COUNTS lifts or removes it (0 = unbounded) for
+# anyone who has measured their file. What changed 2026-08-01 is that
+# hitting it now says so.
+def _max_pair_counts() -> int:
+    raw = os.environ.get("LINAFISH_MAX_PAIR_COUNTS")
+    if raw is None:
+        return 100000
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 100000
+
+
 _TRUNCATION_WARNED: set = set()
+_PAIR_TRUNCATION_WARNED: set = set()
+
+
+def _warn_pair_truncation(path: str, kept: int, total: int) -> None:
+    """Say so when the co-occurrence tail is dropped at save time.
+
+    Once per (path, order of magnitude of loss), so a daemon saving every
+    eat reports the problem without drowning its own log.
+    """
+    key = (path, (total - kept) // 10000)
+    if key in _PAIR_TRUNCATION_WARNED:
+        return
+    _PAIR_TRUNCATION_WARNED.add(key)
+    dropped = total - kept
+    import logging as _log
+    _log.getLogger(__name__).warning(
+        "[linafish] PAIR COUNTS TRUNCATED in %s: %d pairs in memory, %d kept, "
+        "%d (%.0f%%) DROPPED and NOT recoverable from this file. The tail is "
+        "the rare co-occurrences; mi() will read them as never-co-occurred "
+        "after the next load. Raise or remove the bound with "
+        "LINAFISH_MAX_PAIR_COUNTS (0 = unbounded), or re-eat the corpus.",
+        path, total, kept, dropped, 100.0 * dropped / max(total, 1),
+    )
 
 
 def _warn_truncation(source: str, original_len: int) -> None:
@@ -605,12 +651,25 @@ class MIVectorizer:
         prevented on the write side AND recovered from on the read
         side if it ever slips through another path.
         """
+        cap = _max_pair_counts()
+        total_pairs = len(self.pair_counts)
+        pairs = (self.pair_counts.most_common(cap) if cap
+                 else self.pair_counts.most_common())
+        if cap and total_pairs > cap:
+            _warn_pair_truncation(str(path), len(pairs), total_pairs)
+
         data = {
             'token_counts': dict(self.token_counts.most_common()),
-            'pair_counts': {f"{k[0]}|{k[1]}": v for k, v in self.pair_counts.most_common(100000)},
+            'pair_counts': {f"{k[0]}|{k[1]}": v for k, v in pairs},
             'doc_count': self.doc_count,
             'token_doc_counts': dict(self.token_doc_counts.most_common()),
             'token_last_doc': dict(self.token_last_doc),
+            # Provenance for the reader: how much of the co-occurrence
+            # distribution this file actually holds. Without it, load() cannot
+            # tell a small fish from a large one that was cut down, and every
+            # round trip looks identical to a complete one.
+            'pair_counts_kept': len(pairs),
+            'pair_counts_total': total_pairs,
         }
         _atomic_write_json(path, data)
 
@@ -649,6 +708,20 @@ class MIVectorizer:
         self.doc_count = data.get('doc_count', 0)
         self.token_doc_counts = Counter(data.get('token_doc_counts', {}))
         self.token_last_doc = data.get('token_last_doc', {})
+
+        # Say what was loaded when the file records its own incompleteness.
+        # Files written before 2026-08-01 carry no provenance and are silent
+        # here; absence of the keys is not evidence the file is whole.
+        kept = data.get('pair_counts_kept')
+        total = data.get('pair_counts_total')
+        if kept is not None and total is not None and total > kept:
+            logging.getLogger(__name__).warning(
+                "MIVectorizer.load: %s holds %d of %d co-occurrence pairs "
+                "(%d dropped at save). The rare tail is gone; mi() will read "
+                "those pairs as never-co-occurred. Only re-eating the corpus "
+                "restores them.",
+                path, kept, total, total - kept,
+            )
         # Re-seed mutation: invalidate the cached total so the next
         # mi() call computes from the freshly-loaded counts.
         self._total_tokens_cache = None
