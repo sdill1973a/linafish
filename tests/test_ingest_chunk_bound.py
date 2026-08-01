@@ -65,3 +65,29 @@ def test_sentence_split_does_not_produce_a_crystal_per_sentence():
     assert len(chunks) < 200, f"over-split into {len(chunks)} chunks"
     assert sum(len(c.text) for c in chunks) > len(body) * 0.9, \
         "content was dropped during splitting"
+
+
+def test_headerless_markdown_uses_its_paragraphs():
+    """The real bug, and the one the size-bound only papered over.
+
+    read_markdown's paragraph fallback was written as `if not chunks` at the
+    bottom of the function, where it could never fire: with no headers the
+    trailing "last section" block had already appended the whole file as one
+    chunk. So a headerless document became exactly one chunk no matter how
+    well-structured it was.
+
+    Haec v6: 0 headers, 339 paragraph breaks, arrived as ONE crystal.
+    read_markdown returned 1; chunk_by_paragraphs on the same bytes returned
+    280. The structure was there the entire time and was being discarded,
+    and a size bound would have replaced it with arbitrary 4000-char cuts
+    rather than the author's own paragraphs.
+    """
+    body = "\n\n".join(
+        f"He counted the days again, and the number was {i}." for i in range(300)
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        chunks = ingest_file(_write(tmp, "manuscript.md", body))
+    assert len(chunks) > 100, (
+        f"headerless markdown collapsed to {len(chunks)} chunks; its "
+        f"paragraphs are being discarded"
+    )

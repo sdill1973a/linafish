@@ -49,8 +49,21 @@ class Chunk:
 
 
 def read_markdown(path: Path) -> list[Chunk]:
-    """Read a markdown file, chunk by headers."""
+    """Read a markdown file, chunk by headers.
+
+    Falls back to paragraphs when the file has no headers at all. That
+    fallback used to be written as ``if not chunks`` at the bottom, which
+    could never fire: with no headers, the trailing "last section" block had
+    already appended the entire file as one chunk, so ``chunks`` was never
+    empty. A headerless document therefore became exactly one chunk however
+    well-structured it was. Haec v6 has 0 headers and 339 paragraph breaks
+    and arrived as a single crystal; the paragraphs were there all along.
+    """
     text = path.read_text(encoding="utf-8", errors="replace")
+    has_headers = any(line.startswith("#") for line in text.split("\n"))
+    if not has_headers:
+        return chunk_by_paragraphs(text, str(path))
+
     chunks = []
     current_section = ""
     current_lines = []
