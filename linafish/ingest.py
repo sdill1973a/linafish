@@ -576,6 +576,68 @@ def read_file_as_text(path: Path) -> str:
     return "\n\n".join(c.text for c in chunks if c.text)
 
 
+MAX_CHUNK_CHARS = 4000
+"""No crystal should be a whole book.
+
+Every reader here splits on structure it hopes is present — markdown on `#`
+headers, prose on blank lines. Manuscripts routinely have neither. A 70,000
+character novel whose scene breaks are `*   *   *` and whose paragraphs are
+single newlines matched nothing and arrived as ONE chunk: one crystal, one
+vector, one point in the corpus, and a book contributing less signal than a
+README. It failed silently — the eat reported success and the count looked
+plausible next to files that chunked normally.
+
+So structure-splitting is a preference, not a guarantee, and this is the
+guarantee.
+"""
+
+
+def _split_oversized(chunks: list[Chunk]) -> list[Chunk]:
+    """Bound every chunk, descending through weaker separators.
+
+    Paragraphs, then lines, then sentences, then a hard cut. The hard cut is
+    ugly and it is still better than a single crystal holding a novel.
+    """
+    out: list[Chunk] = []
+    for c in chunks:
+        if len(c.text) <= MAX_CHUNK_CHARS:
+            out.append(c)
+            continue
+        pieces = [c.text]
+        for pattern in (r"\n\s*\n", r"\n", r"(?<=[.!?])\s+"):
+            if all(len(p) <= MAX_CHUNK_CHARS for p in pieces):
+                break
+            nxt: list[str] = []
+            for p in pieces:
+                nxt.extend(re.split(pattern, p) if len(p) > MAX_CHUNK_CHARS
+                           else [p])
+            pieces = [p for p in nxt if p.strip()]
+        # Reassemble adjacent fragments up to the bound so sentence-splitting
+        # does not produce a crystal per sentence.
+        merged: list[str] = []
+        buf = ""
+        for p in pieces:
+            if len(buf) + len(p) + 1 <= MAX_CHUNK_CHARS:
+                buf = f"{buf} {p}".strip() if buf else p
+            else:
+                if buf:
+                    merged.append(buf)
+                buf = p if len(p) <= MAX_CHUNK_CHARS else ""
+                if not buf:  # single piece still over the bound: hard cut
+                    merged.extend(p[i:i + MAX_CHUNK_CHARS]
+                                  for i in range(0, len(p), MAX_CHUNK_CHARS))
+        if buf:
+            merged.append(buf)
+
+        for i, text in enumerate(merged):
+            text = text.strip()
+            if len(text) > 20:
+                out.append(Chunk(text=text, source=c.source,
+                                 section=c.section, chunk_type=c.chunk_type,
+                                 position=c.position * 1000 + i))
+    return out
+
+
 def ingest_file(path: Path) -> list[Chunk]:
     """Ingest a single file. Unknown suffixes fall back to read_text with
     a size guard so we don't try to UTF-8 decode a 500 MB binary blob."""
@@ -599,11 +661,11 @@ def ingest_file(path: Path) -> list[Chunk]:
             print(f"  [skip] {path.name} ({size:,} bytes) — unknown suffix, too large to fall through")
             return []
         try:
-            return read_text(path)
+            return _split_oversized(read_text(path))
         except Exception:
             return []
     try:
-        return reader(path)
+        return _split_oversized(reader(path))
     except Exception as e:
         # Never let a single bad file break a directory walk.
         print(f"  [reader error] {path.name}: {type(e).__name__}: {e}")
