@@ -76,9 +76,15 @@ class EpisodicMoment:
 class ChainSource:
     """Source-text preservation record — one per episode, append-only.
 
-    Lives in ``<fish>_sources.jsonl``. ``crystal_ids`` is intentionally NOT
-    stored: it is recoverable from the episode index and storing it would
-    create a synchronization hazard on re-eat (spec §4.3).
+    Specced to live in ``<fish>_sources.jsonl``; no such file is written yet
+    (issue #45). Today this is only a response shape, built on demand by
+    ``Engine.get_episode_source`` from crystal text, which means it inherits
+    that text's truncation. Read ``metadata["complete"]`` before treating
+    ``full_text`` as a whole document.
+
+    ``crystal_ids`` is intentionally NOT stored: it is recoverable from the
+    episode index and storing it would create a synchronization hazard on
+    re-eat (spec §4.3).
     """
     episode_id: str
     episode_kind: str

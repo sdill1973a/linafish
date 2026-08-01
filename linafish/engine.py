@@ -47,7 +47,7 @@ from .crystallizer_v3 import (
     Crystal, MIVectorizer, UniversalFish,
     crystallize as v3_crystallize,
     gamma, pca_reduce,
-    CANONICAL_SEED_SET,
+    CANONICAL_SEED_SET, MAX_CRYSTAL_TEXT,
 )
 from .formations import (
     detect_formations, hierarchical_merge, formations_to_codebook_text,
@@ -1170,38 +1170,71 @@ class FishEngine:
         return moments
 
     def get_episode_source(self, episode_id: str):
-        """Return the full untruncated source for an episode as a ChainSource,
-        or None if the episode isn't indexed (spec §4.3 / §8 /moment).
+        """Return an episode's source as a ChainSource, assembled from its
+        crystals, or None if the episode isn't indexed (spec §4.3 / §8
+        /moment).
 
-        v1 decision (documented in docs/episodic-recall.md): the source is
-        ASSEMBLED from the episode's crystals' own ``text`` (joined in
-        episode_seq order), which the crystallizer stores untruncated
-        (MAX_CRYSTAL_TEXT). The spec's separate append-only ``*_sources.jsonl``
-        store was motivated by "without bloating the crystal store" — a
-        concern that does not apply while crystals hold full text — and §4.3
-        flags it as a sync hazard. Deriving from the authoritative crystals
-        avoids the redundant file and the hazard. If crystal truncation
-        returns, the persisted ChainSource store becomes the v2 fallback.
+        THIS IS NOT GUARANTEED COMPLETE, and the docstring that used to
+        stand here said it was. It read: the source is assembled from
+        crystal ``text``, "which the crystallizer stores untruncated
+        (MAX_CRYSTAL_TEXT)", so the spec's separate append-only
+        ``*_sources.jsonl`` store is redundant — and "if crystal truncation
+        returns, the persisted ChainSource store becomes the v2 fallback."
 
-        This is the highest-fidelity content surface in linafish: it returns
-        ALL of an episode's text, unbounded. The caller (/moment) gates it
-        behind opt-in config + ACL.
+        Every step of that was false. ``MAX_CRYSTAL_TEXT`` (32768) is the
+        truncation, not evidence against it (crystallizer_v3.py:1019); the
+        bloat concern applies exactly when a crystal is over the cap; and
+        truncation never left, so the stated trigger for building the v2
+        store has been met continuously. Measured across the federation
+        2026-08-01, every live fish's longest crystal is exactly 32768 chars
+        and no ``*_sources.jsonl`` exists anywhere. See issue #45.
+
+        So: this is still the highest-fidelity content surface available, but
+        "highest available" is not "complete". When any constituent crystal
+        sits at the cap, its text was cut at ingest and the remainder is not
+        in the crystal store, not in a sources file, and not recoverable
+        here. That case is now REPORTED rather than presented as whole —
+        ``metadata["complete"]`` is False and ``at_cap_crystal_count`` says
+        how many. Detection is by length, because crystals carry no
+        truncation flag; a crystal that is naturally exactly 32768 chars
+        reads as at-cap, which is why the field is named for what is
+        measured rather than what is inferred.
+
+        The real repair is the v2 ChainSource store (#45 option 2), which is
+        a design decision and not this method's to make. Re-ingest is the
+        only thing that recovers text already lost.
+
+        The caller (/moment) gates this behind opt-in config + ACL.
         """
         crystal_by_id = {c.id: c for c in self.fish.crystals}
         episode = load_episode(episode_id, self.episode_index, crystal_by_id)
         if episode is None:
             return None
-        full_text = "\n\n".join((getattr(c, "text", "") or "") for c in episode)
+        texts = [(getattr(c, "text", "") or "") for c in episode]
+        full_text = "\n\n".join(texts)
+        at_cap = sum(1 for t in texts
+                     if MAX_CRYSTAL_TEXT and len(t) >= MAX_CRYSTAL_TEXT)
         entry = self.episode_index.get(episode_id, {})
+        metadata = {
+            "crystal_count": len(episode),
+            "source_pointer": entry.get("source_pointer", episode_id),
+            "complete": at_cap == 0,
+            "at_cap_crystal_count": at_cap,
+            "max_crystal_text": MAX_CRYSTAL_TEXT,
+        }
+        if at_cap:
+            metadata["fidelity_warning"] = (
+                f"{at_cap} of {len(episode)} crystals are at the "
+                f"{MAX_CRYSTAL_TEXT}-char cap and were truncated at ingest. "
+                "The dropped text is not recoverable from this fish; only "
+                "re-ingesting the source restores it (see issue #45)."
+            )
         return episodic.ChainSource(
             episode_id=episode_id,
             episode_kind=entry.get("episode_kind", "unknown"),
             created_at=entry.get("created_at") or "",
             full_text=full_text,
-            metadata={
-                "crystal_count": len(episode),
-                "source_pointer": entry.get("source_pointer", episode_id),
-            },
+            metadata=metadata,
         )
 
     # -------------------------------------------------------------------
