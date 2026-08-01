@@ -193,6 +193,53 @@ def cmd_heart(args):
     return 0
 
 
+def cmd_vizmem(args):
+    """The visuospatial sketchpad — LiNafish 2.0, Part II.
+
+    `heart` surfaces words unbidden; this surfaces IMAGES the mind has bound.
+    Baddeley: a central executive over two slave systems. Part I alone is half
+    a working memory.
+
+    The binding is the memory, and it is authored — never generated, never
+    taken from a caption. A caption is the cold read any stranger gets; the
+    binding is what only this mind holds.
+
+    Put the vizmem fish in your heart.toml family and bound images fire
+    alongside words, because the store is an ordinary fish.
+
+        linafish vizmem bind photo.jpg "what this means to me"
+        linafish vizmem list --state-dir ~/my-fish
+    """
+    from . import vizmem as vm
+
+    state_dir = Path(args.state_dir) if args.state_dir else Path.home() / ".linafish"
+    name = args.name
+
+    if args.action == "list":
+        rows = vm.bindings(state_dir, name)
+        if not rows:
+            print("no bindings yet — the sketchpad is empty")
+            return 0
+        for n, path, binding in rows[-args.top:]:
+            print(f"image#{n}  {Path(path).name}")
+            print(f"    {binding}")
+        return 0
+
+    if args.action == "bind":
+        try:
+            r = vm.bind(Path(args.image), args.binding, state_dir, name,
+                        rebind=args.rebind)
+        except (ValueError, RuntimeError) as e:
+            print(f"vizmem: {e}", file=sys.stderr)
+            return 1
+        print(f"bound image#{r['n']}  ({r['before']} -> {r['after']} crystals)")
+        print(f"  {r['image']}")
+        print(f"  {r['binding']}")
+        return 0
+
+    return 1
+
+
 def cmd_recall(args):
     """Full-text search across crystals. Find specific words, not patterns."""
     from .engine import FishEngine
@@ -2983,6 +3030,22 @@ def main():
     heart_p.add_argument("--config", type=_user_path,
                          help="heart.toml path (default: <state-dir>/heart.toml)")
 
+    vizmem_p = sub.add_parser(
+        "vizmem",
+        help="The visuospatial sketchpad — bind meanings to images so they fire like words")
+    vizmem_sub = vizmem_p.add_subparsers(dest="action", required=True)
+    vz_bind = vizmem_sub.add_parser("bind", help="Author a binding for an image (the binding IS the memory)")
+    vz_bind.add_argument("image")
+    vz_bind.add_argument("binding", help="What this image means to YOU — never a caption")
+    vz_bind.add_argument("--rebind", action="store_true",
+                         help="Overwrite an existing binding; identity is meant to be fixed")
+    vz_list = vizmem_sub.add_parser("list", help="Show authored bindings")
+    vz_list.add_argument("--top", type=int, default=20)
+    for _p in (vz_bind, vz_list):
+        _p.add_argument("-n", "--name", default="vizmem", help="Fish name (default: vizmem)")
+        _p.add_argument("--state-dir", type=_user_path,
+                        help="Where fish state lives (default: ~/.linafish/)")
+
     recall_p = sub.add_parser("recall", help="Full-text search across crystals — find specific words, not patterns")
     recall_p.add_argument("query", help="What to search for")
     recall_p.add_argument("-n", "--name", help="Fish name (default: searches default fish)")
@@ -3233,6 +3296,7 @@ def main():
         "eat": cmd_eat,
         "taste": cmd_taste,
         "heart": cmd_heart,
+        "vizmem": cmd_vizmem,
         "recall": cmd_recall,
         "status": cmd_status,
         "serve": cmd_serve,
@@ -3247,6 +3311,7 @@ def main():
         "diff": cmd_diff,
         "revert": cmd_revert,
         "heart": cmd_heart,
+        "vizmem": cmd_vizmem,
         "recall": cmd_recall,
         "ask": cmd_ask,
         "absorb": cmd_absorb,

@@ -10,6 +10,46 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [2.0.0] — 2026-08-01
+
+**A substrate that participates in cognition, rather than one a mind can query.**
+
+Every version to here — and every deployed memory system we know of — is *pull*.
+The reader asks; the store answers. Thirty-nine verbs, every one initiated by the
+mind holding the fish. A library: perfect recall, zero initiative.
+
+2.0 adds the missing direction, in both halves of a working memory.
+
+Baddeley's model puts a central executive over two slave systems: the
+phonological loop and the visuospatial sketchpad. `heart` was the first.
+`vizmem` is the second. **Part I alone was half a working memory.**
+
+> **1.x** — a memory engine a mind can query.
+> **2.x** — a substrate that participates in cognition.
+
+### Added
+
+- **`linafish vizmem` — the visuospatial sketchpad.** Bind a meaning to an
+  image and it fires like a word: put the vizmem fish in your `heart.toml`
+  family and bound images surface unbidden alongside text. The store is an
+  ordinary fish — an ordinary crystal carrying an authored binding — so it rides
+  `recall`, `taste` and the heart for free. No parallel database, no new storage
+  engine, no renderer and no API key required: `bind` is local and offline.
+- **The binding is authored, never captioned.** An image's public surface and
+  its private meaning are different things, and only the second is a memory.
+  Nothing in this module writes a binding for you or shows a caption before you
+  have written one — a caption-led binding ratifies what anyone can see instead
+  of authoring what only you hold. The caption is a librarian, never a prompt.
+- **Guarantees that make it a memory rather than an album:** rebinding refused
+  by default (a meaning does not deform with use), empty bindings refused, and a
+  hard refusal to report success when the store did not actually grow.
+- **The wall.** The sketchpad writes — bindings and its own beat log. The heart
+  only reads. An ambient organ that heats what it looks at corrupts the signal
+  it reads, so the two organs never share a store.
+- `docs/vizmem.md`.
+
+398 tests green.
+
 ## [1.7.1] — 2026-08-01
 
 **Three corrections to what 1.7.0 shipped. One of them was a claim about the
