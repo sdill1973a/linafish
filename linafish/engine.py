@@ -217,11 +217,24 @@ class FishEngine:
         # timer stalls.
         self.save_state_every_n_eats = max(1, int(save_state_every_n_eats))
         self._eat_count_since_save = 0
-        # Writer lock — serializes concurrent eat()s. Before the latency fix,
-        # ThreadingHTTPServer ran /eat with no lock, so concurrent eats
-        # mutated self.formations / self.fish.crystals unsynchronized. Cheap
-        # now that the O(N) save is off the hot path.
-        self._eat_lock = threading.Lock()
+        # Writer lock — serializes every mutation of fish state. Before the
+        # latency fix, ThreadingHTTPServer ran /eat with no lock, so
+        # concurrent eats mutated self.formations / self.fish.crystals
+        # unsynchronized. Cheap now that the O(N) save is off the hot path.
+        #
+        # 2026-08-01: it covered eat() and flush() but NOT re_eat(), which is
+        # the heaviest writer in the engine — it relearns, replaces vocab,
+        # bumps the epoch, deletes the pending file and rebuilds every
+        # formation. /re_eat and the background maintenance thread both call
+        # it, so it ran concurrently with /eat by ordinary daemon operation.
+        # Now held for the whole re-eat (see re_eat).
+        #
+        # REENTRANT because re_eat holds it across rebuild_formations, the
+        # gardener pass, the tracker and two saves. Any of those growing a
+        # call back into a locked method (flush) would deadlock a plain Lock,
+        # and a deadlocked fish is a fish that stops recording without
+        # saying so.
+        self._eat_lock = threading.RLock()
         self._eat_save_counter = 0
         # Reentrancy guard for signal-triggered flush_commit (codex round-2
         # 2026-05-02 BLOCKING). _save_state can be interrupted between
@@ -2304,7 +2317,29 @@ class FishEngine:
     # through a different lens. Hattie d=1.29.
 
     def re_eat(self) -> dict:
+        """Full re-eat cycle, serialized against every other writer.
+
+        The body is ``_re_eat_locked``; this wrapper exists only to hold
+        ``_eat_lock`` for the whole cycle. It did not before, and the comment
+        inside claimed "re_eat() guarantees no concurrent eat() is in flight"
+        while guaranteeing nothing. Two callers reach it — ``POST /re_eat``
+        on a request thread and the background maintenance thread every
+        ``re_eat_interval_hours`` — and both could land mid-``eat()``, which
+        holds the lock but was not protected FROM anything. Interleaved, a
+        crystal gets vectorized against a vocab being replaced under it, or
+        lands in a formation set that is about to be rebuilt from a corpus
+        that does not contain it.
+
+        Cost of the fix: /eat blocks for the duration of a re-eat rather than
+        corrupting quietly. That is the right trade for this engine.
+        """
+        with self._eat_lock:
+            return self._re_eat_locked()
+
+    def _re_eat_locked(self) -> dict:
         """Full re-eat cycle with integrated formative assessment.
+
+        Caller MUST hold ``_eat_lock`` (see re_eat).
 
         This is the highest-value operation in the engine. It simultaneously:
         1. Re-learns from accumulated pending texts (compression)
@@ -2375,7 +2410,9 @@ class FishEngine:
         self.rebuild_formations()
 
         # Gardener pass — runs after rebuild so formation_index is stable.
-        # re_eat() guarantees no concurrent eat() is in flight.
+        # Safe because the caller holds _eat_lock, which is what makes the
+        # no-concurrent-eat claim true. It was asserted here for months
+        # before it was arranged.
         garden_summary = None
         if self.gardener is not None:
             try:
