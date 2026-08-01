@@ -545,7 +545,19 @@ class _NotReadyHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    do_GET = do_POST = do_HEAD = _respond
+    do_GET = do_POST = _respond
+
+    def do_HEAD(self):
+        # Body-less, per RFC. @anchor-dill spotted that do_HEAD = _respond
+        # sent a body with Content-Length and correctly called it harmless:
+        # BaseHTTPRequestHandler speaks HTTP/1.0 and closes each response, so
+        # the client discards it. Fixed anyway because it stops being harmless
+        # the day anyone sets protocol_version = "HTTP/1.1", and that is a
+        # one-line change nobody would think to connect to this.
+        self.send_response(503)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Retry-After", "5")
+        self.end_headers()
 
     def log_message(self, *a):
         pass  # a boot-time probe storm is not worth stderr
