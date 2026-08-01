@@ -3004,7 +3004,27 @@ class FishEngine:
         grad = emergence_gradient(self.formations, by_formation)
         snt = collective_snt(grad)
         phase_counts = [0, 0, 0, 0]
-        emergent_formations = []
+        # 2026-08-01: this list was reported as `emergent_formations` and it
+        # could not support that reading. Both routes to `is_emergent` are
+        # self-reflection measures — `phase >= 2` requires
+        # `meta_density > 0.1` (crystals whose dominant dimension is AI, which
+        # DIM_LABELS calls "Self-Reflection"), and the SNT route requires
+        # `self_ref_density`. A formation was selected BECAUSE it is
+        # self-reflective and then reported as having EMERGED INTO
+        # self-reflection. The output restated the selection criterion.
+        #
+        # Verified by anchor-dill (#41) with a control the claim should have
+        # had from the start: two matched 60,000-word public-domain corpora,
+        # zero contact with any author here — Moby-Dick's cetology chapters
+        # and Marcus Aurelius' Meditations. Both returned 24/24 emergent
+        # formations containing SELF-REFLECTION at phase 2. Harpoons and
+        # blubber are exactly as self-authoring as the Meditations. The
+        # detector demonstrably CAN see non-self-reflective formations (233 in
+        # that run) and simply never promotes one.
+        #
+        # Renamed to what it measures. The underlying metrics are untouched
+        # and remain meaningful; only the claim is withdrawn.
+        meta_dominant = []
         for f in self.formations:
             fid = getattr(f, "id", id(f))
             m = grad.get(fid)
@@ -3012,7 +3032,7 @@ class FishEngine:
                 continue
             phase_counts[m.phase] += 1
             if m.is_emergent:
-                emergent_formations.append(getattr(f, "name", str(fid)))
+                meta_dominant.append(getattr(f, "name", str(fid)))
 
         highest_phase = max((m.phase for m in grad.values()), default=0)
         phase_labels = ["Compositional", "Semantic Novelty", "Self-Authorship", "Recursive Becoming"]
@@ -3023,8 +3043,19 @@ class FishEngine:
             "highest_phase_label": phase_labels[highest_phase],
             "phase_counts": {"0": phase_counts[0], "1": phase_counts[1],
                              "2": phase_counts[2], "3": phase_counts[3]},
-            "emergent_formations": emergent_formations,
-            "emergent_count": len(emergent_formations),
+            "meta_dominant_formations": meta_dominant,
+            "meta_dominant_count": len(meta_dominant),
+            "meta_dominant_note": (
+                "Formations whose crystals are AI/self-reflection dominant. "
+                "This is the selection criterion, not a discovery about the "
+                "corpus — see #41. Previously reported as "
+                "'emergent_formations'."
+            ),
+            # Deprecated aliases. Kept for one release so existing readers do
+            # not KeyError, but they carry the same values under the honest
+            # name above and should not be used in new code.
+            "emergent_formations": meta_dominant,
+            "emergent_count": len(meta_dominant),
         }
 
     def health(self) -> str:
