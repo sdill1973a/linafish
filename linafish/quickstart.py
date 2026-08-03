@@ -1503,28 +1503,53 @@ def go(
     _print()
     _print("  Reading...", )
 
-    # Collect texts with source labels. Read through the proper READERS
+    # Collect chunks with source labels. Read through the proper READERS
     # dispatch in ingest.py — this strips HTML tags, parses CSV rows,
     # pretty-prints JSON/YAML, extracts PDF/DOCX/PPTX via optional deps,
     # and falls through to read_text for unknown suffixes (with a size
     # guard). Before this fix, quickstart.go read every file as raw
     # UTF-8 bytes, so HTML/DOCX/PDF ingestion produced garbage crystals.
-    from .ingest import read_file_as_text
+    #
+    # `ingest_file`, NOT `read_file_as_text`. Both go through the READERS
+    # dispatch and both apply MAX_CHUNK_CHARS — but read_file_as_text
+    # re-joins the bounded chunks into one string, and `go` then hands
+    # that whole string to a single eat/crystallize_text call. One call
+    # is one crystal, so the bound was computed and then thrown away on
+    # the one verb most people actually run:
+    #
+    #   a novel: 69,416 chars, 0 markdown headers, 340 paragraphs
+    #     read_file_as_text -> 1 string  -> 1 crystal, TRUNCATED to 32,768
+    #                                       (MAX_CRYSTAL_TEXT — 47,648 chars
+    #                                        of the book silently dropped)
+    #     ingest_file       -> 19 chunks -> 19 crystals, nothing dropped
+    #                       -> 280 once the reader stops ignoring those 340
+    #                          paragraph breaks (see read_markdown)
+    #
+    # A document that arrives as a single crystal cannot form anything
+    # *with itself*: every formation gets built between whole documents
+    # instead of within them, so a whole layer of structure never gets a
+    # chance to exist. The fix reached ingest_file and not its sibling;
+    # this routes the sibling through it. (Found by Olorina from a live
+    # 520-file corpus that produced exactly 520 crystals, #44.)
+    from .ingest import ingest_file
 
     texts = []
     sources = []
     skipped = 0
     for doc in docs:
         try:
-            content = read_file_as_text(doc)
-            if content and len(content.strip()) > 10:
-                texts.append(content)
-                try:
-                    rel = doc.relative_to(source_path)
-                except ValueError:
-                    rel = doc.name
-                sources.append(str(rel))
-            else:
+            chunks = ingest_file(doc)
+            try:
+                rel = str(doc.relative_to(source_path))
+            except ValueError:
+                rel = doc.name
+            kept = 0
+            for ch in chunks:
+                if ch.text and len(ch.text.strip()) > 10:
+                    texts.append(ch.text)
+                    sources.append(rel)
+                    kept += 1
+            if not kept:
                 skipped += 1
         except Exception:
             skipped += 1
@@ -1536,14 +1561,26 @@ def go(
         _print("  No readable content found.")
         sys.exit(1)
 
-    _print(f"  {len(texts)} documents ready. Learning how you think...")
+    # `texts` is chunks now, not whole files — say so, so the count on
+    # screen can't be read as a document count that silently changed.
+    _doc_count = len(set(sources))
+    _print(f"  {_doc_count} documents, {len(texts)} passages ready. "
+           f"Learning how you think...")
     _print()
 
     # -----------------------------------------------------------------------
     # TWO MODES:
-    #   Small corpus (<200 docs): eat() loop. Incremental. The product.
-    #   Large corpus (>=200 docs): batch. Learn once, crystallize all,
+    #   Small corpus (<200 passages): eat() loop. Incremental. The product.
+    #   Large corpus (>=200 passages): batch. Learn once, crystallize all,
     #     couple once, form once. What the engine was built for at scale.
+    #
+    # The threshold counts PASSAGES, not files — it always meant "how many
+    # crystallize operations am I about to run," and now that a book arrives
+    # as many passages instead of one, files and operations are no longer the
+    # same number. Incremental eat() is O(N) per call (rebuild_formations +
+    # _save_state), so a ten-file manuscript corpus that chunks into 3,000
+    # passages belongs in batch. Counting files here would have left it in
+    # the incremental path and made correct chunking look like a hang.
     # -----------------------------------------------------------------------
     total = len(texts)
 
@@ -1609,6 +1646,15 @@ def go(
                 engine.fish.crystals = all_crystals
                 engine.fish._compute_couplings(all_crystals)
                 engine.docs_ingested = total
+                # This path installs crystals without going through eat(),
+                # so nothing filed them into the addressed formation index.
+                # rebuild_formations only PUBLISHES that index in addressed
+                # mode — so without this line it published an empty one and
+                # every batch-mode corpus finished with zero formations, no
+                # matter how much writing went in. Measured: 280 crystals
+                # from a 69K-char manuscript, 0 formations, and a portrait
+                # that said "Formations emerge with more writing."
+                engine.reindex_formations()
                 engine.rebuild_formations()
 
                 r_n = engine._compute_r_n()
@@ -1630,12 +1676,15 @@ def go(
         _print("  I found patterns in how you think.")
         _print()
     crystal_map = {c.id: c for c in engine.fish.crystals}
-    portrait = build_full_portrait(engine.formations, len(engine.fish.crystals), len(texts), crystal_map)
+    # _doc_count, not len(texts): these strings say "documents" and
+    # "pieces of writing". texts is passages now, so passing it would
+    # inflate every count in the portrait the user reads.
+    portrait = build_full_portrait(engine.formations, len(engine.fish.crystals), _doc_count, crystal_map)
     _print(portrait)
 
     # Step 4a: Explain what just happened — reframed as overlay
     _print()
-    why = explain_the_why(len(texts), len(engine.fish.crystals), engine.formations, crystal_map)
+    why = explain_the_why(_doc_count, len(engine.fish.crystals), engine.formations, crystal_map)
     _print(why)
     _print()
     _print("  That's how I see you so far. It gets better with more writing.")
@@ -1659,7 +1708,7 @@ def go(
     # -----------------------------------------------------------------------
     soul_file = engine.state_dir / f"{name}.qlp"
     _generate_soul_file(soul_file, name, engine.formations, engine.fish.crystals,
-                        len(texts), portrait)
+                        _doc_count, portrait)
     _print()
     _print(f"  Soul file: {soul_file}")
 

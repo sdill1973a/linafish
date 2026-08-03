@@ -49,8 +49,27 @@ class Chunk:
 
 
 def read_markdown(path: Path) -> list[Chunk]:
-    """Read a markdown file, chunk by headers."""
+    """Read a markdown file, chunk by headers — or by paragraphs if it has none.
+
+    The paragraph fallback used to be written as `if not chunks:` at the
+    bottom, which can never fire: the trailing "last section" append puts a
+    chunk in the list for any document with more than 20 characters of body.
+    So a headerless markdown file became ONE chunk no matter how well-formed
+    it was, and MAX_CHUNK_CHARS then cut it at arbitrary 4000-character
+    boundaries. Measured on a 69,416-char headerless manuscript: 19 arbitrary
+    cuts, 16 of them flush against the bound, while 340 of the author's own
+    paragraph breaks sat unused.
+
+    The bound is the guarantee. The author's structure is the preference, and
+    the preference has to actually get consulted.
+    """
     text = path.read_text(encoding="utf-8", errors="replace")
+
+    # Decide on the header check itself, not on whether the loop below
+    # happened to produce output — that was the unreachable-branch bug.
+    if not any(line.startswith("#") for line in text.split("\n")):
+        return chunk_by_paragraphs(text, str(path))
+
     chunks = []
     current_section = ""
     current_lines = []
@@ -87,7 +106,8 @@ def read_markdown(path: Path) -> list[Chunk]:
                 position=position,
             ))
 
-    # If no headers found, chunk by paragraphs
+    # A headered document whose sections were all under the 20-char floor
+    # still has to go somewhere.
     if not chunks:
         chunks = chunk_by_paragraphs(text, str(path))
 
