@@ -2357,8 +2357,18 @@ class FishEngine:
                            and _os.path.getsize(pending_path) > 0)
             if has_pending:
                 result = self._re_eat_locked()
-                result["maintained"] = True
-                return result
+                # Only claim maintenance if the delegate actually did any.
+                # getsize() > 0 is a FILE-NON-EMPTY test standing in for an
+                # ITEMS-PENDING test: a pending file holding "[]", or a single
+                # newline left after a drain, is size > 0 and item-empty. re_eat
+                # then bails with re_eat=False, and claiming maintained=True on
+                # top of that bail would advance the epoch and print an ordinary
+                # cycle while the gardener, the tracker and the assessment never
+                # ran — two bytes on disk silently restoring the exact behaviour
+                # this method exists to route around.
+                if result.get("re_eat") is not False:
+                    result["maintained"] = True
+                    return result
             return self._maintain_locked()
 
     def _maintain_locked(self) -> dict:
@@ -2377,8 +2387,18 @@ class FishEngine:
         }
 
         formative_result = self._formative_assess()
-        if formative_result:
-            result["formative"] = formative_result
+        # Report the absence, never omit it. _formative_assess returns None when
+        # the assessment module will not import, and unlike its sibling
+        # _pre_assess it does so without logging. An absent key cannot be
+        # alerted on; a present None can. Leaving it out would put the d=1.29
+        # step on the scheduled path and let it vanish quietly — the same silent
+        # skip this whole method exists to end.
+        result["formative"] = formative_result
+        if formative_result is None:
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "[maintenance] formative assessment unavailable — "
+                "the d=1.29 step did not run this cycle")
         result["r_n"] = self.r_n_history[-1] if self.r_n_history else None
 
         if self.gardener is not None:

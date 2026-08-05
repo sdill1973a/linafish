@@ -143,3 +143,45 @@ def test_maintenance_loop_calls_maintain_not_re_eat(tmp_path):
 
     assert "maintain" in called, "loop never called maintain()"
     assert "re_eat" not in called, "loop still calls the dead path directly"
+
+
+def test_empty_pending_file_still_maintains(tmp_path):
+    """A pending file that EXISTS but holds no items must not silently restore
+    the old dead behaviour.
+
+    `getsize() > 0` is a file-non-empty test standing in for an items-pending
+    test. A file holding "[]", or one newline left after a drain, is size > 0
+    and item-empty: re_eat bails with re_eat=False, and claiming maintained on
+    top of that bail would advance the epoch and print an ordinary cycle while
+    the gardener, the tracker and the assessment never ran. Two bytes reverting
+    the fix, with a log that looks identical — an organ that cannot fail.
+    """
+    e = _engine(tmp_path)
+    with open(e.fish.pending_path, "w") as f:
+        f.write("\n")  # size > 0, zero items
+
+    result = e.maintain()
+
+    assert result["maintained"] is True
+    assert result["re_eat"] is False, "should have fallen through to maintenance"
+    # the observable: maintenance genuinely ran
+    assert (tmp_path / "t_growth.json").exists(), \
+        "growth file absent — maintenance was claimed but never happened"
+
+
+def test_formative_absence_is_reported_not_omitted(tmp_path, monkeypatch):
+    """When formative assessment is unavailable the result must SAY so.
+
+    _formative_assess returns None if the assessment module will not import,
+    and unlike _pre_assess it does so without logging. If maintain() omits the
+    key, the d=1.29 step disappears from the scheduled path with nothing to
+    alert on. An absent key cannot be monitored; a present None can.
+    """
+    e = _engine(tmp_path)
+    monkeypatch.setattr(e, "_formative_assess", lambda: None)
+
+    result = e.maintain()
+
+    assert "formative" in result, "absence was omitted rather than reported"
+    assert result["formative"] is None
+    assert result["maintained"] is True
