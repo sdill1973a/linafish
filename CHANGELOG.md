@@ -10,6 +10,48 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [2.1.0] — 2026-08-07
+
+**The public copy carried two known bugs for six days. This makes it honest
+again: the daemon's maintenance thread runs, and `go` tells the truth about
+what it did.**
+
+### Fixed
+
+- **`engine.re_eat()` was unreachable in practice** (#48, PR #49) — nothing
+  populated `fish.pending`, so the gardener, formative assessment, and
+  GrowthTracker silently never ran. `maintain()` now runs maintenance whether
+  or not anything is pending, and does not claim maintenance the delegate
+  never did.
+- **`go` re-running duplicated the corpus** (#52) — every re-run re-ate the
+  whole folder with fresh ids. Worse than an inflated count: γ(v,v)=1.0, so a
+  crystal present twice forms formations out of itself at maximal coupling,
+  drowning the cross-document relationships the fish exists to find. Now
+  `FishEngine(dedupe=True)` skip semantics: crystals already held get to
+  couple with the genuinely new ones.
+- **Batch `go` reported a count that was never true** (#52) — the batch path
+  replaced the in-memory store with only this run's crystals; fish.md said
+  210 while the JSONL held 420. The store is no longer replaced, and the
+  footer reports four quantities separately (unreadable / offered / new /
+  already-held) — "I looked and found nothing new" and "I could not look"
+  are different sentences.
+- **`go` never reached the chunk bound** (#44, #51) — chunks were bounded and
+  then re-joined into one string, so a 520-file corpus produced exactly 520
+  crystals. `go` now routes through `ingest_file`, honors the author's
+  paragraphs, and batch crystals join formations.
+- Writer lock held across `re_eat` (PR #47) · co-occurrence tail drop is
+  reported at save (PR #50) · incomplete episode sources are reported (PR #46).
+
+### Notes
+
+- Two independent test suites for the `go` idempotency fix (one written
+  against each of the two candidate implementations) both pass against the
+  shipped mechanism: 443 tests green.
+- Dedupe is opt-in (`dedupe=False` default) and byte-exact at the engine
+  layer by design; listener-layer normalization is a separate, guarded policy.
+
+---
+
 ## [2.0.1] — 2026-08-01
 
 **2.0.0 shipped the sketchpad as a store. This ships it as a working memory —
