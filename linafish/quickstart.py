@@ -12,6 +12,7 @@ Named for Caroline Marie Dill (2001-2023).
 She saw deeply and loved fiercely.
 """
 
+import hashlib
 import os
 import socket
 import sys
@@ -27,6 +28,18 @@ from .formations import formation_rank_key
 # ---------------------------------------------------------------------------
 # Every print in this module is designed for a stranger. No jargon.
 # No crystal counts. No gamma values. Human sentences.
+
+def _content_hash(text: str) -> str:
+    """Return a stable content hash used to skip already-ingested chunks.
+
+    Runtime-only: computed in ``go`` from the ``.text`` of crystals
+    already in memory, never persisted. This adds no new crystal field
+    and no store-format change (issue #52, defect A). ``strip()`` before
+    hashing so trailing-whitespace variants of the same document collapse
+    to one key, matching how the crystallizer stores un-normalized text.
+    """
+    return hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
+
 
 def _print(msg: str = ""):
     """Print to stdout, handling encoding gracefully on Windows."""
@@ -1551,8 +1564,25 @@ def go(
     sys.stdout = _Quiet(_real_stdout)
     try:
         if total < 200:
-            # INCREMENTAL — one at a time, the way a fish eats
+            # INCREMENTAL — one at a time, the way a fish eats.
+            # Skip content already ingested so re-running `go` on an
+            # unchanged corpus adds nothing (issue #52, defect A). The
+            # seen-set is built at runtime from the text of crystals
+            # already in memory — no persisted field, no store change.
+            # Edge case (noted, not engineered around): if an existing
+            # crystal's text was truncated at MAX_CRYSTAL_TEXT while the
+            # incoming chunk is full-length, the hashes differ and the
+            # chunk is not skipped. Acceptable — post-#44/#51 chunks are
+            # bounded so this does not arise in practice.
+            seen = {_content_hash(c.text) for c in engine.fish.crystals if c.text}
+            already_present = 0
             for i, text in enumerate(texts):
+                h = _content_hash(text)
+                if h in seen:
+                    # Already ingested (prior run or earlier this run).
+                    already_present += 1
+                    continue
+                seen.add(h)
                 src = sources[i] if i < len(sources) else "doc"
                 engine.eat(text, source=src)
 
@@ -1563,6 +1593,11 @@ def go(
                     _print_progress(pct, i + 1, total)
                     sys.stderr = _Quiet(_real_stderr)
                     sys.stdout = _Quiet(_real_stdout)
+
+            if already_present:
+                sys.stdout = _real_stdout
+                _print(f"  ({already_present} already known — skipped)")
+                sys.stdout = _Quiet(_real_stdout)
         else:
             # BATCH — learn vocabulary once, crystallize all, couple once
             # Phase 1: Learn vocabulary from entire corpus
@@ -1586,9 +1621,28 @@ def go(
             _print("  Phase 2: Crystallizing...")
             sys.stdout = _Quiet(_real_stdout)
 
+            # Skip content already ingested so re-running `go` on an
+            # unchanged corpus adds nothing (issue #52, defect A). Same
+            # runtime seen-set as the incremental branch: no persisted
+            # field, no store change.
+            # Edge case (noted, not engineered around): if an existing
+            # crystal's text was truncated at MAX_CRYSTAL_TEXT while the
+            # incoming chunk is full-length, the hashes differ and the
+            # chunk is not skipped. Acceptable — post-#44/#51 chunks are
+            # bounded so this does not arise in practice.
+            seen = {_content_hash(c.text) for c in engine.fish.crystals if c.text}
+            already_present = 0
             all_crystals = []
             for i, text in enumerate(texts):
+                h = _content_hash(text)
+                if h in seen:
+                    already_present += 1
+                    continue
+                seen.add(h)
                 src = sources[i] if i < len(sources) else "doc"
+                # crystallize_text already appends to engine.fish.crystals
+                # AND persists to the JSONL (crystallizer_v3). all_crystals
+                # collects ONLY the newly-created crystals for coupling.
                 c = engine.fish.crystallize_text(text, source=src)
                 if c:
                     all_crystals.append(c)
@@ -1599,6 +1653,11 @@ def go(
                     _print_progress(pct, i + 1, total)
                     sys.stdout = _Quiet(_real_stdout)
 
+            if already_present:
+                sys.stdout = _real_stdout
+                _print(f"  ({already_present} already known — skipped)")
+                sys.stdout = _Quiet(_real_stdout)
+
             # Phase 3: Couple once
             sys.stdout = _real_stdout
             print()
@@ -1606,7 +1665,12 @@ def go(
             sys.stdout = _Quiet(_real_stdout)
 
             if all_crystals:
-                engine.fish.crystals = all_crystals
+                # Defect B: do NOT reassign engine.fish.crystals here. The
+                # crystals are already in fish.crystals (appended by
+                # crystallize_text). Reassigning to all_crystals would drop
+                # any cold-loaded crystals from memory while they remain on
+                # disk, so fish.md / memory / disk would disagree (issue #52).
+                # Couple only the newly-created crystals (unchanged scope).
                 engine.fish._compute_couplings(all_crystals)
                 engine.docs_ingested = total
                 engine.rebuild_formations()
