@@ -465,8 +465,16 @@ def _maintenance_loop(engine: "FishEngine", stop_evt: threading.Event,
                       interval_hours: float) -> None:
     """Background self-maintenance for HTTP daemon deployments.
 
-    Fires engine.re_eat() on a fixed schedule and emits QLP-notation output
+    Fires engine.maintain() on a fixed schedule and emits QLP-notation output
     so growth is legible in the daemon log without a separate monitor.
+
+    It called engine.re_eat() until 2026-08-01, and therefore did nothing at
+    all: re_eat bails on nothing_pending, and no engine path writes pending
+    (issue #48). The `if result["re_eat"] is False: continue` below was
+    written as "skip the quiet cycle" and was in fact the only branch ever
+    taken, for the life of the daemon, silently. maintain() runs the
+    gardener, the formative assessment and the GrowthTracker whether or not
+    anything is pending, and delegates to the full re-eat when there is.
 
     QLP line format (one per cycle):
         EW.iter{epoch=N}|AI.reflect{phase=X}|KO.diag{grade=Y}|KO.analz{R_n=Z,entropy=W}
@@ -481,13 +489,16 @@ def _maintenance_loop(engine: "FishEngine", stop_evt: threading.Event,
             continue
 
         try:
-            result = engine.re_eat()
+            result = engine.maintain()
         except Exception as e:
-            print(f"[maintenance] re_eat error: {e}", file=sys.stderr, flush=True)
+            print(f"[maintenance] error: {e}", file=sys.stderr, flush=True)
             continue
 
-        if result.get("re_eat") is False:
-            continue  # nothing pending — skip output, don't advance epoch
+        if not result.get("maintained"):
+            # Should not happen; if it does, say so rather than skipping
+            # quietly the way this loop skipped every cycle for months.
+            print(f"[maintenance] no-op cycle: {result}", file=sys.stderr, flush=True)
+            continue
 
         epoch += 1
         growth = result.get("growth", {})
