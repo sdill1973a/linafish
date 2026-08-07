@@ -313,38 +313,7 @@ class FishEngine:
         # operating in read-only mode would see "0 formations." Cost is
         # O(N) at startup; ~1s for 387K crystals. Skipped when there
         # are no crystals yet (initial empty fish).
-        if self.addressed_formations and self.fish.crystals:
-            from .formations import formation_address as _fa
-            for c in self.fish.crystals:
-                # Protected crystals (crystal-zero / origin provenance) keep the
-                # formation they were saved with (e.g. ORIGIN_FORMATION) and stay
-                # OUT of the addressed-formation index — they are provenance, not
-                # cognitive content. set_origin()'s contract requires
-                # formation-filing code (this loop IS such code) to skip them:
-                # crystal-zero has empty vectors, so without this skip it
-                # re-addresses to "UNKNOWN" on every reload and its
-                # "DO NOT DEPRECATE" text can surface as a formation's
-                # representative_text via /pfc. (1.6.0 cold-eye finding.)
-                if getattr(c, 'protected', False):
-                    continue
-                addr = _fa(
-                    cognitive_vector=getattr(c, 'cognitive_vector', None),
-                    resonance=getattr(c, 'resonance', None),
-                    keywords=getattr(c, 'keywords', None),
-                )
-                c.formation = addr
-                f = self.formation_index.get(addr)
-                if f is None:
-                    f = Formation(
-                        id=len(self.formation_index),
-                        name=addr, keywords=[], member_ids=[],
-                        centroid=[0.0] * 8, representative_text="",
-                        crystal_count=0, cognitive_centroid=[0.0] * 8,
-                    )
-                    self.formation_index[addr] = f
-                f.member_ids.append(c.id)
-                f.update_with(c)
-            self.formations = list(self.formation_index.values())
+        self.reindex_formations()
 
         # ---------------------------------------------------------------
         # EPISODIC RECALL — the episode index (Cal SPEC_v0.2, #21)
@@ -1510,6 +1479,63 @@ class FishEngine:
             f"{len(self.formations)} formations, "
             f"docs_ingested={self.docs_ingested}"
         )
+
+    def reindex_formations(self):
+        """Rebuild ``formation_index`` from the current crystal list.
+
+        No-op unless ``addressed_formations`` is on. Cost is O(N); ~1s for
+        387K crystals.
+
+        Called at construction so an engine opened against an already-
+        migrated state dir doesn't report "0 formations" until its next
+        eat() — downstream read-only consumers (gardener, /pfc,
+        fish_taste_anchor) would otherwise see an empty index.
+
+        It is also the repair for any path that installs crystals WITHOUT
+        going through eat(). In addressed mode the index is maintained
+        incrementally by ``_file_into_formation`` on each eat, and
+        ``rebuild_formations`` is only a publication step that copies the
+        index into ``self.formations``. So a caller that assigns
+        ``fish.crystals`` wholesale and then calls ``rebuild_formations``
+        publishes an index nothing ever filled, and gets zero formations
+        from a full corpus — which is exactly what quickstart.go's batch
+        path did for every corpus at or above its batch threshold. Assign
+        crystals, call this, THEN call rebuild_formations.
+        """
+        if not (self.addressed_formations and self.fish.crystals):
+            return
+        from .formations import formation_address as _fa
+        self.formation_index = {}
+        for c in self.fish.crystals:
+            # Protected crystals (crystal-zero / origin provenance) keep the
+            # formation they were saved with (e.g. ORIGIN_FORMATION) and stay
+            # OUT of the addressed-formation index — they are provenance, not
+            # cognitive content. set_origin()'s contract requires
+            # formation-filing code (this loop IS such code) to skip them:
+            # crystal-zero has empty vectors, so without this skip it
+            # re-addresses to "UNKNOWN" on every reload and its
+            # "DO NOT DEPRECATE" text can surface as a formation's
+            # representative_text via /pfc. (1.6.0 cold-eye finding.)
+            if getattr(c, 'protected', False):
+                continue
+            addr = _fa(
+                cognitive_vector=getattr(c, 'cognitive_vector', None),
+                resonance=getattr(c, 'resonance', None),
+                keywords=getattr(c, 'keywords', None),
+            )
+            c.formation = addr
+            f = self.formation_index.get(addr)
+            if f is None:
+                f = Formation(
+                    id=len(self.formation_index),
+                    name=addr, keywords=[], member_ids=[],
+                    centroid=[0.0] * 8, representative_text="",
+                    crystal_count=0, cognitive_centroid=[0.0] * 8,
+                )
+                self.formation_index[addr] = f
+            f.member_ids.append(c.id)
+            f.update_with(c)
+        self.formations = list(self.formation_index.values())
 
     def rebuild_formations(self):
         """Detect formations from current crystals.
