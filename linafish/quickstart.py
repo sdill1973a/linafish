@@ -1490,7 +1490,26 @@ def go(
     sys.stdout = _Quiet(_real_stdout)
     try:
         from .engine import FishEngine
-        engine = FishEngine(state_dir=sd, name=name)
+        # dedupe=True — re-running `go` on a folder must not re-eat what the
+        # fish already holds (#52). The engine hashes each incoming text and
+        # short-circuits on a match; the seen-set is built from the crystals
+        # already on disk at load, so this needs no migration and no new
+        # field — every crystal that ever existed carries its own text.
+        #
+        # Semantics chosen deliberately (option 2 of three, #52):
+        #   replace — would truncate the store to this run's set, silently
+        #             destroying anything eaten from elsewhere (listen, MQTT,
+        #             a fish fed from four directions).
+        #   append  — what shipped. gamma(v, v) = 1.0, so a crystal present
+        #             three times satisfies detect_formations OUT OF ITSELF,
+        #             at maximal coupling, outranking every genuine
+        #             cross-document formation. Duplication does not merely
+        #             inflate a count; it drowns the relationships the fish
+        #             exists to find.
+        #   skip    — this. The only option where the crystals already held
+        #             get to couple with the genuinely new ones, which is the
+        #             entire value of a second run.
+        engine = FishEngine(state_dir=sd, name=name, dedupe=True)
     finally:
         sys.stderr = _real_stderr
         sys.stdout = _real_stdout
@@ -1554,6 +1573,10 @@ def go(
         except Exception:
             skipped += 1
 
+    # Distinct name: these are files the reader could NOT USE, which is a
+    # different fact from passages the fish already held. Both end as
+    # "nothing came in from here" and they mean opposite things.
+    unreadable_docs = skipped
     if skipped:
         _print(f"  ({skipped} files skipped — unreadable or too short)")
 
@@ -1584,6 +1607,18 @@ def go(
     # -----------------------------------------------------------------------
     total = len(texts)
 
+    # Four quantities, reported separately, because collapsing them is the
+    # defect this whole issue is about. Under skip semantics a no-op re-run
+    # and a corpus that could not be READ both end with zero new crystals —
+    # identical number, opposite meaning. "I looked and found nothing new"
+    # is a finding; "I could not look" is an excuse, and a run that prints
+    # one number for both reports the excuse in the finding's voice.
+    #   unreadable_docs  — files that raised, or held nothing over the floor
+    #   total            — passages offered to the fish this run
+    #   new_passages     — passages that were genuinely new
+    #   total - new      — passages the fish already held (the skip)
+    new_passages = 0
+
     sys.stderr = _Quiet(_real_stderr)
     sys.stdout = _Quiet(_real_stdout)
     try:
@@ -1591,7 +1626,9 @@ def go(
             # INCREMENTAL — one at a time, the way a fish eats
             for i, text in enumerate(texts):
                 src = sources[i] if i < len(sources) else "doc"
+                _before = len(engine.fish.crystals)
                 engine.eat(text, source=src)
+                new_passages += len(engine.fish.crystals) - _before
 
                 if (i + 1) % max(1, total // 20) == 0 or i == total - 1:
                     pct = int((i + 1) / total * 100)
@@ -1643,9 +1680,30 @@ def go(
             sys.stdout = _Quiet(_real_stdout)
 
             if all_crystals:
-                engine.fish.crystals = all_crystals
-                engine.fish._compute_couplings(all_crystals)
-                engine.docs_ingested = total
+                # NOT `engine.fish.crystals = all_crystals` (#52 part B).
+                # crystallize_text already appended each new crystal to the
+                # store; the assignment then REPLACED that store with only
+                # this run's crystals, dropping in memory the ones loaded
+                # from disk while they stayed on disk. _save_state counts
+                # what is in memory, so the footer described a population
+                # that existed in no file and no subsequent process.
+                #
+                # Under append semantics that mislabel was survivable — the
+                # run's set and the store diverged but both were populated.
+                # Under skip it is fatal: a re-run that adds three passages
+                # would have written a store of 3 over a file of thousands.
+                #
+                # Couple across the WHOLE store, not just this run's set.
+                # The entire argument for skip is that crystals already held
+                # get to meet the genuinely new ones; coupling only
+                # all_crystals would let the new material meet itself and
+                # nothing else, which is the outcome skip exists to avoid.
+                # (Reach is still bounded by the sliding window — see the
+                # walk-order issue; this makes the scope correct, not the
+                # window wide.)
+                engine.fish._compute_couplings(engine.fish.crystals)
+                engine.docs_ingested += len(all_crystals)
+                new_passages = len(all_crystals)
                 # This path installs crystals without going through eat(),
                 # so nothing filed them into the addressed formation index.
                 # rebuild_formations only PUBLISHES that index in addressed
@@ -1667,6 +1725,27 @@ def go(
     finally:
         sys.stderr = _real_stderr
         sys.stdout = _real_stdout
+
+    # -----------------------------------------------------------------------
+    # Step 3a: Say what this run actually did — the four quantities, kept
+    # apart. A re-run that adds nothing is a SUCCESS and must read as one;
+    # a run that could not read the folder must never be able to wear the
+    # same sentence.
+    # -----------------------------------------------------------------------
+    _already_held = total - new_passages
+    if new_passages == 0 and _already_held:
+        _print(f"  Nothing new — all {_already_held} passages were already in "
+               f"this fish. Re-running is safe; it does not re-eat.")
+    elif _already_held:
+        _print(f"  {new_passages} new passages added; {_already_held} already "
+               f"held and skipped.")
+    else:
+        _print(f"  {new_passages} passages added.")
+    if unreadable_docs:
+        _print(f"  {unreadable_docs} document(s) could NOT be read — that is "
+               f"a blind spot, not an empty result.")
+    _print(f"  Fish now holds {len(engine.fish.crystals)} crystals from "
+           f"{_doc_count} document(s) read this run.")
 
     # -----------------------------------------------------------------------
     # Step 4: Print the portrait — the mirror moment
