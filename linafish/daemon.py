@@ -421,7 +421,7 @@ class RoomListener:
             import paho.mqtt.client as mqtt
         except ImportError:
             print("ERROR: pip install paho-mqtt")
-            return
+            raise SystemExit(1)
 
         # paho-mqtt 2.0 added a required `callback_api_version` arg to
         # mqtt.Client(...). Detect it and pass conditionally so this code

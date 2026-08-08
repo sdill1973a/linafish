@@ -112,3 +112,30 @@ def test_family_weight_orders_the_surface(home):
     """The densest band is marked and leads."""
     out = beat(GENUINE, home)
     assert out.splitlines()[0].startswith("♥ heart ♥"), "densest band did not lead"
+
+
+def test_family_array_of_tables_does_not_crash(tmp_path):
+    """docs shipped [[family]] (array-of-tables); the heart must accept it or
+    stay silent — never crash the hosting hook (invariant 2; 2.1.0 audit)."""
+    from linafish.heart import HeartConfig
+    cfg = tmp_path / "heart.toml"
+    cfg.write_text(
+        '[[family]]\nname = "journal"\ndir = "journal"\nweight = 1.0\n'
+        '[[family]]\nname = "notes"\ndir = "notes"\n'
+    )
+    hc = HeartConfig(cfg)
+    names = sorted(m["name"] for m in hc.family)
+    assert names == ["journal", "notes"]
+
+
+def test_family_dir_tilde_and_absolute_paths(tmp_path):
+    from linafish.heart import HeartConfig
+    cfg = tmp_path / "heart.toml"
+    cfg.write_text(
+        f'[family]\nabsolute = {{ dir = "{tmp_path}/abs" }}\n'
+        'home = { dir = "~/somewhere" }\n'
+    )
+    hc = HeartConfig(cfg)
+    dirs = {m["name"]: str(m["dir"]) for m in hc.family}
+    assert dirs["absolute"].endswith("/abs")
+    assert "~" not in dirs["home"]

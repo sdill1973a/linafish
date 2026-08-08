@@ -102,13 +102,28 @@ class HeartConfig:
             return
 
         base = path.parent
-        for name, spec in (raw.get("family") or {}).items():
+        fam = raw.get("family") or {}
+        if isinstance(fam, list):
+            # [[family]] array-of-tables (name = "...", dir = "...") — accept
+            # it rather than crash: the heart's invariant is any-error ->
+            # silence, and docs shipped this shape (2.1.0 audit blocker).
+            fam = {t.get("name") or f"member{i}": t
+                   for i, t in enumerate(fam) if isinstance(t, dict)}
+        if not isinstance(fam, dict):
+            self.error = "heart.toml family: expected a table"
+            return
+        for name, spec in fam.items():
             if not isinstance(spec, dict):
                 continue
             d = spec.get("dir")
+            if d:
+                dp = Path(d).expanduser()
+                resolved = dp if dp.is_absolute() else (base / dp)
+            else:
+                resolved = base / name
             self.family.append({
                 "name": name,
-                "dir": (base / d) if d else (base / name),
+                "dir": resolved,
                 "weight": float(spec.get("weight", 1.0)),
             })
         surface = raw.get("surface") or {}

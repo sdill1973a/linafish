@@ -48,7 +48,7 @@ def _print_progress(pct: int, current: int, total: int, _last_pct=[None]):
         return
     _last_pct[0] = decile
     if pct >= 100:
-        _print(f"  Done. {current} documents processed.")
+        _print(f"  Done. {current} passages read.")
     else:
         # Print an inline dot-style progress: [=====>    ] 50%
         filled = pct // 5
@@ -65,6 +65,7 @@ def _print_progress(pct: int, current: int, total: int, _last_pct=[None]):
 
 # File types the fish can eat. Broad by default. Don't curate.
 INGESTIBLE = {
+    ".pdf",
     ".txt", ".md", ".markdown", ".rst", ".org",
     ".docx",  # .doc (legacy binary) not supported — use .docx
     ".json", ".yaml", ".yml", ".toml",

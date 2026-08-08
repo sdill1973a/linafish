@@ -322,7 +322,10 @@ class FishHandler(BaseHTTPRequestHandler):
             self._handle_msg_read(body)
 
         elif self.path == "/re-eat":
-            result = self.engine.re_eat()
+            # 2.1.0: route through maintain() like the daemon thread — re_eat()
+            # alone no-ops with nothing_pending on every engine-fed fish (#48),
+            # and /growth's empty-state hint sends users here expecting a cycle.
+            result = self.engine.maintain()
             self._respond(200, json.dumps(result, indent=2),
                 content_type="application/json")
 

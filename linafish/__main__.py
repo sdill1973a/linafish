@@ -66,9 +66,30 @@ def cmd_eat(args):
               f"own seed_terms mechanism via seed_grammar, not the v1 "
               f"extend_vocabulary path). Continuing without vocab override.")
 
-    # Eat through FishEngine — persists to ~/.linafish/{name}/
-    name = args.name or source.stem
-    engine = FishEngine(name=name)
+    # Eat through FishEngine. Bare `eat` FEEDS THE EXISTING FISH (the loop
+    # `go` itself advertises: "linafish eat new-entry.txt — the more you
+    # feed, the deeper it knows you"). Before 2.1.0 it silently created a
+    # NEW fish named after the file stem and the user's real fish never
+    # grew (induction-audit blocker). Now: one fish here -> feed it, named
+    # out loud; several -> refuse and list them; none -> create from the
+    # stem, the legitimate standalone path, also named out loud.
+    explicit_root = getattr(args, "state_dir", None)
+    name = args.name
+    if not name:
+        root = Path(explicit_root) if explicit_root else Path.home() / ".linafish"
+        found = _discover_fish_names(root)
+        if len(found) == 1:
+            name = found[0]
+            print(f"  Feeding fish '{name}'")
+        elif len(found) > 1:
+            print(f"Several fish live here: {', '.join(found)}")
+            print(f"Say which one to feed:  linafish eat {args.source} -n <name>")
+            sys.exit(1)
+        else:
+            name = source.stem
+            print(f"  No fish found here — creating '{name}'")
+    engine = FishEngine(state_dir=_resolve_state_dir(name, explicit_root),
+                        name=name)
     result = engine.eat_path(source)
 
     if not engine.fish.crystals:
@@ -186,8 +207,14 @@ def cmd_heart(args):
     state_dir = Path(args.state_dir) if args.state_dir else Path.home() / ".linafish"
     prompt = args.prompt if args.prompt else sys.stdin.read()
     from .heart import beat
-    out = beat(prompt, state_dir,
-               config_path=Path(args.config) if args.config else None)
+    try:
+        out = beat(prompt, state_dir,
+                   config_path=Path(args.config) if args.config else None)
+    except Exception:
+        # Invariant 2 enforced at the last boundary: the heart NEVER breaks
+        # the hook that hosts it. The organ's own beat-log (invariant 6) is
+        # where a dead heart becomes visible; a traceback on stdout is not.
+        return
     if out:
         print(out)
     return 0
@@ -225,6 +252,23 @@ def cmd_vizmem(args):
             print(f"    {binding}")
         return 0
 
+    if args.action in ("mint", "sketch"):
+        import urllib.error
+        try:
+            return _cmd_vizmem_render(args, state_dir)
+        except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
+            print(f"vizmem {args.action}: render server not reachable at "
+                  f"{args.url} ({getattr(e, 'reason', e)}). Start it, or pass "
+                  f"--url.", file=sys.stderr)
+            sys.exit(1)
+
+    # every other action (bind, ...) is local — no network wrapper needed
+    return _cmd_vizmem_render(args, state_dir)
+
+
+def _cmd_vizmem_render(args, state_dir):
+    from . import vizmem as vm
+    name = args.name
     if args.action in ("mint", "sketch"):
         out_dir = Path(args.out_dir) if args.out_dir else state_dir / "glyphs"
         if args.action == "mint":
@@ -638,11 +682,42 @@ def _resolve_state_dir(name, explicit_state_dir, default_root=None):
     return root
 
 
+def _discover_fish_names(root):
+    """Fish names in a flat state root, most-recently-fed first.
+
+    A fish is `<root>/<name>_crystals.jsonl`. This is the same discovery
+    recall has always used; shared here so eat/ask/check/whisper agree
+    with it instead of defaulting to a fish literally named 'linafish'
+    that `go` never creates (2.1.0 induction-audit blocker)."""
+    root = Path(root)
+    suffix = "_crystals.jsonl"
+    names = [f.name[: -len(suffix)] for f in root.glob(f"*{suffix}")]
+    names.sort(key=lambda n: (root / f"{n}{suffix}").stat().st_mtime,
+               reverse=True)
+    return names
+
+
 def _resolve_engine(args):
-    """Get a FishEngine from common args."""
+    """Get a FishEngine from common args.
+
+    Bare (no -n): discover the fish the way recall does — exactly one fish
+    in the root uses it silently; several uses the most recently fed and
+    says so on stderr; none falls back to the historical 'linafish' name
+    (whose empty-fish message tells the user to feed it first)."""
     from .engine import FishEngine
     explicit = getattr(args, 'state_dir', None)
-    name = getattr(args, 'name', None) or 'linafish'
+    name = getattr(args, 'name', None)
+    if not name:
+        root = Path(explicit) if explicit else Path.home() / ".linafish"
+        found = _discover_fish_names(root)
+        if len(found) == 1:
+            name = found[0]
+        elif len(found) > 1:
+            name = found[0]
+            print(f"  (fish: {name} — most recently fed of {len(found)}; "
+                  f"use -n to choose another)", file=sys.stderr)
+        else:
+            name = 'linafish'
     state_dir = _resolve_state_dir(name, explicit)
     return FishEngine(state_dir=state_dir, name=name)
 
@@ -3066,6 +3141,7 @@ def main():
     eat_p.add_argument("-o", "--output", type=_user_path, help="Output path")
     eat_p.add_argument("--hint", help="Context hint for better vectorization")
     eat_p.add_argument("--vocab", type=_user_path, help="Path to domain vocabulary JSON")
+    eat_p.add_argument("--state-dir", help="Fish state directory (default ~/.linafish)")
 
     # taste
     taste_p = sub.add_parser("taste", help="Preview fish contents")

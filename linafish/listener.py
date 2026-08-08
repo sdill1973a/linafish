@@ -131,7 +131,7 @@ class FishListener:
             import paho.mqtt.client as mqtt
         except ImportError:
             print("MQTT source requires paho-mqtt: pip install paho-mqtt")
-            return
+            raise SystemExit(1)
 
         # paho-mqtt 2.0 added a required `callback_api_version` arg to
         # mqtt.Client(...). Detect it and pass conditionally so this code

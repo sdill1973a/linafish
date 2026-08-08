@@ -8,6 +8,8 @@ For other AIs, use http_server.py or just read the fish.md file directly.
 """
 
 import json
+
+from . import __version__
 import sys
 import os
 from pathlib import Path
@@ -51,7 +53,7 @@ def serve_fish(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
 
     server_info = {
         "name": f"linafish-{name}",
-        "version": "0.3.0",
+        "version": __version__,
         "description": "Your mind. Versioned. Everywhere. Semantic intelligence via compression.",
     }
 
