@@ -42,11 +42,32 @@ what it did.**
 - Writer lock held across `re_eat` (PR #47) · co-occurrence tail drop is
   reported at save (PR #50) · incomplete episode sources are reported (PR #46).
 
+### Fixed (pre-release audit pass, 2026-08-08)
+
+- **Bare `eat` now feeds the fish you built.** It previously created a NEW
+  fish named after the file — the README's own grow-loop never grew the
+  user's fish. Now: one fish in the state dir → it's fed, named out loud;
+  several → refuses and lists them (`-n` to choose); none → creates from the
+  file stem, announced. `ask`/`check`/`whisper` bare discover the same way
+  `recall` always has. `eat` also gained `--state-dir`.
+- `POST /re-eat` routes through `maintain()` like the daemon thread — it
+  previously still no-opped with `nothing_pending` (the #48 behavior) while
+  `/growth`'s empty-state hint pointed at it.
+- The heart can no longer crash its hosting hook: accepts both `[family]`
+  and `[[family]]` TOML shapes, expands `~` and absolute dirs, and enforces
+  its any-error → silence invariant at the CLI boundary.
+- MCP `serve` reports the real package version (was hardcoded `0.3.0`).
+- Missing-dependency errors (`room`, `listen mqtt://`) exit 1, not 0.
+- `.pdf` joined `go`'s ingestible set (it was documented but silently
+  skipped by discovery); progress line says "passages read" (it counted
+  passages, not documents).
+
 ### Notes
 
 - Two independent test suites for the `go` idempotency fix (one written
   against each of the two candidate implementations) both pass against the
-  shipped mechanism: 443 tests green.
+  shipped mechanism: 451 tests green (8 added by the audit pass, proving the
+  bare-verb discovery and heart-config fixes both ways).
 - Dedupe is opt-in (`dedupe=False` default) and byte-exact at the engine
   layer by design; listener-layer normalization is a separate, guarded policy.
 
