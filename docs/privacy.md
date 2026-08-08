@@ -10,8 +10,8 @@ Everything lives in `~/.linafish/` on your machine. There is no server, no cloud
 
 | File | Contents | Human-readable? |
 |------|----------|-----------------|
-| `name.fish.md` | Your cognitive portrait. Formations, crystal quotes, dimension scores, themes. | Yes. Plain markdown. Anyone can read it. |
-| `name.state.json` | Full engine state: all crystals with text, scores, coupling data. | Yes. JSON with your original text chunks. |
+| `{name}.fish.md` | Your cognitive portrait. Formations, crystal quotes, dimension scores, themes. | Yes. Plain markdown. Anyone can read it. |
+| `{name}_v3_state.json` + `{name}_crystals.jsonl` | Full engine state: all crystals with text, scores, coupling data. | Yes. JSON/JSONL with your original text chunks. |
 | `name.qlp` | Compressed cognitive state in QLP notation. Dimension chains, formation signatures, soul reading. | Partially. The English summary is readable. The glyph chains are not. |
 
 No data leaves your machine unless you copy it somewhere. LiNafish makes no network calls. It has no dependencies that phone home. It is pure Python with zero external dependencies.
@@ -65,7 +65,7 @@ An attacker who obtains your fish.md learns:
 - **Topical interests:** Themes and keywords reveal what you spend your attention on.
 - **Writing style:** Crystal quotes are your actual prose. Enough of them could fingerprint your authorship.
 
-An attacker who obtains your state.json learns more. The state file contains all crystals with their full text chunks, not just the representative quotes. This is closer to having excerpts of your original writing, chunked and scored.
+An attacker who obtains your state files (`{name}_v3_state.json` and `{name}_crystals.jsonl`) learns more. They contain all crystals with their full text chunks, not just the representative quotes. This is closer to having excerpts of your original writing, chunked and scored.
 
 **Mitigation:** The files live in your home directory with standard filesystem permissions. Protect them the way you protect any personal file. If you are on a shared machine, check permissions on `~/.linafish/`.
 
@@ -92,7 +92,7 @@ The fish eats whatever you feed it. It does not filter, redact, or classify inpu
 
 2. **Read your fish.md before sharing it.** Open it in a text editor. Read every crystal quote. If a quote contains something you would not say to the recipient, delete or edit it. The engine does not need those quotes to function -- the dimension scores and formations carry the cognitive signal.
 
-3. **Treat state.json as more sensitive than fish.md.** The state file contains all your crystal text, not just the representative samples. If you share your fish, share the fish.md, not the state.json.
+3. **Treat the state files (`{name}_v3_state.json`, `{name}_crystals.jsonl`) as more sensitive than fish.md.** They contain all your crystal text, not just the representative samples. If you share your fish, share the fish.md, not the state files.
 
 4. **The .qlp file is safe to share.** It contains compressed cognitive patterns without readable content. Someone could reverse-engineer your thinking style from it but not your specific words.
 
@@ -159,7 +159,7 @@ LiNafish does not do retrieval. It does not store your text for later lookup. It
 
 Without any memory system, every AI conversation starts cold. The AI knows nothing about you. You re-explain your context, your preferences, your thinking style every session. This is private by default but costly in time and quality.
 
-LiNafish is the middle path: the AI knows how you think without storing what you said. The privacy cost is a handful of representative quotes and a cognitive profile. The quality gain is measured: d=2.245, cold-to-warm, replicated across 46 conversations.
+LiNafish is the middle path: the AI knows how you think without storing what you said. The privacy cost is a handful of representative quotes and a cognitive profile. The quality gain is measured: d=2.245, cold-to-warm, published (N=46 conversations).
 
 ## Episodic recall — the `/moment` endpoint
 
@@ -204,6 +204,6 @@ in full. Read `docs/episodic-recall.md` before turning it on.
 | What is the worst case? | Someone reads your crystal quotes and learns your cognitive patterns, emotional tendencies, and a few dozen of your sentences. |
 | How do I mitigate? | Read your fish.md before sharing. Edit or remove sensitive quotes. Use named fish to separate contexts. |
 | Is the .qlp file safe? | Safer than fish.md. Compressed notation, not readable prose. |
-| Is state.json safe? | Less safe than fish.md. Contains all crystal text. Treat it as sensitive. |
+| Are the state files safe? | Less safe than fish.md. `{name}_v3_state.json` and `{name}_crystals.jsonl` contain all crystal text. Treat them as sensitive. |
 | What should I never ingest? | Passwords, credentials, medical records, others' private writing without consent. |
 | Can I delete everything? | `rm -rf ~/.linafish/` and it is gone. No cloud backup. No residue. |

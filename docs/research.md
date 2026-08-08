@@ -2,7 +2,7 @@
 
 Validation study for LiNafish cognitive overlay effectiveness.
 
-**Full paper:** [DOI 10.5281/zenodo.18477225](https://doi.org/10.5281/zenodo.18477225)
+**Full paper:** [DOI 10.5281/zenodo.21828705 (latest version)](https://doi.org/10.5281/zenodo.21828705) — the paper's latest version (v13) partially withdraws the AI-judged warm/cold fidelity results while preserving the N=46 human study reported here.
 
 ---
 
@@ -170,11 +170,11 @@ The fish file is at `~/.linafish/[corpus-name].fish.md` after running `linafish 
 The complete methodology, statistical analysis, and theoretical framework:
 
 **"Recursive Compression as Cognitive Infrastructure"**
-DOI: [10.5281/zenodo.18477225](https://doi.org/10.5281/zenodo.18477225)
+DOI: [10.5281/zenodo.21828705 (latest version)](https://doi.org/10.5281/zenodo.21828705) — the latest version (v13) partially withdraws the AI-judged warm/cold fidelity results while preserving the N=46 human study.
 
 The paper covers additional findings not summarized here, including:
-- Warm Decoder Delta (WDD) as a formal metric
+- Warm Decoder Delta (WDD) as a formal metric — *withdrawn in v13, pending re-run*
 - False positive rate analysis across compression regimes
 - Information-theoretic framing of relationship as channel capacity
 - Cross-substrate compression efficiency (R(n) curves)
-- Executable glyph experiments
+- Executable glyph experiments — *withdrawn in v13, pending re-run*

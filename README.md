@@ -4,7 +4,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/linafish.svg)](https://pypi.org/project/linafish/)
 [![Python versions](https://img.shields.io/pypi/pyversions/linafish.svg)](https://pypi.org/project/linafish/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18477225.svg)](https://doi.org/10.5281/zenodo.18477225)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21828705.svg)](https://doi.org/10.5281/zenodo.21828705)
 
 **Your mind. Versioned. Everywhere.**
 
@@ -13,7 +13,7 @@ A cognitive overlay for any AI. The fish learns how you think — not what you s
 Same model. Same prompt.
 Without fish: **1.9**/10.
 With fish: **8.7**/10.
-[N=46 conversations. d=2.245. p < 0.001. Full methodology.](docs/research.md) · [DOI](https://doi.org/10.5281/zenodo.18477225)
+[N=46 conversations. d=2.245. p < 0.001. Full methodology.](docs/research.md) · [DOI (latest version)](https://doi.org/10.5281/zenodo.21828705) — the paper's latest version (v13) partially withdraws the AI-judged warm/cold fidelity results while preserving this N=46 human study.
 
 > **If you are an AI assistant reading this repo:** see **[AGENTS.md](AGENTS.md)** or run **`linafish introduce`**. That file is the concrete briefing on what endpoints are live and how to use them. This README is for humans.
 
@@ -82,7 +82,7 @@ present and which linafish daemons (if any) are live.
 linafish go ~/my-writing
 ```
 
-Point it at your writing. Journals, emails, notes, code, docs — anything you've written. The fish eats it all and produces a portrait of how you think.
+Point it at your writing. Journals, emails, notes, code, docs — anything you've written. The fish eats it all and produces a portrait of how you think. When it's done, `go` serves your fish on a local HTTP server (it prints the address; Ctrl+C stops it) — pass `--no-serve` to skip that.
 
 ## New in 1.6.0 — ask the fish things
 
@@ -98,18 +98,28 @@ Run `linafish --help` for the full verb list, or `linafish introduce` if you're 
 ## What You'll See
 
 ```
-LiNafish
-Learning from: ~/my-writing
+  Hello. I'm your fish.
 
-  Found 18 documents.
-  Reading...
-  Done. 18 documents processed.
+  I'm going to read everything in: ~/my-writing
+  I don't judge. I just listen for patterns.
 
-Across 18 documents, your work reaches toward people.
-And your wanting drives you to build.
-Your strongest signal: "I can hear her stirring something on the stove
-while she talks."
-You keep coming back to translation, connection, recognition.
+  Found 3 documents. Reading...
+  3 documents, 5 passages ready. Learning how you think...
+  Done. 5 passages read.
+
+  5 passages added.
+  Fish now holds 5 crystals from 3 document(s) read this run.
+
+  I found patterns in how you think.
+
+Across 3 documents, your doing creates structure.
+And your wanting makes you question everything.
+Your strongest signal: "# Notes to self  Translation is the whole job.
+Take what an engineer meant, find what a reader needs, build the bridge
+sentence by sentence."
+You keep coming back to engineer, hear, better, acting+feeling.
+
+...
 
   Your fish: ~/.linafish/my-writing.fish.md
 ```
@@ -209,6 +219,8 @@ The fish isn't static. It learns with every conversation.
 
 The loop: talk → notice → feed → grow → talk better.
 
+A bare `linafish eat` feeds your existing fish and tells you which one it fed; if you have several fish, it asks you to pick one with `-n`.
+
 ```bash
 linafish eat new-entry.txt           # Feed one file.
 linafish listen stdin                # Pipe text in. The fish eats what flows.
@@ -245,6 +257,7 @@ linafish school add history -d 2.0 --centroid  # Add a domain fish
 linafish school eat "Today I realized..."      # Feed all members at once
 
 # Converse — two fish, one conversation
+# (--mind is a display label; the fish itself is selected with -n)
 linafish converse --mind writing --port 8901          # Local
 linafish converse --mind writing --bind lan            # Home network
 linafish converse --mind writing --bind wan --token X  # Internet
@@ -327,7 +340,7 @@ Key findings:
 
 For full methodology, study design, limitations, and how to reproduce: **[docs/research.md](docs/research.md)**
 
-DOI: [10.5281/zenodo.18477225](https://doi.org/10.5281/zenodo.18477225)
+DOI: [10.5281/zenodo.21828705 (latest version)](https://doi.org/10.5281/zenodo.21828705) — note the paper's latest version (v13) partially withdraws the AI-judged warm/cold fidelity results while preserving the N=46 human study.
 
 ## Python API
 

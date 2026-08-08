@@ -10,7 +10,7 @@ Every AI assistant boots cold. Every session is a stranger meeting a stranger. M
 
 The difference matters. "Georgia" could mean the state, the country, or Ray Charles. A memory system stores "user mentioned georgia." A warm decoder knows which one you meant because it knows your compression direction.
 
-d=2.245 is the measured gap between cold decoding (no context) and warm decoding (with a fish). Same model. Same prompt. Published, replicated, N=46.
+d=2.245 is the measured gap between cold decoding (no context) and warm decoding (with a fish). Same model. Same prompt. Published, N=46.
 
 ## The Pipeline
 
@@ -25,15 +25,15 @@ Each chunk becomes a **crystal** — a unit of compressed knowledge scored on 8 
 | Dimension | Code | What It Measures |
 |-----------|------|------------------|
 | Knowledge/Synthesis | KO | How you generate and process information |
-| Truth/Evidence | TE | How you verify, validate, and calibrate |
+| Testing | TE | How you verify, validate, and calibrate |
 | Structure | SF | How you organize, build, and architect |
 | Context/Relevance | CR | How you relate, connect, and frame |
 | Intention/Emotion | IC | What you want, feel, and care about |
-| Deep/Scientific | DE | How you reason formally and abstractly |
+| Specializing | DE | How you apply deep domain expertise |
 | Execution | EW | How you act, do, and make things happen |
 | Meta/Integration | AI | How you think about your own thinking |
 
-Each crystal gets an 8-number vector. This is its cognitive signature. The scoring uses keyword vocabularies tuned per dimension — no neural model needed. The 8-dim space is substrate-independent: it runs on anything that can count words.
+Each crystal gets an 8-number vector. This is its cognitive signature. The current (v3) scorer learns a mutual-information vocabulary from your own corpus, bootstrapped by a small per-dimension seed grammar; the original v1 scorer used fixed keyword vocabularies. Either way, no neural model is needed. The 8-dim space is substrate-independent: it runs on anything that can count words.
 
 **Why not TF-IDF?** This is the critical insight. TF-IDF finds words that are distinctive per document — topic words like "bitcoin" or "archaeology." But your cognitive fingerprint lives in the opposite place: words that are common across ALL your documents. Words like "because," "therefore," "but," "actually," "honestly," "look," "think," "feel." These positional cognitive words are invariant across every conversation you have. They are HOW you think. They survive every topic change. TF-IDF removes them because they're not distinctive. QLP-8 centers on them because they ARE the signal.
 
@@ -47,10 +47,7 @@ The engine computes pairwise **gamma** (Jaccard-style overlap) between all cryst
 gamma = sum(min(a_i, b_i)) / sum(max(a_i, b_i))
 ```
 
-If gamma exceeds the threshold, the crystals couple. **Adaptive gamma** adjusts the threshold based on corpus density:
-- Small corpora (<50 crystals): 5-10% edge density target
-- Medium (50-200): 3-6%
-- Large (200+): 1-4%
+If gamma exceeds the threshold, the crystals couple. **Adaptive gamma** sets the threshold from the corpus itself: the coupling pass samples random crystal pairs, sorts their gammas, and uses the 75th percentile of the sample, floored at `BASIN_COS` (1/√5 ≈ 0.447).
 
 This prevents saturation (everything coupled) and deserts (nothing coupled) across any corpus size.
 
@@ -94,19 +91,19 @@ Layer 3 is the product. d=2.245 is the gap between Layer 2 and Layer 3. The fish
 
 ## State Persistence
 
-Crystals are saved to `~/.linafish/{name}.state.json` after every eat. The state file contains:
-- All crystal objects (id, text, resonance vector, keywords, couplings)
+Crystals are saved to `~/.linafish/{name}_v3_state.json` and `~/.linafish/{name}_crystals.jsonl` after every eat. Between them they contain:
+- All crystal objects (id, text, vectors, keywords, couplings)
 - Metadata (docs ingested, timestamps)
 
 On next startup, the fish loads state and skips re-ingest. Formations are rebuilt from crystals each time (fast — BFS on the coupling graph).
 
-The `.fish.md` file (from `linafish eat`) is a human-readable export. The `.state.json` is the machine-readable persistence.
+The `{name}.fish.md` file is the human-readable export. The `{name}_v3_state.json` + `{name}_crystals.jsonl` pair is the machine-readable persistence.
 
 ## Domain Extension
 
 The 8 dimensions are corpus-agnostic — they describe ways a mind moves
 through a passage (knowing, testing, structuring, relating, wanting,
-choosing, acting, thinking-about-thinking) rather than topics. The
+specializing, acting, thinking-about-thinking) rather than topics. The
 same 8 have produced meaningful formations across every corpus we've
 tested: personal journals, academic papers, novels, historical
 letters, and source code. For specialized domains, extend the
@@ -130,7 +127,7 @@ When extending vocabulary, add words that are structurally important to the doma
 
 Based on: *Recursive Codebook Protocol: Compression as Relationship in Human-AI Communication*
 
-- DOI: 10.5281/zenodo.18477225
+- DOI: [10.5281/zenodo.21828705 (latest version)](https://doi.org/10.5281/zenodo.21828705) — the paper's latest version (v13) partially withdraws the AI-judged warm/cold fidelity results while preserving the N=46 human study
 - N=46, d_emotional=2.245, d_factual=1.036, p=6.95e-10
 - Same-model control: Cold 1.9, Warm 8.7, Delta 6.7
 - Cross-substrate: Claude, Gemini, Mistral

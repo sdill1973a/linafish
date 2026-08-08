@@ -1,3 +1,5 @@
+> Historical design notes from the project's internal development — kept for the record; not a description of current shipped behavior.
+
 # linafish 2.0 — The Native-Glyph Substrate
 ## Foundation & Charter — so we never waver in the build
 

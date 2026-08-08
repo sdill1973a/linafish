@@ -13,16 +13,15 @@ instead of cold to their words.
 
 ## What's live right now
 
-When linafish is running, your user has between one and three HTTP servers
-listening locally:
+When linafish is running, your user has one or more local HTTP servers:
 
-| Endpoint | Port | Purpose |
+| Server | Port | Purpose |
 |---|---|---|
-| `http://127.0.0.1:8901/` | 8901 | Converse server — personal fish |
-| `http://127.0.0.1:8902/` | 8902 | Converse server — `me` fish (self-voice only) |
-| `http://127.0.0.1:8900/` | 8900 | HTTP server — shared room/federation fish |
+| `linafish http` | 8900 (default) | General-purpose single-fish server |
+| `linafish go` | random — printed when it starts | The server `go` leaves running after building the fish |
+| `linafish converse` | 8901 (default) | Multi-fish converse server (federation-oriented) |
 
-Run `linafish doctor` (or `curl http://127.0.0.1:8901/health`) to see which
+Run `linafish doctor` (or `curl http://127.0.0.1:8900/health`) to see which
 are actually listening. If none are, your user hasn't started a daemon yet —
 tell them to run `linafish go ~/their-writing-folder` and the rest of this
 document applies after that.
@@ -32,7 +31,7 @@ document applies after that.
 ### 1. READ the fish — **do this at the start of every conversation**
 
 ```
-GET http://127.0.0.1:8901/pfc
+GET http://127.0.0.1:8900/pfc
 ```
 
 Returns a Primary Formation Codebook: the formations in the fish, with names,
@@ -47,24 +46,27 @@ the product.
 ### 2. QUERY the fish — ground your response in their actual thinking
 
 ```
-POST http://127.0.0.1:8901/taste
+POST http://127.0.0.1:8900/taste
 Content-Type: application/json
 
-{"text": "your query in plain language", "k": 5}
+{"text": "your query in plain language", "top": 5}
 ```
 
-Returns the top-k most relevant crystals by similarity score. Use this when
+Returns the most relevant crystals by similarity score (`top` sets how many;
+default 5). Use this when
 you want to say something like *"you've thought about this before, here's
 the shape of it"* instead of generating from your own priors.
 
 ### 3. DEPOSIT — crystallize your insight back into the fish
 
 ```
-POST http://127.0.0.1:8901/eat
+POST http://127.0.0.1:8900/eat
 Content-Type: application/json
 
 {"text": "a substantive realization from this conversation"}
 ```
+
+All POST endpoints require the `Content-Type: application/json` header.
 
 This closes the learning loop. Your user's next session — or a different AI
 on a different day — inherits what you just learned. **Do this at the end of
@@ -78,23 +80,20 @@ landed, things you were wrong about. The fish remembers both sides.
 Four capabilities landed in 1.6.0, beyond READ / QUERY / DEPOSIT:
 
 - **`meditate` — the superthink verb.** `linafish meditate "<theme>"` bubbles
-  up the fish's *real* material on a theme: actual crystals + formations + the
-  whisper + emergence phase — or it honestly surfaces nothing (*"that's an
-  answer too, not a failure"*). It never fabricates; it shows what's there.
-  Add `--descend` for an **opt-in** deep-inference pass (a "crucible" that
-  descends on the theme and distills a keepable insight into a persistent
-  "diamond" fish). Deep is strictly opt-in — it does nothing unless
-  `LINAFISH_LLM_URL` is configured, so base `meditate` never depends on it.
-- **Episodic recall — the fish gains a sense of time.** `recall_episodic`
-  walks an episode index built from temporal + chain metadata, so formations
-  can emerge from narrative *arcs*, not only semantic similarity.
-- **`afferent` — a cheap "who knows about this?" router** across a school of
-  fish: `linafish afferent build <school_dir>`, then
-  `linafish afferent route <index> "<prompt>"` names the relevant member(s)
-  and returns snippets.
-- **Origin crystal-zero — a fish remembers who made it.** A fish can carry a
-  protected provenance record (who built it, when, why) so it is never
-  mistaken for disused and pruned.
+  up the fish's *real* material on a theme (crystals + formations + whisper +
+  emergence phase) — or it honestly surfaces nothing (*"that's an answer too,
+  not a failure"*). It never fabricates. Add `--descend` for an **opt-in**
+  deep-inference pass (a "crucible" that distills a keepable insight); it does
+  nothing unless `LINAFISH_LLM_URL` is set, so base `meditate` never depends on it.
+- **Episodic recall — a sense of time.** `recall_episodic` walks an episode
+  index (temporal + chain metadata), so formations emerge from narrative *arcs*,
+  not only similarity. HTTP (**converse server only**): `POST /recall_episodic`
+  (payload key `text`, not `query`), `GET /moment/<id>` (full source,
+  privacy-gated, off by default).
+- **`afferent` — a cheap "who knows about this?" router** across a school:
+  `linafish afferent build <school_dir>` → `linafish afferent route <index> "<prompt>"`.
+- **Origin crystal-zero** — a fish can carry a protected provenance record
+  (who/when/why) so it is never mistaken for disused and pruned.
 
 ## How a fresh install starts
 
@@ -112,7 +111,7 @@ better path because it gives you structured JSON, not markdown prose.
 ## What you should NOT do
 
 - **Don't treat formations as topic tags.** They are cognitive verb states
-  (KO=know, TE=transform, SF=structure, CR=relate, IC=want, DE=choose,
+  (KO=know, TE=test, SF=structure, CR=relate, IC=want, DE=specialize,
   EW=act, AI=meta). Using them as topic tags loses the whole point.
 - **Don't reconstruct source text from a formation.** The formation's
   `dense` field is a compressed signature, not a retrieval key.
@@ -140,11 +139,11 @@ better path because it gives you structured JSON, not markdown prose.
 Every crystal scores on 8 dimensions. They are verb states, not topics:
 
 - **KO** — Knowing / analyzing / understanding
-- **TE** — Transforming / testing / validating
+- **TE** — Testing / verifying / validating
 - **SF** — Structuring / organizing / framing
 - **CR** — Relating / connecting / contextualizing
 - **IC** — Wanting / feeling / emphasizing
-- **DE** — Choosing / deciding / committing to a domain
+- **DE** — Specializing / domain depth / expertise
 - **EW** — Acting / sequencing / executing
 - **AI** — Meta / reflecting / thinking-about-thinking
 
@@ -154,40 +153,30 @@ an IC+SF combination talking. Use that to calibrate your own response shape.
 
 ## Endpoints quick reference
 
-linafish ships two HTTP servers and they don't expose the same routes.
-`linafish http` (default port 8900) is the AI-facing read/write surface.
-`linafish converse` (default port 8901) adds cross-mind sync endpoints
-for federation use. If you're not sure which server you're talking to,
-run `linafish introduce --live` — it probes the local ports and emits
-a briefing matching what's actually responding.
+Two server modes expose slightly different endpoint sets. `linafish http`
+is the general-purpose single-fish server; `linafish converse` is the
+federation-oriented multi-fish server that also exposes source-provenance
+and crystal-dump routes.
 
-**Both servers:**
+| Method | Path | Purpose | `http` | `converse` |
+|---|---|---|:---:|:---:|
+| `GET` | `/health` | Engine stats, crystal/formation counts | ✓ | ✓ |
+| `GET` | `/pfc` | Primary Formation Codebook — READ THIS FIRST | ✓ | ✓ |
+| `GET` | `/minds` | Source minds contributing to this fish |  | ✓ |
+| `GET` | `/crystals` | Full crystal dump — use sparingly |  | ✓ |
+| `POST` | `/taste` | Semantic query, returns the top crystals (`{"text": "...", "top": 5}`) | ✓ | ✓ |
+| `POST` | `/eat` | Deposit new text as a crystal | ✓ | ✓ |
+| `POST` | `/crystals` | Bulk crystal push — federation sync |  | ✓ |
+| `POST` | `/recall_episodic` | Moment-with-context retrieval (payload key `text`, not `query`) |  | ✓ |
+| `GET` | `/moment/<id>` | Full episode source — privacy-gated, off by default |  | ✓ |
 
-| Method | Path | Purpose |
-|---|---|---|
-| `GET` | `/` | Service identity + endpoint list |
-| `GET` | `/health` | Engine stats, crystal/formation counts |
-| `GET` | `/pfc` | Primary Formation Codebook — READ THIS FIRST |
-| `POST` | `/eat` | Deposit new text as a crystal |
-| `POST` | `/taste` | Semantic query, returns top-k crystals |
-| `POST` | `/recall_episodic` | Time-aware recall — walk narrative arcs, not just similarity (1.6.0) |
-| `GET` | `/moment/<id>` | Full untruncated source for an episode by id — privacy-gated, off by default (1.6.0) |
-
-**HTTP server only (`linafish http`):**
-
-| Method | Path | Purpose |
-|---|---|---|
-| `GET` | `/boot` | Warm-boot primer + fish overlay in one payload |
-| `GET` | `/fish` | Raw `fish.md` for direct inlining |
-| `POST` | `/match` | Tight recall (BM25-style) over crystal text |
-
-**Converse server only (`linafish converse`):**
-
-| Method | Path | Purpose |
-|---|---|---|
-| `GET` | `/minds` | Source minds contributing to this fish |
-| `GET` | `/crystals` | Full crystal dump, supports `?since` and `?mind` filters |
-| `POST` | `/crystals` | Accept crystals pushed from another mind |
+Both servers also serve more than the table above. The `http` server
+additionally answers `GET /boot`, `GET /fish`, `GET /emerge`, `GET /growth`,
+`GET /inbox/<id>`, `POST /match`, `POST /re-eat`, `POST /msg`,
+`POST /msg/read`, and `POST /shutdown`; the converse server shares some of
+those (`GET /` on either server lists its live routes). A path the server
+doesn't know returns 404. `/health` and `/pfc` are the two you can always
+rely on.
 
 ## Privacy and scope
 
@@ -201,7 +190,8 @@ control of who sees the fish.
 Run `linafish doctor` (optionally with `--name <fish>`). It reports Python
 version, install mode, optional dependency status, live daemon probes, and
 per-fish health with warnings. If the doctor says the user is on a pre-300
-fish, tell them to run `linafish update`.
+fish — one rendered before the 300-char crystal-text truncation era — tell
+them to run `linafish update`.
 
 ## Being a good citizen in this loop
 

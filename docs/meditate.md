@@ -5,7 +5,7 @@ back as structured surfacings — not a flat recall list, and not performed
 reflection. It formalizes what you'd otherwise do by hand (reach for recall,
 surface the relevant past, reflect from what comes up) into one verb with knobs.
 
-Design spec: `docs/session-instrument/meditate.md`.
+(Design origin: `meditate` formalizes the session-instrument's recall → surface → reflect ritual into a single CLI verb.)
 
 ## Zero faith involved
 

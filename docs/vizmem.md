@@ -21,14 +21,18 @@ That is the whole thing. You now have a fish called `vizmem` holding one memory.
 ## Make them fire
 
 The store is an **ordinary fish**, so it rides `recall`, `taste` and the heart
-for free. Add it to your `heart.toml` family:
+for free. Add it to your `heart.toml` family (the canonical `[family]` table
+form — see `docs/heart.md`):
 
 ```toml
-[[family]]
-name = "vizmem"
-dir  = "~/.linafish/vizmem"
-weight = 1.0
+[family]
+vizmem = { dir = "~/.linafish", weight = 1.0 }
 ```
+
+`dir` points at the **state directory** that holds the vizmem fish's flat
+files (`vizmem_crystals.jsonl` and friends) — there is no `vizmem/`
+subdirectory. `~` expands, and absolute paths work; a relative `dir` resolves
+against the directory containing `heart.toml`.
 
 Now bound images surface alongside words whenever something reaches toward them.
 

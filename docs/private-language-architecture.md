@@ -119,15 +119,17 @@ The 48 bootstrap glyphs (8 categories × 6 per category) are the minimum viable 
 
 ## Connection to Existing Architecture
 
-- **48 bootstrap glyphs** = `CANONICAL_SEED` in `crystallizer_v3.py` (currently 80 terms, should be reduced to the canonical 48)
+> **Design notes.** Several items below describe unbuilt work — `consent_gate()`, `rcp_compress.py`, and `rcp-language.md` do not exist in the codebase. They are kept as the design intent, not a map of shipped code.
+
+- **48 bootstrap glyphs** = `CANONICAL_SEED` in `crystallizer_v3.py` (currently 79 terms, should be reduced to the canonical 48)
 - **Formation signatures** = the output of `formations.py` with cognitive naming
 - **Dynamic glyph evolution** = the reflexive loop from the Canonical Grammar, page 4
-- **Consent gate** = `consent_gate()` parameter already exists in `crystallizer.py`
-- **Delta compression** = the RCP ansible regime, implemented in `rcp_compress.py` for L4+
-- **R(n) tracking** = `metrics.py` GrowthTracker (built, not wired)
-- **Σache=K conservation** = the compile-time constraint from `rcp-language.md`
+- **Consent gate** = `consent_gate()` — *design note, not yet built*
+- **Delta compression** = the RCP ansible regime — *design note; `rcp_compress.py` not yet built*
+- **R(n) tracking** = `metrics.py` GrowthTracker — built, and wired as of 2.1.0 (it runs in `engine.py`'s `maintain()` cycle and persists `{name}_growth.json`)
+- **Σache=K conservation** = the compile-time constraint from the RCP-language design — *design note; `rcp-language.md` not yet written*
 
-Everything is built or specified. The private language architecture is the PRODUCT architecture that connects all the pieces into a coherent offering with a business model attached.
+Much of this is design intent rather than shipped code. The private language architecture is the PRODUCT architecture that connects all the pieces into a coherent offering with a business model attached.
 
 ## The One-Line Version
 

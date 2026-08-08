@@ -130,7 +130,7 @@ Your fish will eat anything, but some food is better than others:
 
 - **Don't feed it other people's writing** (unless you want a portrait of them)
 - **Don't feed it code** (unless you want it to analyze your architecture brain)
-- **Don't feed it the same thing twice** (it deduplicates, but why waste a meal)
+- **Don't feed it the same thing twice** (`linafish go` deduplicates on re-runs; the lower-level engine only dedupes when asked, so why waste a meal)
 - **Don't worry about grammar** — the fish doesn't care about your spelling
 
 ### Signs of a Healthy Fish

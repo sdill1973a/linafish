@@ -50,10 +50,10 @@ The ingest layer handles format-specific extraction:
 |--------|--------|
 | `.md`  | Split on headers. Each section becomes a chunk. |
 | `.txt` | Split on blank lines (paragraph boundaries). |
-| `.pdf` | Extract via `pdfplumber` if available, else skip. |
+| `.pdf` | Extract via PyMuPDF (`fitz`) if available, falling back to `pdfplumber`, else skip. |
 | `.docx`| Extract via `python-docx` if available, else skip. |
 | `.json`| Extract string values recursively. |
-| `.py`, `.js`, etc. | Extract docstrings and comments. |
+| `.py`, `.js`, etc. | Chunk by class/function definitions. |
 
 Each chunk is a `Chunk` dataclass carrying the text, source path, section name, chunk type (narrative, data, code, metadata), and position within the source file.
 
@@ -63,10 +63,10 @@ Chunking is semantic, not mechanical. A markdown file splits at headers because 
 
 ## Stage 2: Crystallize
 
-**Module:** `linafish/crystallizer.py` (keyword-based, v1) and `linafish/crystallizer_v3.py` (MI-based, v3)
+**Module:** `linafish/crystallizer_v3.py` (MI-based, v3)
 **Role:** Compress each text into an 8-dimensional cognitive signature.
 
-The engine currently uses v3 (`crystallizer_v3.py`) by default. The v1 crystallizer (`crystallizer.py`) is retained for comparison and as a fallback.
+The engine uses v3 (`crystallizer_v3.py`). The v1 keyword crystallizer described below is historical — it no longer ships as a separate module, but its scoring model explains where the design came from.
 
 ### The 8 Dimensions (QLP-8)
 
@@ -81,7 +81,7 @@ The engine currently uses v3 (`crystallizer_v3.py`) by default. The v1 crystalli
 | EW | Acting | Executing, building, deploying, doing physical work |
 | AI | Reflecting | Meta-cognition, learning about learning, self-awareness |
 
-### v1 Vectorization (keyword TF-IDF)
+### v1 Vectorization (keyword TF-IDF — historical)
 
 1. Tokenize text into lowercase alpha tokens.
 2. For each dimension, count keyword hits from a curated vocabulary (~30-50 terms per dimension).
@@ -101,38 +101,42 @@ The canonical seed grammar ("the grimoire") bootstraps new corpora. As R(n) grow
 
 ### Crystal Data Structure
 
+A sketch of the real dataclass (`crystallizer_v3.py`; abridged — chain and
+episodic metadata fields omitted):
+
 ```python
 @dataclass
 class Crystal:
     id: str                    # SHA-based hash
     ts: str                    # ISO timestamp
-    text: str                  # source text (truncated to ~300 chars)
+    text: str                  # source text (capped at MAX_CRYSTAL_TEXT = 32768 chars)
     source: str                # file path or label
-    resonance: List[float]     # 8d cognitive vector
-    keywords: List[str]        # top 5 domain terms
+    mi_vector: List[float]     # MI-based vector (length = vocabulary)
+    resonance: List[float]     # reduced vector (d²-1 after PCA)
+    keywords: List[str]        # top tokens by MI contribution
     couplings: List[Tuple[str, float]]  # [(crystal_id, gamma)]
     structural: bool           # long-lived (True) vs ephemeral (False)
+    ache: float                # unresolved-tension score
     formation: Optional[str]   # assigned formation name
-    ache: float                # compression loss score
+    cognitive_vector: List[float]  # 8-dim QLP parse [KO,TE,SF,CR,IC,DE,EW,AI]
+    chains: List[Tuple[str, ...]]  # thought chains, e.g. [("IC","EW")]
+    modifiers: Dict[str, float]    # ^depth +scope *focus ~flex !urgent
 ```
 
 ### Ache
 
-Every crystal carries an `ache` score measuring compression loss:
-
-```
-ache = 0.40 * cycles + 0.30 * misses + 0.30 * depth_variance
-```
-
-- **cycles**: text length / keyword density (how much was compressed)
-- **misses**: fraction of dimensions near zero (blind spots)
-- **depth_variance**: unevenness of the resonance vector (specialist vs generalist)
+Every crystal carries an `ache` score. In v3 this is `ache_relevance()`
+(`crystallizer_v3.py`) — a measure of how much unresolved tension (prediction
+error) the text carries, computed as inverse-document-frequency-weighted token
+surprise: rare tokens in unusual combinations score high; common tokens in
+expected patterns score low. (The old v1 formula
+`0.40*cycles + 0.30*misses + 0.30*depth_variance` is gone.)
 
 Ache is fuel, not error. High ache means the text had more to say than the crystal could capture.
 
 ## Stage 3: Couple
 
-**Module:** `linafish/crystallizer.py` (`couple_crystals`, `gamma_coefficient`)
+**Module:** `linafish/crystallizer_v3.py` (coupling pass + `gamma`)
 **Role:** Compare crystals pairwise and link those with similar cognitive architecture.
 
 ### Gamma Coefficient
@@ -149,9 +153,7 @@ A secondary cosine similarity check catches directional similarity that gamma mi
 
 ### Adaptive Threshold
 
-The gamma threshold is not hardcoded. `adaptive_gamma()` samples random pairs from the corpus, measures the density distribution, and picks a threshold that keeps coupling at a target percentage (default: top ~15% of pairs). This prevents both under-coupling (sparse corpora) and over-coupling (dense corpora).
-
-Default starting threshold: 0.45. Adjusted up for dense corpora, down for sparse ones.
+The gamma threshold is not hardcoded. When no threshold is supplied, the coupling pass (`crystallizer_v3.py`) samples random crystal pairs (up to 500), sorts their gammas, and sets the threshold to the 75th percentile of the sample, floored at `BASIN_COS` (1/√5 ≈ 0.447). This prevents both under-coupling (sparse corpora) and over-coupling (dense corpora).
 
 ### Coupling is the Key Operation
 
@@ -178,14 +180,21 @@ Uses numpy when available for vectorized pairwise computation. Falls back to pur
 
 ### Formation Data Structure
 
+A sketch of the real dataclass (`formations.py`; abridged — trust/ranking
+signals omitted):
+
 ```python
 @dataclass
 class Formation:
+    id: int
     name: str                     # e.g. "ACTING+RELATING_via_FEELING"
-    crystals: List[Crystal]       # member crystals
-    cognitive_centroid: List[float]  # average 8d vector across members
-    theme_keywords: List[str]     # most common keywords
-    size: int                     # crystal count
+    keywords: List[str]           # most common keywords across members
+    member_ids: List[str]         # member crystal ids
+    centroid: List[float]         # average QLP vector
+    representative_text: str      # most-connected crystal's text
+    crystal_count: int
+    cognitive_centroid: List[float]  # 8-dim average across members
+    top_chains: List[str]         # most common thought chains in members
 ```
 
 ### Shuffle Invariance
@@ -285,27 +294,40 @@ The engine optionally integrates an RTI-parallel assessment layer:
 
 ```
 linafish/
-├── __init__.py          # Exports: FishEngine, go
-├── __main__.py          # CLI entry point
-├── engine.py            # FishEngine — the core orchestrator
-├── crystallizer.py      # v1 crystallizer (keyword TF-IDF)
-├── crystallizer_v3.py   # v3 crystallizer (MI x ache, no keywords)
-├── formations.py        # Formation detection (BFS on coupling graph)
-├── formations_v3.py     # v3 formation detection
-├── ingest.py            # File reading and chunking
-├── server.py            # MCP server (stdio)
-├── http_server.py       # HTTP server (stdlib)
-├── assessment.py        # RTI-parallel pre/formative assessment
-├── quickstart.py        # `linafish go` one-command entry
-├── codebook.py          # Codebook rendering utilities
-├── compress.py          # Compression utilities
-├── eat.py               # Eat command implementation
-├── feedback.py          # Learning feedback loop
-├── metrics.py           # R(n) and statistical measures
-├── parser.py            # QLP grammar parser
+├── __init__.py            # Exports: FishEngine, go
+├── __main__.py            # CLI entry point (all verbs)
+├── engine.py              # FishEngine — the core orchestrator
+├── crystallizer_v3.py     # The crystallizer (MI x ache) + coupling pass
+├── formations.py          # Formation detection (BFS on coupling graph)
+├── formation_gardener.py  # Formation maintenance (merge/prune)
+├── ingest.py              # File reading and chunking
+├── quickstart.py          # `linafish go` one-command entry
+├── server.py              # MCP server (stdio)
+├── http_server.py         # HTTP server (stdlib)
+├── converse.py            # Multi-fish converse server
+├── assessment.py          # RTI-parallel pre/formative assessment
+├── metrics.py             # R(n) and growth tracking
+├── parser.py              # QLP grammar parser
+├── quantum_operations.py  # QUANTUM operation detection
+├── metabolism.py          # Metabolic loops between dimensions
+├── emergence.py           # Emergence metrics
+├── episodic.py            # Episodic recall (moments in time)
+├── heart.py               # The heart beat (words surface unbidden)
+├── vizmem.py              # Visuospatial sketchpad (image bindings)
+├── deep.py                # Optional inference layer (`meditate --descend`)
+├── afferent.py            # "Which fish knows about this?" router
+├── school.py              # Schools of sub-fish
+├── listener.py            # `listen` daemons (stdin/folder/MQTT)
+├── daemon.py, daily.py    # Background tending
+├── absorb.py              # Import existing AI-memory exports
+├── keeper.py, guppy.py    # Keeper voices; self-feeding fish
+├── locks.py               # State-file locking
 └── data/
-    └── ai_primer.md     # Instructions for any LLM reading a fish
+    ├── ai_primer.md       # Instructions for any LLM reading a fish
+    └── AGENTS.md          # The AI-integrator briefing (`linafish introduce`)
 ```
+
+(Not exhaustive — see `ls linafish/` for the full list.)
 
 ## Design Decisions
 

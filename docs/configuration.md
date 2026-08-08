@@ -15,7 +15,7 @@
 }
 ```
 
-The fish starts empty. Use `fish_eat` to feed it during sessions. State saves to `~/.linafish/linafish.state.json`.
+The fish starts empty. Use `fish_eat` to feed it during sessions. State saves to `~/.linafish/linafish_v3_state.json` (plus `linafish_crystals.jsonl` and `linafish.fish.md`).
 
 ### Auto-Feed (recommended)
 
@@ -45,7 +45,7 @@ On first run, the fish eats everything in `./my-docs`. On subsequent runs, it lo
 }
 ```
 
-State saves to `~/.linafish/my-project.state.json`. Use different names for different projects.
+State saves to `~/.linafish/my-project_v3_state.json` (plus `my-project_crystals.jsonl` and `my-project.fish.md`). Use different names for different projects.
 
 ### Custom State Directory
 
@@ -187,8 +187,9 @@ Returns: crystal count, formation count, docs ingested, state file path, top for
 
 | File | Purpose |
 |------|---------|
-| `~/.linafish/{name}.state.json` | Persisted crystal state |
-| `{name}.fish.md` | Human-readable codebook (from `eat` command) |
+| `~/.linafish/{name}_v3_state.json` | Persisted engine state |
+| `~/.linafish/{name}_crystals.jsonl` | Crystal log (one crystal per line) |
+| `{name}.fish.md` | Human-readable codebook |
 | `domain.json` | Domain vocabulary extension |
 
 ## Supported File Types

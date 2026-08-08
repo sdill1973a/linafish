@@ -1,3 +1,5 @@
+> Historical design notes from the project's internal development — kept for the record; not a description of current shipped behavior.
+
 # QLP Engine v0.4 — The Grammar Eats
 
 ## What Changed

@@ -15,23 +15,35 @@ pip install linafish
 linafish go ~/mara-journal
 ```
 
-Output:
+Output (regenerated with 2.1.0 on a small 3-document corpus, lightly elided; the shape is identical for Mara's 18):
 ```
-LiNafish
-Learning from: ~/mara-journal
+  Hello. I'm your fish.
 
-  Found 18 documents.
-  Reading...
-  Done. 18 documents processed.
+  I'm going to read everything in: ~/mara-journal
+  I don't judge. I just listen for patterns.
 
-Across 18 documents, your work reaches toward people.
-And your wanting drives you to build.
-Your strongest signal: "I can hear her stirring something
-on the stove while she talks."
-You keep coming back to translation, connection, recognition.
+  Found 3 documents. Reading...
+  3 documents, 5 passages ready. Learning how you think...
+  Done. 5 passages read.
+
+  5 passages added.
+  Fish now holds 5 crystals from 3 document(s) read this run.
+
+  I found patterns in how you think.
+
+Across 3 documents, your doing creates structure.
+And your wanting makes you question everything.
+Your strongest signal: "# Notes to self  Translation is the whole job.
+Take what an engineer meant, find what a reader needs, build the bridge
+sentence by sentence."
+You keep coming back to engineer, hear, better, acting+feeling.
+
+...
 
   Your fish: ~/.linafish/mara-journal.fish.md
 ```
+
+(`go` then finishes by serving the fish on a local port it prints; Ctrl+C stops it, or pass `--no-serve`.)
 
 ## Step 2: The Fish
 

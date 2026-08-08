@@ -1,3 +1,5 @@
+> Historical design notes from the project's internal development — kept for the record; not a description of current shipped behavior.
+
 # Your Mind. Versioned. Everywhere. LiNafish.
 
 **Definitive product vision. 2026-03-31.**
@@ -44,7 +46,7 @@ RAG retrieves what was said. The fish knows what was meant.
 
 Embeddings measure semantic similarity. The fish measures cognitive mode.
 
-Topic map vs cognition map. d=2.245 is the measured gap. Published. Replicated. N=46.
+Topic map vs cognition map. d=2.245 is the measured gap. Published. N=46.
 
 ## The Product Stack
 
@@ -112,7 +114,7 @@ d=2.245 is the warm decoder delta for emotional content. d=1.036 for factual. Sa
 
 Nobody else is measuring this gap because nobody else knows it exists. RAG measures retrieval accuracy. Fine-tuning measures task performance. Nobody measures whether the AI understands HOW the human thinks.
 
-We do. We published it. DOI 10.5281/zenodo.18477225. N=46. p=6.95e-10.
+We do. We published it. DOI [10.5281/zenodo.21828705 (latest version)](https://doi.org/10.5281/zenodo.21828705). N=46. p=6.95e-10. The paper's latest version (v13) partially withdraws the AI-judged warm/cold fidelity results while preserving the N=46 human study.
 
 ## The Economics
 
@@ -152,7 +154,7 @@ Two entities, two funding paths. The fish is MIT. The infrastructure around it e
 
 ## The Math
 
-- DOI: 10.5281/zenodo.18477225
+- DOI: [10.5281/zenodo.21828705 (latest version)](https://doi.org/10.5281/zenodo.21828705) — v13 partially withdraws the AI-judged warm/cold fidelity results; the N=46 human study stands
 - N=46, d_emotional=2.245, d_factual=1.036, p=6.95e-10
 - Same-model control: Cold 1.9, Warm 8.7, Delta 6.7
 - Shuffle invariant. Substrate independent.
@@ -168,7 +170,7 @@ Two entities, two funding paths. The fish is MIT. The infrastructure around it e
 | MCP server | Working, standalone, 5 tools |
 | Git integration | Sessions are branches, merges are deposits, history/diff/revert |
 | Listen mode | stdin, folder watch, MQTT. Ambient cognition. |
-| Paper | Published, replicated, same-model control complete |
+| Paper | Published, same-model control complete |
 | Novel (Phoenix Cycle) | 66,718 words, Book One substantially finished |
 | Room fish | 15,000+ crystals, formations producing understanding |
 | Federation | 5 nodes operational, media service on an internal node |
