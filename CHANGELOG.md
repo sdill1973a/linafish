@@ -32,6 +32,20 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
   `linafish listen ... --allow-duplicates` restores the old behaviour for
   callers who genuinely want repeated identical text counted more than once.
 
+- **A crystal is ~5x smaller on disk.** It was ~96% vector by weight, and it
+  stored that vector **twice**: `resonance` is a runtime alias assigned
+  `= mi_vector` at all six of its assignment sites (5,000/5,000 sampled stored
+  crystals had them byte-identical), and `mi_vector` itself was a JSON list of
+  float64 reprs at ~20 bytes per number. `resonance` is no longer persisted —
+  it is restored on load — and the survivor is packed as base64 float32
+  (`miv_b32`). A real crystal: **8,376 -> 1,610 bytes.**
+
+  Round-trip error is ~2e-6 absolute, which moves `gamma` by ~5e-10 — orders
+  below any threshold in the codebase.
+
+  **No fish is migrated and nothing is rewritten.** The loader reads both the
+  new `miv_b32` and the old `mi_vector`/`resonance` shape, forever.
+
 - **`listen` commits once per session, not once per eat.** `git_autocommit`
   defaults to True, so every eat ran `git commit` — and git stores each
   version of the crystals JSONL as a full LOOSE object. Measured on a live

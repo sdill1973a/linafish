@@ -634,3 +634,81 @@ class TestListenDoesNotDuplicate(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCompactVectorStorage(unittest.TestCase):
+    """Regression guard for the 2026-08-09 storage change.
+
+    A crystal was ~96% vector by weight, and it stored that vector TWICE:
+    `resonance` is a runtime alias assigned `= mi_vector` at all six of its
+    assignment sites, and 5,000/5,000 sampled stored crystals had them
+    identical. Dropping the duplicate and packing the survivor as base64
+    float32 took a real crystal from 8,376 to 1,610 bytes.
+
+    The load path must keep reading BOTH forms forever — no fish is migrated.
+    """
+
+    def _crystal(self, vec):
+        from linafish.crystallizer_v3 import Crystal
+        return Crystal(id="c1", ts="2026-08-09T00:00:00Z", text="the wood is warm",
+                       source="test", resonance=list(vec), keywords=["wood"],
+                       mi_vector=list(vec), couplings=[], wrapping_numbers={})
+
+    def test_pack_round_trip_is_lossless_enough_for_gamma(self):
+        import random
+        from linafish.crystallizer_v3 import _pack_vec, _unpack_vec, gamma
+        random.seed(11)
+        v = [random.uniform(-50, 90) for _ in range(200)]
+        w = [random.uniform(-50, 90) for _ in range(200)]
+        v2, w2 = _unpack_vec(_pack_vec(v)), _unpack_vec(_pack_vec(w))
+        self.assertEqual(len(v2), len(v))
+        # gamma is the only consumer that matters; it must not move meaningfully
+        self.assertAlmostEqual(gamma(v, w), gamma(v2, w2), places=6)
+
+    def test_malformed_blob_yields_empty_not_exception(self):
+        """A corrupt vector must not make the whole fish unloadable."""
+        from linafish.crystallizer_v3 import _unpack_vec
+        for bad in ("", None, "not base64 !!", "%%%%"):
+            self.assertEqual(_unpack_vec(bad), [])
+
+    def test_to_dict_drops_the_duplicate_and_packs_the_survivor(self):
+        vec = [float(i) for i in range(200)]
+        d = self._crystal(vec).to_dict()
+        self.assertNotIn("resonance", d, "resonance is a runtime alias, not state")
+        self.assertNotIn("mi_vector", d, "the raw list must not be written")
+        self.assertIn("miv_b32", d)
+
+    def test_shrink_is_real(self):
+        import json
+        vec = [float(i) * 1.7 for i in range(200)]
+        c = self._crystal(vec)
+        compact = len(json.dumps(c.to_dict(), default=str))
+        legacy = len(json.dumps({**c.to_dict(), "mi_vector": vec, "resonance": vec},
+                                default=str))
+        self.assertLess(compact * 3, legacy, "expected better than 3x")
+
+    def test_both_on_disk_formats_still_load(self):
+        """The whole point: old fish are NOT migrated, so both shapes load."""
+        import json, tempfile
+        from pathlib import Path
+        from linafish.crystallizer_v3 import _pack_vec
+        from linafish.engine import FishEngine
+        vec = [float(i) * 0.5 for i in range(200)]
+        base = {"id": "c1", "ts": "2026-08-09T00:00:00Z", "text": "the wood is warm",
+                "source": "test", "keywords": ["wood"], "couplings": [],
+                "wrapping_numbers": {}}
+        legacy = {**base, "mi_vector": vec, "resonance": vec}
+        compact = {**base, "miv_b32": _pack_vec(vec)}
+        for label, row in (("legacy", legacy), ("compact", compact)):
+            with tempfile.TemporaryDirectory() as td:
+                d = Path(td)
+                (d / "f_crystals.jsonl").write_text(json.dumps(row) + "\n",
+                                                    encoding="utf-8")
+                e = FishEngine(state_dir=d, name="f", git_autocommit=False)
+                self.assertEqual(len(e.crystals), 1, label)
+                c = e.crystals[0]
+                self.assertEqual(len(c.mi_vector), 200, label)
+                self.assertLess(max(abs(a - b) for a, b in zip(c.mi_vector, vec)),
+                                1e-4, label)
+                self.assertEqual(c.resonance, c.mi_vector,
+                                 f"{label}: resonance must be restored on load")

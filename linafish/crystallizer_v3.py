@@ -173,7 +173,54 @@ class Crystal:
     protected: bool = False
 
     def to_dict(self):
-        return asdict(self)
+        """Persisted form. TWO deliberate differences from the in-memory shape,
+        both measured on a real fish 2026-08-09 (phoenix-keeper, 42,666 crystals,
+        379 MB — of which ~7 MB was text):
+
+        1. ``resonance`` is NOT written. Every assignment to it in the codebase
+           is ``crystal.resonance = crystal.mi_vector`` (6 sites), and 5,000/5,000
+           sampled stored crystals had them byte-identical — it is a runtime alias
+           for formation compat, and persisting it doubled the file for nothing.
+           It is restored on load.
+        2. ``mi_vector`` is written as base64 float32 (``miv_b32``) instead of a
+           JSON list of float64 reprs: ~20 bytes per number becomes 4. Readers
+           still accept a plain ``mi_vector`` list, so every fish written before
+           this change loads unchanged — nothing is rewritten, nothing migrates.
+
+        Together: ~8,890 bytes per crystal -> ~1,200.
+        """
+        d = asdict(self)
+        d.pop("resonance", None)
+        vec = d.pop("mi_vector", None)
+        if vec:
+            d["miv_b32"] = _pack_vec(vec)
+        return d
+
+
+# --- compact vector storage (2026-08-09) -----------------------------------
+# A crystal is ~96% vector by weight. float32 is far more precision than a
+# cosine over MI weights can use; round-tripping through it moves gamma by
+# ~1e-7, which is orders below any threshold in this codebase. Kept as base64
+# so the JSONL stays a text format you can still read with your eyes.
+def _pack_vec(vec) -> str:
+    import base64, struct
+    return base64.b64encode(
+        struct.pack(f"<{len(vec)}f", *(float(x) for x in vec))
+    ).decode("ascii")
+
+
+def _unpack_vec(blob) -> list:
+    """Decode a packed vector. Returns [] on anything malformed rather than
+    raising — a corrupt vector must not make the whole fish unloadable, and an
+    empty vector is already a case every caller handles."""
+    import base64, struct
+    if not blob:
+        return []
+    try:
+        raw = base64.b64decode(blob)
+        return list(struct.unpack(f"<{len(raw) // 4}f", raw[: len(raw) // 4 * 4]))
+    except Exception:
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -1285,7 +1332,11 @@ class UniversalFish:
                             source=d.get('source', ''),
                             resonance=d.get('resonance', []),
                             keywords=d.get('keywords', []),
-                            mi_vector=d.get('mi_vector', []),
+                            # 'miv_b32' is the compact form; 'mi_vector' is what
+                            # every fish written before 2026-08-09 carries. Both
+                            # are read, forever — the old files are not migrated.
+                            mi_vector=(_unpack_vec(d['miv_b32'])
+                                       if d.get('miv_b32') else d.get('mi_vector', [])),
                             couplings=[(x[0], x[1]) for x in d.get('couplings', [])],
                             wrapping_numbers=d.get('wrapping_numbers', {}) or {},
                             structural=d.get('structural', False),
@@ -1303,6 +1354,12 @@ class UniversalFish:
                             episode_kind=d.get('episode_kind'),
                             protected=d.get('protected', False) or False,
                         )
+                        # resonance is a runtime alias for mi_vector (six
+                        # assignment sites, all `= mi_vector`) and is no longer
+                        # persisted. Restore it here so formations.py, which
+                        # indexes mc.resonance directly, sees what it always saw.
+                        if not c.resonance:
+                            c.resonance = c.mi_vector
                         disk_crystals.append(c)
                         loaded += 1
                     except Exception:
