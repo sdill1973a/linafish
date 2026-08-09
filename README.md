@@ -41,6 +41,19 @@ pip install linafish
 Zero required dependencies. Pure Python 3.10+. Runs on any OS with a
 supported Python (tested on Windows 10/11, macOS, and Linux).
 
+### If pip refuses with "externally-managed-environment"
+
+On Debian/Ubuntu (24.04 and newer) and other distros that ship a
+PEP 668-marked Python, `pip install linafish` is refused outright. Either
+install into a virtualenv, or install for your user only:
+
+```bash
+pip install --user --break-system-packages linafish
+```
+
+Despite the flag's name this does not modify system packages — it installs
+under your home directory and leaves the distro's Python alone.
+
 ### If `linafish` isn't found after install
 
 If `pip install linafish` succeeds but `linafish --help` says *"command
