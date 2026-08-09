@@ -10,6 +10,35 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **`listen` no longer re-eats byte-identical text.** 2.1.0 gave `go`
+  `dedupe=True` and this changelog said re-runs stop duplicating — but
+  `listen` never got the flag, and `listen` is the verb daily automation
+  actually uses (session-close hooks, MQTT bridges, `listen stdin`
+  deposits). Piping the same file twice ate it twice, every time. The
+  listener's own `_is_duplicate` is an in-*process* set, so it dies with
+  the process and never sees the second run. Reported by Olorina from a
+  live corpus: 563 source files → 1,562 crystals, one per file per run,
+  across three runs.
+
+  The cost was never size. Since `γ(v,v)=1.0`, a crystal present twice
+  forms formations out of itself at maximal coupling and drowns the
+  cross-document relationships the fish exists to find — the pattern
+  layer, not the disk.
+
+  `linafish listen ... --allow-duplicates` restores the old behaviour for
+  callers who genuinely want repeated identical text counted more than once.
+
+- **A skipped duplicate now says so.** Previously a dedupe-skip printed
+  nothing, and "nothing printed" reads as "nothing to do" rather than
+  "already had this." `listen` now prints `skipped — already eaten` per
+  occurrence and totals them in the closing summary.
+
+---
+
 ## [2.1.0] — 2026-08-07
 
 **The public copy carried two known bugs for six days. This makes it honest

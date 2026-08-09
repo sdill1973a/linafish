@@ -697,13 +697,18 @@ def _discover_fish_names(root):
     return names
 
 
-def _resolve_engine(args):
+def _resolve_engine(args, **engine_kwargs):
     """Get a FishEngine from common args.
 
     Bare (no -n): discover the fish the way recall does — exactly one fish
     in the root uses it silently; several uses the most recently fed and
     says so on stderr; none falls back to the historical 'linafish' name
-    (whose empty-fish message tells the user to feed it first)."""
+    (whose empty-fish message tells the user to feed it first).
+
+    ``engine_kwargs`` are passed straight through to ``FishEngine`` so an
+    ingestion verb can ask for a policy the read-only verbs don't pay for
+    (``dedupe=True`` builds an O(n) hash set at load — worth it for
+    ``listen``, waste for ``recall``)."""
     from .engine import FishEngine
     explicit = getattr(args, 'state_dir', None)
     name = getattr(args, 'name', None)
@@ -719,7 +724,7 @@ def _resolve_engine(args):
         else:
             name = 'linafish'
     state_dir = _resolve_state_dir(name, explicit)
-    return FishEngine(state_dir=state_dir, name=name)
+    return FishEngine(state_dir=state_dir, name=name, **engine_kwargs)
 
 
 def cmd_session(args):
@@ -1726,8 +1731,21 @@ def cmd_classify(args):
 
 
 def cmd_listen(args):
-    """Listen to a source. The fish sits in the stream."""
-    engine = _resolve_engine(args)
+    """Listen to a source. The fish sits in the stream.
+
+    Dedupe is ON by default (2026-08-09, Olorina's 2.1.0 field report). 2.1.0
+    gave ``go`` ``dedupe=True`` so re-running a folder stops re-eating it, and
+    the changelog says so — but ``listen`` never got it, and ``listen`` is the
+    verb daily automation actually uses. The listener's own ``_is_duplicate``
+    is an in-PROCESS set: it dies with the process, so piping the same file
+    twice re-ate it every time. Since γ(v,v)=1.0, a crystal present twice
+    forms formations out of itself at maximal coupling and drowns the
+    cross-document links the fish exists to find — so the cost of the gap was
+    never mere size, it was the pattern layer. ``--allow-duplicates`` restores
+    the old behaviour for callers who genuinely want repeated identical text
+    counted more than once."""
+    dedupe = not getattr(args, "allow_duplicates", False)
+    engine = _resolve_engine(args, dedupe=dedupe)
     from .listener import FishListener
 
     # School mode: auto-discover fish in subdirs and feed all of them
@@ -3291,6 +3309,8 @@ def main():
     listen_p.add_argument("--state-dir", type=_user_path, help="State directory")
     listen_p.add_argument("--interval", type=int, default=30, help="Folder check interval in seconds")
     listen_p.add_argument("--school", action="store_true", help="Feed through school (all members eat)")
+    listen_p.add_argument("--allow-duplicates", action="store_true",
+                          help="Re-eat byte-identical text (default: skip it, and say so)")
 
     # session — git branch lifecycle
     session_p = sub.add_parser("session", help="Start/end session branches (git-as-brain)")

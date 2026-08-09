@@ -36,6 +36,7 @@ class FishListener:
         self._dedup_cap = dedup_cap
         self._prev_formations = set()
         self._exchange_count = 0
+        self._skipped_count = 0
 
         # Track formation names for change detection
         if self.engine.formations:
@@ -113,6 +114,13 @@ class FishListener:
             if added > 0:
                 print(f"  [{source}] +{added}c (total: {total}c {fcount}f)")
                 self._check_formation_changes()
+            elif getattr(self.engine, "dedupe", False):
+                # A skip must be audible. Silence here is exactly the failure
+                # mode that let the duplication bug live: "nothing printed"
+                # read as "nothing to do" instead of "already had this."
+                self._skipped_count += 1
+                print(f"  [{source}] skipped — already eaten "
+                      f"(total: {total}c {fcount}f)")
 
     # -------------------------------------------------------------------
     # SOURCE: MQTT
@@ -271,4 +279,7 @@ class FishListener:
                 text = "\n".join(buffer)
                 self.feed(text, source="stdin")
 
-        print(f"Stdin closed. {self._exchange_count} exchanges.")
+        summary = f"Stdin closed. {self._exchange_count} exchanges."
+        if self._skipped_count:
+            summary += f" {self._skipped_count} skipped as already eaten."
+        print(summary)

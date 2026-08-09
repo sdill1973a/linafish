@@ -558,5 +558,79 @@ class TestSurfaceHeaderRendering(unittest.TestCase):
         self.assertIn("TEST_FORMATION", rendered)
 
 
+class TestListenDoesNotDuplicate(unittest.TestCase):
+    """Regression guard for Olorina's 2.1.0 field report (2026-08-09).
+
+    2.1.0 gave ``go`` ``dedupe=True`` and the changelog announced that
+    re-runs no longer duplicate. ``listen`` never got it, and ``listen`` is
+    the verb daily automation uses — so piping the same text twice re-ate
+    it, silently, while the release notes said otherwise. Since
+    gamma(v,v)=1.0, the duplicate forms formations out of itself at maximal
+    coupling and drowns the cross-document links the fish exists to find.
+
+    Proven BOTH ways: a duplicate must be skipped AND new text must still
+    land AND the opt-out must still duplicate on request. A test that only
+    asserts the skip is itself an organ that cannot fail.
+    """
+
+    def _feed(self, engine, text):
+        from linafish.listener import FishListener
+        listener = FishListener(engine)
+        listener.feed(text, source="test")
+        return listener
+
+    def _engine(self, tmp, dedupe):
+        from linafish.engine import FishEngine
+        return FishEngine(state_dir=tmp, name="dupt", dedupe=dedupe)
+
+    def test_identical_text_is_skipped_across_engine_instances(self):
+        import tempfile
+        from pathlib import Path
+        text = "The wood is still warm and the desk remembers the weight."
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            e1 = self._engine(tmp, True)
+            self._feed(e1, text)
+            first = len(e1.crystals)
+            self.assertGreater(first, 0, "first feed must land")
+
+            # New process would build a new engine off the same state dir.
+            e2 = self._engine(tmp, True)
+            listener = self._feed(e2, text)
+            self.assertEqual(len(e2.crystals), first,
+                             "identical text must not be eaten twice")
+            self.assertEqual(listener._skipped_count, 1,
+                             "the skip must be counted, not silent")
+
+    def test_new_text_still_lands(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            e1 = self._engine(tmp, True)
+            self._feed(e1, "The first sentence, about the red ceiling.")
+            first = len(e1.crystals)
+            e2 = self._engine(tmp, True)
+            self._feed(e2, "A different sentence, about the bond issue.")
+            self.assertGreater(len(e2.crystals), first,
+                               "dedupe must not swallow genuinely new text")
+
+    def test_opt_out_still_duplicates(self):
+        import tempfile
+        from pathlib import Path
+        text = ("Repeat me on purpose — a caller may genuinely want the same "
+                "line counted twice, and the opt-out exists for them.")
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            e1 = self._engine(tmp, False)
+            self._feed(e1, text)
+            first = len(e1.crystals)
+            self.assertGreater(first, 0, "first feed must land")
+            e2 = self._engine(tmp, False)
+            self._feed(e2, text)
+            self.assertGreater(len(e2.crystals), first,
+                               "--allow-duplicates must restore old behaviour")
+
+
 if __name__ == "__main__":
     unittest.main()
