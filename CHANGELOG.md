@@ -32,6 +32,21 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
   `linafish listen ... --allow-duplicates` restores the old behaviour for
   callers who genuinely want repeated identical text counted more than once.
 
+- **`listen` commits once per session, not once per eat.** `git_autocommit`
+  defaults to True, so every eat ran `git commit` — and git stores each
+  version of the crystals JSONL as a full LOOSE object. Measured on a live
+  fish: **1,734 commits in one feeding session**, each re-storing a 379 MB
+  file, producing **~195 GiB of loose git objects for ~420 MB of actual
+  fish** (90 MiB when packed) and roughly half a terabyte of disk writes in
+  an afternoon. Crystal durability never depended on it — every eat already
+  appends to the JSONL via `_persist_crystal`; the commit is a rollback
+  point, and one per stream is what a rollback point is for. The sealing
+  commit runs in a `finally`, so Ctrl-C and errors still produce it.
+
+  **If you have been feeding fish through `listen`, run `git gc` in the
+  state dir.** Nothing is lost — gc repacks, it does not delete reachable
+  history.
+
 - **A skipped duplicate now says so.** Previously a dedupe-skip printed
   nothing, and "nothing printed" reads as "nothing to do" rather than
   "already had this." `listen` now prints `skipped — already eaten` per

@@ -1745,7 +1745,16 @@ def cmd_listen(args):
     the old behaviour for callers who genuinely want repeated identical text
     counted more than once."""
     dedupe = not getattr(args, "allow_duplicates", False)
-    engine = _resolve_engine(args, dedupe=dedupe)
+    # ONE COMMIT PER SESSION, NOT PER EAT (2026-08-09). git_autocommit=True
+    # means every eat runs `git commit`, and git stores each version of the
+    # crystals JSONL as a full LOOSE object. Measured on a real fish:
+    # phoenix-keeper took 1,734 commits in a single feeding session, each
+    # re-storing a 379MB file — ~195 GiB of loose objects for ~420 MB of
+    # actual fish, and roughly half a terabyte written to the disk in one
+    # afternoon. The crystals are already durable without it: every eat
+    # appends to the JSONL via _persist_crystal. The commit is a rollback
+    # point, and one per stream is what a rollback point is FOR.
+    engine = _resolve_engine(args, dedupe=dedupe, git_autocommit=False)
     from .listener import FishListener
 
     # School mode: auto-discover fish in subdirs and feed all of them
@@ -1760,9 +1769,22 @@ def cmd_listen(args):
 
     listener = FishListener(engine, school=school)
 
+    def _seal(reason: str = "listen session"):
+        """The single commit this stream is allowed. Runs on every exit path
+        — clean end, Ctrl-C, or error — because a rollback point that only
+        exists when nothing went wrong is not a rollback point."""
+        try:
+            engine.flush(commit=False)
+            engine.flush_commit(f"listen: {reason}")
+        except Exception as exc:                       # never mask the real error
+            print(f"  (final commit failed: {exc})", file=sys.stderr)
+
     source = args.source
     if source == "stdin":
-        listener.listen_stdin()
+        try:
+            listener.listen_stdin()
+        finally:
+            _seal("stdin")
     elif source.startswith("mqtt://"):
         # mqtt://[user:pass@]host[:port]/topic,topic2
         # s95 2026-04-13: added user:pass@ support for authenticated brokers
@@ -1787,14 +1809,23 @@ def cmd_listen(args):
         else:
             host = host_port
             port = 1883
-        listener.listen_mqtt(host, port, topics, username=username, password=password)
+        try:
+            listener.listen_mqtt(host, port, topics, username=username, password=password)
+        finally:
+            _seal("mqtt")
     elif source.startswith("folder:"):
         path = source[7:]
-        listener.listen_folder(path, interval=args.interval)
+        try:
+            listener.listen_folder(path, interval=args.interval)
+        finally:
+            _seal("folder")
     else:
         # Assume it's a folder path
         if Path(source).is_dir():
-            listener.listen_folder(source, interval=args.interval)
+            try:
+                listener.listen_folder(source, interval=args.interval)
+            finally:
+                _seal("folder")
         else:
             print(f"Unknown source: {source}")
             print("Use: stdin, mqtt://host:port/topic, folder:/path, or a directory path")
