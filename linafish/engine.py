@@ -55,6 +55,7 @@ from .formations import (
 )
 from .ingest import ingest_directory, ingest_file
 from . import episodic
+from . import grounding
 from .episodic import (
     EpisodicMoment, load_episode, walk as episodic_walk,
     score_moment, assemble_source_excerpt,
@@ -2980,13 +2981,34 @@ class FishEngine:
             top_crystal_ids.add(c.id)
         self._record_feedback_hits(top_crystal_ids, no_heat=no_heat)
 
-        return {
+        result = {
             "ok": True,
             "query_keywords": list(probe.keywords) if probe.keywords else [],
             "match_count": len(scores),
             "total_crystals": total,
             "matches": matches,
         }
+
+        # M1 Phase 2 — additive grounding verdict. Never allowed to break
+        # taste: a synthetic result on any failure, not a raised exception.
+        try:
+            from datetime import datetime, timedelta, timezone
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=72)
+            recent_texts = []
+            for c in reversed(self.fish.crystals):
+                ts = episodic._parse_ts(episodic._crystal_ts(c))
+                if ts is None:
+                    continue
+                if ts < cutoff:
+                    break
+                if c.text:
+                    recent_texts.append(c.text)
+            result["grounding"] = grounding.verdict(
+                text, self.fish.vectorizer, recent_texts)
+        except Exception as e:
+            result["grounding"] = {"band": "error", "error": str(e)}
+
+        return result
 
     def taste(self, text: str, top: int = 5,
               no_heat: bool | None = None) -> str:
