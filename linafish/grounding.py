@@ -1,6 +1,15 @@
 """M1 grounding verdict — is a taste query backed by known co-occurrence,
 or floating free of anything the fish has actually seen?
 
+CONTRACT (measured, 2026-08-11 v5 + design round 2): ``grounded`` means
+WELL-ATTESTED — the query's vocabulary and composition are strongly
+backed by the corpus. It does NOT mean TRUE. Within pair statistics and
+vector resonance, a well-composed fabrication built from real vocabulary
+(register-borrowing) is indistinguishable from a real memory; three veto
+candidates died to that measurement (see data/METRIC_GRAVEYARD.md in the
+runtime repo). Callers holding load-bearing claims must cross-check
+against the disk or a claim-level judge — this module cannot do it.
+
 Additive to ``taste_dict`` (never changes an existing field, never breaks
 an early-return path — see ``FishEngine.taste_dict``). Three questions:
 
