@@ -3003,8 +3003,9 @@ class FishEngine:
                     break
                 if c.text:
                     recent_texts.append(c.text)
+            top_gamma = scores[0][0] if scores else None
             result["grounding"] = grounding.verdict(
-                text, self.fish.vectorizer, recent_texts)
+                text, self.fish.vectorizer, recent_texts, gamma=top_gamma)
         except Exception as e:
             result["grounding"] = {"band": "error", "error": str(e)}
 

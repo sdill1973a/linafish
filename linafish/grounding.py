@@ -117,7 +117,7 @@ def pair_evidence(tokens, vectorizer):
     return out
 
 
-def verdict(text, vectorizer, recent_texts=None):
+def verdict(text, vectorizer, recent_texts=None, gamma=None, gamma_floor=0.885):
     """Grade a query by how much co-occurrence evidence backs it.
 
     Bands (on max_evidence): <0.25 ungrounded, 0.25-1.30 thin,
@@ -126,6 +126,15 @@ def verdict(text, vectorizer, recent_texts=None):
     half the query's informative tokens, the band softens to
     'thin-recent' — the fish just learned this, it hasn't earned
     'grounded' yet.
+
+    Composition fusion (M1 Phase 1c): pair evidence alone can be
+    register-borrowed — a query can wear known vocabulary in known
+    pairings without the query, taken as a whole, actually resonating
+    with anything the fish holds. gamma (the top match's whole-query
+    similarity) catches what pair statistics cannot: if the band would
+    be 'grounded' but gamma is given and falls below gamma_floor, the
+    verdict is demoted to 'thin' and the demotion is named. Omitting
+    gamma leaves the verdict exactly as it was before this fusion.
     """
     tokens = informative_tokens(text, vectorizer)
     pairs = pair_evidence(tokens, vectorizer)
@@ -168,7 +177,7 @@ def verdict(text, vectorizer, recent_texts=None):
     if band == "ungrounded" and recent_support >= 0.5:
         band = "thin-recent"
 
-    return {
+    result = {
         "band": band,
         "max_evidence": round(max_evidence, 4),
         "mean_evidence": round(mean_evidence, 4),
@@ -176,3 +185,10 @@ def verdict(text, vectorizer, recent_texts=None):
         "unknown_pairs": unknown_pairs,
         "recent_support": round(recent_support, 4),
     }
+
+    if band == "grounded" and gamma is not None and gamma < gamma_floor:
+        result["band"] = "thin"
+        result["demoted_by"] = "composition"
+        result["gamma"] = gamma
+
+    return result

@@ -195,3 +195,77 @@ def test_taste_dict_early_return_paths_have_no_grounding_field():
             "grounding must only attach after the ok/matches logic — "
             "early-return paths are untouched by spec"
         )
+
+
+# ---------------------------------------------------------------------------
+# Composition fusion (M1 Phase 1c) — gamma can demote 'grounded' to 'thin'
+# ---------------------------------------------------------------------------
+
+def _grounded_vec():
+    """Same shape as test_known_pair_query_is_grounded — max_evidence > 1.30."""
+    return StubVectorizer(
+        doc_count=100,
+        token_doc_counts={"gizmo": 2, "captain": 2},
+        pair_counts={"gizmo|captain": 10},
+    )
+
+
+def test_low_gamma_demotes_grounded_to_thin_with_named_composition():
+    vec = _grounded_vec()
+    v = verdict("gizmo captain", vec, gamma=0.5, gamma_floor=0.885)
+    assert v["band"] == "thin"
+    assert v["demoted_by"] == "composition"
+    assert v["gamma"] == 0.5
+
+
+def test_high_gamma_stays_grounded_no_demotion_key():
+    vec = _grounded_vec()
+    v = verdict("gizmo captain", vec, gamma=0.95, gamma_floor=0.885)
+    assert v["band"] == "grounded"
+    assert "demoted_by" not in v
+    assert "gamma" not in v
+
+
+def test_gamma_none_is_byte_identical_to_pre_fusion_behavior():
+    vec = _grounded_vec()
+    v_no_gamma = verdict("gizmo captain", vec)
+    v_explicit_none = verdict("gizmo captain", vec, gamma=None)
+    assert v_no_gamma == v_explicit_none
+    assert v_no_gamma["band"] == "grounded"
+    assert "demoted_by" not in v_no_gamma
+    assert "gamma" not in v_no_gamma
+    assert set(v_no_gamma.keys()) == {
+        "band", "max_evidence", "mean_evidence", "evidence",
+        "unknown_pairs", "recent_support",
+    }
+
+
+def test_non_grounded_bands_are_never_demoted_regardless_of_gamma():
+    # thin band: some evidence, not enough to reach 'grounded'.
+    thin_vec = StubVectorizer(
+        doc_count=100,
+        token_doc_counts={"gizmo": 10, "captain": 10},
+        pair_counts={"gizmo|captain": 1},
+    )
+    v_thin = verdict("gizmo captain", thin_vec, gamma=0.1, gamma_floor=0.885)
+    assert v_thin["band"] == "thin"
+    assert "demoted_by" not in v_thin
+
+    # ungrounded band: no evidence at all.
+    ungrounded_vec = StubVectorizer(
+        doc_count=100,
+        token_doc_counts={"phoenix": 1, "olorina": 1},
+        pair_counts={},
+    )
+    v_ungrounded = verdict("phoenix olorina", ungrounded_vec, gamma=0.1, gamma_floor=0.885)
+    assert v_ungrounded["band"] == "ungrounded"
+    assert "demoted_by" not in v_ungrounded
+
+    # thin-recent band: lifted by recency, still not 'grounded'.
+    v_thin_recent = verdict(
+        "phoenix olorina", ungrounded_vec,
+        recent_texts=["phoenix and olorina wrote to each other today"],
+        gamma=0.1, gamma_floor=0.885,
+    )
+    assert v_thin_recent["band"] == "thin-recent"
+    assert "demoted_by" not in v_thin_recent
