@@ -10,6 +10,30 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **One bad character no longer kills an entire fish.** A lone surrogate in a
+  crystal's text — the residue of ingesting a mojibake'd document — made
+  `_content_hash` raise `UnicodeEncodeError`, and `_load_state` runs that hash
+  over *every* crystal when `dedupe=True`. The result was total: the fish did
+  not skip the bad crystal, it failed to load at all, and every caller got a
+  stack trace instead of a fish. Found on six live fish that had been silently
+  failing their nightly feed for two nights.
+
+  The write/read asymmetry underneath it: `json.dumps` escapes a lone surrogate
+  happily, so the crystal log on disk is valid UTF-8 while the text it decodes
+  to cannot be encoded back. Opening the file with `errors="replace"` cannot
+  catch this — the bad character never existed as bad *bytes*.
+
+  Closed at three points: text is scrubbed on the way into a crystal
+  (`crystallize_text`), scrubbed again when legacy crystals are read back
+  (`_load_state`), so nothing downstream — hash, soul file, taste, export — can
+  meet a string it cannot encode; and `_content_hash` now encodes with
+  `surrogatepass` so it is total. Hashes for all previously-hashable text are
+  byte-for-byte unchanged, so no existing dedup set is invalidated.
+
 ## [2.2.0] - 2026-08-12
 
 ### Added

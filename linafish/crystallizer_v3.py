@@ -359,8 +359,45 @@ def _content_hash(text: str) -> str:
     layer for the normalization fix. The engine layer stays
     byte-exact. ``tests/test_dedup_helpers.py::TestStorageLayerImportGuard``
     asserts this divergence as a regression guard.
+
+    ``surrogatepass`` is what makes this function TOTAL. A plain
+    ``.encode("utf-8")`` raises on a lone surrogate, and a lone
+    surrogate can be sitting in an already-written crystal log: JSON
+    escapes it happily on the way out (``\\udc81``) and hands it back
+    as a real surrogate on the way in, so the file is valid UTF-8
+    while its decoded text is not encodable. Every affected fish then
+    died at ``_load_state`` — not on the bad crystal, on the WHOLE
+    FISH — the moment dedupe was on. ``surrogatepass`` is byte-for-byte
+    identical for every string that could already be hashed, so no
+    existing hash moves; it only replaces a crash with an answer.
+    New text can no longer carry surrogates at all (see
+    ``_scrub_unencodable`` at the crystallize boundary) — this arm is
+    the repair path for logs written before that gate existed.
     """
-    return hashlib.md5(text.encode("utf-8")).hexdigest()
+    return hashlib.md5(text.encode("utf-8", "surrogatepass")).hexdigest()
+
+
+def _scrub_unencodable(text: str) -> str:
+    """Return ``text`` with any non-UTF-8-encodable code point replaced.
+
+    The write/read asymmetry this closes: ``json.dumps`` will happily
+    persist a lone surrogate as an escape, and nothing downstream can
+    encode it back. A value that cannot round-trip must never enter
+    storage, so the scrub happens at the crystallize boundary — the
+    single door text goes through to become a Crystal — rather than
+    at each of the dozen readers.
+
+    The happy path is an encode attempt and an identity return: for
+    every well-formed string this costs one encode and changes
+    nothing. Only text that is *already* broken is rewritten, and it
+    is rewritten rather than rejected because a mojibake'd crystal is
+    still worth keeping — losing the deposit would be the larger harm.
+    """
+    try:
+        text.encode("utf-8")
+        return text
+    except UnicodeEncodeError:
+        return text.encode("utf-8", "replace").decode("utf-8")
 
 
 def _release_lock(lock_path: str) -> None:
@@ -1332,7 +1369,14 @@ class UniversalFish:
                         c = Crystal(
                             id=d.get('id', ''),
                             ts=d.get('ts', ''),
-                            text=d.get('text', ''),
+                            # Scrubbed on the way IN, not at each writer.
+                            # ``errors='replace'`` above cannot help here:
+                            # a lone surrogate arrives as a JSON escape in
+                            # a file that is itself valid UTF-8. Repairing
+                            # it once at the door means no downstream
+                            # consumer — hash, soul file, taste, export —
+                            # can ever meet a string it cannot encode.
+                            text=_scrub_unencodable(d.get('text', '')),
                             source=d.get('source', ''),
                             resonance=d.get('resonance', []),
                             keywords=d.get('keywords', []),
@@ -1493,6 +1537,12 @@ class UniversalFish:
         """
         if not text or len(text.strip()) < 10:
             return None
+
+        # Nothing that cannot round-trip through utf-8 is allowed into
+        # storage. This is the one door text walks through to become a
+        # Crystal, so it is the one place the gate belongs — before the
+        # hash, before the pending queue, before persistence.
+        text = _scrub_unencodable(text)
 
         # Dedup: compute the hash once, check the seen set, remember
         # the value for the success-path add below. The add is
