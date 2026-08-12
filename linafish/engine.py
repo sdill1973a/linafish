@@ -3020,7 +3020,14 @@ class FishEngine:
                     break
                 if c.text:
                     recent_texts.append(c.text)
-            top_gamma = scores[0][0] if scores else None
+            # No match is gamma 0.0, NOT gamma-unknown. Passing None here made
+            # the composition floor skip its own guard (`gamma is not None`), so
+            # a query that resonated with NOTHING could still be called
+            # `grounded` on pair evidence alone — the organ failing in exactly
+            # the direction it was built to fail. Zero resonance is the
+            # strongest evidence against whole-query composition, not the
+            # absence of evidence. (Found in the 2.2.0 pre-ship review.)
+            top_gamma = scores[0][0] if scores else 0.0
             result["grounding"] = grounding.verdict(
                 text, self.fish.vectorizer, recent_texts, gamma=top_gamma)
         except Exception as e:

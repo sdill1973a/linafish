@@ -269,3 +269,92 @@ def test_non_grounded_bands_are_never_demoted_regardless_of_gamma():
     )
     assert v_thin_recent["band"] == "thin-recent"
     assert "demoted_by" not in v_thin_recent
+
+
+
+# --- zero resonance can never be grounded (2.2.0 pre-ship review) -----------
+#
+# This organ failed in the one direction it exists to fail. engine.taste_dict
+# passed gamma=None when no crystal cleared the similarity cut; verdict() guards
+# its composition floor with `gamma is not None`, so the floor was OFF for
+# exactly those queries and a fabrication built from real vocabulary scored
+# `grounded` on pair evidence alone. Measured on a 400-crystal fish:
+# "marisol drowned at the piezometer", match_count 0, band grounded.
+#
+# Zero resonance is not the ABSENCE of evidence about composition — it is the
+# strongest evidence against it. The exposure is a small or new fish, which is
+# every first-time user of a released package.
+
+
+def _real_vec_and_recent():
+    from linafish.crystallizer_v3 import MIVectorizer
+    docs = [
+        "the river runs past the old mill and the water is cold in spring",
+        "a piezometer measures groundwater pressure in the well field",
+        "marisol keeps the ledger for the cooperative and audits the books",
+        "the cooperative meets on thursday to review the water rights",
+        "groundwater levels fell after the dry summer of the third year",
+    ] * 6
+    v = MIVectorizer()
+    for d in docs:
+        v.feed(d)
+    if hasattr(v, "freeze"):
+        v.freeze()
+    return v, docs[-10:]
+
+
+def test_gamma_zero_is_below_the_floor_not_unknown():
+    """The mechanism: 0.0 must demote, not be read as 'gamma not supplied'."""
+    v, recent = _real_vec_and_recent()
+    q = "marisol audits the cooperative ledger"
+    assert verdict(q, v, recent, gamma=0.0)["band"] != "grounded", \
+        "gamma 0.0 means nothing resonated — that can never be grounded"
+
+
+def test_taste_dict_never_grounds_a_zero_match_query(tmp_path):
+    """End to end, on the ARTIFACT that exhibited the defect.
+
+    The reproducing corpus (400 crystals, ~41-token vocabulary, dense
+    co-occurrence) is checked in as a fixture rather than regenerated, because
+    the condition is narrow: every query token must be well attested (high pair
+    evidence -> `grounded` on evidence alone) while the query as a whole
+    resonates with nothing (match_count 0). Synthesised corpora kept landing on
+    `thin` for unrelated reasons and would have made this test pass vacuously.
+
+    The precondition is ASSERTED. If a future change stops this fixture
+    producing a zero-match query, the test fails loudly instead of proving
+    nothing — a guard that never fires is not a guard.
+    """
+    import shutil
+    from linafish.engine import FishEngine
+
+    fixture = Path(__file__).parent / "fixtures" / "zero_resonance_fish"
+    if not fixture.exists():                       # fixture ships with the repo
+        import pytest
+        pytest.skip("zero_resonance_fish fixture missing")
+    work = tmp_path / "fish"
+    shutil.copytree(fixture, work)
+    e = FishEngine(state_dir=work, name="RM")
+
+    zero_match_seen = False
+    for q in ("marisol drowned at the piezometer",
+              "the piezometer killed marisol",
+              "marisol piezometer fraud"):
+        r = e.taste_dict(q, top=5)
+        if r.get("match_count") != 0:
+            continue
+        zero_match_seen = True
+        assert (r.get("grounding") or {}).get("band") != "grounded", \
+            f"{q!r} matched nothing and was still called grounded"
+    assert zero_match_seen, (
+        "precondition not met: no query produced match_count 0, so this test "
+        "proved nothing — fix the fixture, do not delete the assert")
+
+
+def test_omitting_gamma_still_leaves_the_verdict_unchanged():
+    """Negative control: the fix must not make `grounded` unreachable, and a
+    caller that supplies no gamma at all must keep the documented contract."""
+    v, recent = _real_vec_and_recent()
+    q = "marisol audits the cooperative ledger"
+    assert verdict(q, v, recent)["band"] == verdict(q, v, recent, gamma=0.99)["band"], \
+        "omitting gamma must leave the verdict unchanged; only a low/zero gamma demotes"

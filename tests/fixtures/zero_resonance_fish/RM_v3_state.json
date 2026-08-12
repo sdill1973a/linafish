@@ -1,0 +1,18 @@
+{
+  "epoch": 1,
+  "frozen": true,
+  "vocab": [
+    "marisol",
+    "piezometer",
+    "logged",
+    "readings",
+    "station"
+  ],
+  "living_vocab": false,
+  "sealed": false,
+  "sealed_at": null,
+  "doc_count": 400,
+  "crystal_count": 400,
+  "pending_count": 0,
+  "updated": "2026-08-12T17:04:30.076560+00:00"
+}
