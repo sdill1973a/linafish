@@ -1,0 +1,8 @@
+# The sdist carries the tests, so it must carry what the tests need.
+#
+# 2026-08-12: the zero-resonance regression fixture (the 400-crystal artifact
+# that exhibited the grounded-fabrication defect) was absent from the sdist,
+# so the guard `pytest.skip`ped for anyone who ran the tests from a released
+# tarball. A guard that silently does not run is not a guard — the exact
+# failure family the fixture exists to prove we fixed.
+recursive-include tests/fixtures *

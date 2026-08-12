@@ -10,7 +10,7 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
-## [Unreleased]
+## [2.2.0] - 2026-08-12
 
 ### Added
 
@@ -30,6 +30,32 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
   rather than raising. New module `linafish/grounding.py`, 15 tests.
 
 ### Fixed
+
+- **A zero-crystal eat now says WHY, and `revert` stops lying about failure.**
+  Three defects, one family: an organ reporting a reassuring value it never
+  measured. `listen` printed `skipped — already eaten` for *every* zero-crystal
+  eat whenever dedupe was on — so a **sealed fish** logged healthy idempotent
+  dedupe lines forever while discarding 100% of the material, which is exactly
+  the shape of a scheduled feeder that looks fine and ingests nothing. Every
+  zero-add path in `eat()` now names its reason (`sealed` / `duplicate` /
+  `too_short` / `no_signal`) and the listener reports what the engine said
+  instead of inferring it. `--school` and the listener's own in-process hash set
+  were both silent on skips — the same silence one layer above and one below the
+  fix — and all three layers now speak in distinguishable words. `revert` exited
+  0 after printing `Failed:`, so scripts and `&&` chains saw success while the
+  repo sat mid-revert with unmerged paths and the next `listen` committed on top
+  of the conflict; it now exits non-zero on failure and on a declined prompt.
+
+- **A query that resonates with nothing can no longer be called `grounded`.**
+  `taste_dict` passed `gamma=None` when no crystal cleared the similarity cut,
+  and the composition floor guards itself with `gamma is not None` — so for
+  exactly those queries the floor was OFF, and a fabrication assembled from real
+  vocabulary scored `grounded` on pair evidence alone. Zero resonance is not the
+  absence of evidence about composition; it is the strongest evidence against
+  it. A large fish never reached this state (something always matches weakly),
+  so the exposure was a **small or new fish — every first-time user**. The
+  regression guard is the 400-crystal artifact that exhibited it, checked in as
+  a fixture, asserting its own precondition so it cannot pass vacuously.
 
 - **`listen --school` now gets the same commit cadence and dedupe as every
   other stream.** The school built its own engines with the library defaults,
