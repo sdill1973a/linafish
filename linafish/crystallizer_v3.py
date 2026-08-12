@@ -1241,6 +1241,8 @@ class UniversalFish:
         # (FishEngine propagates its own ``dedupe`` kwarg here).
         self.dedupe = False
         self._seen_hashes: set = set()
+        # why the last crystallize_text returned None ("duplicate" | None)
+        self._last_skip_reason: Optional[str] = None
         if state_dir is None:
             state_dir = os.path.join(os.path.expanduser("~"), ".linafish")
         self.state_dir = state_dir
@@ -1499,9 +1501,15 @@ class UniversalFish:
         # must NOT be in the seen set or the caller's retry would
         # be silently dropped as a "duplicate."
         text_hash: Optional[str] = None
+        self._last_skip_reason = None      # stale reasons are worse than none
         if self.dedupe:
             text_hash = _content_hash(text)
             if text_hash in self._seen_hashes:
+                # Record WHY this returned nothing. `None` alone forced callers
+                # to guess a reason, and the listener guessed "already eaten"
+                # for every zero-crystal eat — including sealed fish, where the
+                # honest answer is the opposite (see engine.eat's reason field).
+                self._last_skip_reason = "duplicate"
                 return None  # already seen this exact text
 
         if not self.frozen:

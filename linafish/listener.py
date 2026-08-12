@@ -91,6 +91,12 @@ class FishListener:
         if len(text) < self.min_length:
             return
         if self._is_duplicate(text):
+            # Audible here too. This is the listener's OWN in-process hash set,
+            # one layer above the engine's — and it used to swallow repeats
+            # silently, so a feeder resending the same message inside one
+            # session logged nothing at all. Same silence, one layer up.
+            self._skipped_count += 1
+            print(f"  [{source}] skipped — already eaten this session")
             return
 
         self._exchange_count += 1
@@ -107,6 +113,12 @@ class FishListener:
                 grab_str = f" [{', '.join(member_grabs)}]" if member_grabs else ""
                 print(f"  [{source}] +{central_added}c{grab_str}")
                 self._check_formation_changes()
+            else:
+                # School mode was entirely silent on a skip — reintroducing
+                # the exact silence the audible-skip change exists to end.
+                central = result.get("central", {})
+                self._report_skip(source, central.get("reason"),
+                                  central.get("total_crystals", 0), 0)
         else:
             # Single engine mode (original behavior)
             result = self.engine.eat(text, source=source)
@@ -116,13 +128,34 @@ class FishListener:
             if added > 0:
                 print(f"  [{source}] +{added}c (total: {total}c {fcount}f)")
                 self._check_formation_changes()
-            elif getattr(self.engine, "dedupe", False):
-                # A skip must be audible. Silence here is exactly the failure
-                # mode that let the duplication bug live: "nothing printed"
-                # read as "nothing to do" instead of "already had this."
-                self._skipped_count += 1
-                print(f"  [{source}] skipped — already eaten "
-                      f"(total: {total}c {fcount}f)")
+            else:
+                # A skip must be audible AND accurate. This used to print
+                # "already eaten" for EVERY zero-crystal eat whenever dedupe
+                # was on — including a SEALED fish, where the truth is the
+                # opposite: nothing was eaten and nothing ever will be. A
+                # scheduled feeder aimed at a sealed fish logged healthy
+                # idempotent lines forever while discarding 100% of the
+                # material. The engine now names its own reason; we report it.
+                self._report_skip(source, result.get("reason"), total, fcount)
+
+
+    # -------------------------------------------------------------------
+    def _report_skip(self, source, reason, total, fcount):
+        """Say what the ENGINE said, not what we assume it meant.
+
+        Every zero-crystal eat used to be reported as "already eaten" when
+        dedupe was on. Three different causes wore one sentence, and the
+        dangerous one (a sealed fish) wore the reassuring one.
+        """
+        wording = {
+            "duplicate": "skipped — already eaten",
+            "sealed": "NOT EATEN — fish is sealed (nothing will be ingested)",
+            "too_short": "skipped — below the minimum length",
+            "no_signal": "not crystallized — no signal in this text",
+        }.get(reason, f"not eaten — {reason}" if reason else "not eaten — reason not reported")
+        if reason == "duplicate":
+            self._skipped_count += 1
+        print(f"  [{source}] {wording} (total: {total}c {fcount}f)")
 
     # -------------------------------------------------------------------
     # SOURCE: MQTT

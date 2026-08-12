@@ -2048,12 +2048,14 @@ class FishEngine:
         these as None — backward compatible.
         """
         if not text or len(text.strip()) < 10:
-            return {"crystals_added": 0, "total_crystals": len(self.fish.crystals)}
+            return {"crystals_added": 0, "total_crystals": len(self.fish.crystals),
+                    "reason": "too_short"}
 
         if self.fish.sealed:
             return {"crystals_added": 0,
                     "total_crystals": len(self.fish.crystals),
-                    "sealed": True}
+                    "sealed": True,
+                    "reason": "sealed"}
 
         # Writer lock — serialize concurrent eats (ThreadingHTTPServer runs
         # /eat without a lock; the eat-latency fix makes locking cheap by
@@ -2082,7 +2084,12 @@ class FishEngine:
                                                  episode_seq=episode_seq,
                                                  episode_kind=episode_kind)
             if not crystal:
-                return {"crystals_added": 0, "total_crystals": len(self.fish.crystals)}
+                # The crystallizer knows why it declined; the caller must not
+                # guess. "duplicate" when dedupe matched, otherwise no signal.
+                return {"crystals_added": 0,
+                        "total_crystals": len(self.fish.crystals),
+                        "reason": getattr(self.fish, "_last_skip_reason", None)
+                                  or "no_signal"}
 
             self.docs_ingested += 1
             self._last_source = source

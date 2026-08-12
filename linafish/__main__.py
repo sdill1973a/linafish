@@ -801,12 +801,18 @@ def cmd_revert(args):
             confirm = "n"
         if confirm != "y":
             print("Cancelled.")
-            return
+            sys.exit(1)          # declined is not success — scripts must see it
     result = engine.revert(ref)
     if result["success"]:
         print(f"Reverted: {ref}")
     else:
-        print(f"Failed: {result['error']}")
+        # Exit non-zero. This printed and fell off the end, so every caller —
+        # scripts, hooks, a `&&` chain — saw success while the fish repo sat
+        # mid-revert with REVERT_HEAD and unmerged paths, and the next listen
+        # committed on top of the conflict and reported +1c. "Roll back the
+        # mind" is exactly the operation that must not lie about failing.
+        print(f"Failed: {result['error']}", file=sys.stderr)
+        sys.exit(1)
 
 
 def cmd_absorb(args):

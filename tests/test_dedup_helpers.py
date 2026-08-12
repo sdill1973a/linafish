@@ -813,3 +813,114 @@ class TestListenCommitsOncePerSession(unittest.TestCase):
             s = School(state_dir=tmp / "school", central_state_dir=tmp)
             self.assertTrue(s.central.git_autocommit,
                             "default School must keep per-eat commits")
+
+
+class TestSkipReasonsAreNotGuessed(unittest.TestCase):
+    """A zero-crystal eat must say WHY, and the reasons must not collide.
+
+    Found in the 2.2.0 pre-ship review. `listener.feed` printed
+    "skipped — already eaten" for EVERY zero-crystal eat whenever dedupe was
+    on, because it inferred the reason from a flag instead of asking. Three
+    different causes wore one sentence, and the dangerous one wore the
+    reassuring one: a SEALED fish reported healthy idempotent dedupe lines
+    forever while discarding 100% of the material — the exact shape of a
+    scheduled feeder that looks fine and ingests nothing.
+    """
+
+    def _engine(self, tmp, **kw):
+        from linafish.engine import FishEngine
+        return FishEngine(state_dir=tmp, name="skipr", dedupe=True, **kw)
+
+    TEXT = "The river runs past the old mill and the water is cold in the spring."
+
+    def test_sealed_fish_is_not_reported_as_a_duplicate(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as td:
+            e = self._engine(Path(td))
+            e.eat(self.TEXT)
+            e.fish.sealed = True
+            r = e.eat("An entirely different sentence about the well field survey.")
+            self.assertEqual(r.get("crystals_added"), 0)
+            self.assertEqual(r.get("reason"), "sealed",
+                             "a sealed fish must say 'sealed', never 'duplicate'")
+
+    def test_duplicate_says_duplicate(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            self._engine(tmp).eat(self.TEXT)
+            r = self._engine(tmp).eat(self.TEXT)      # new process, same text
+            self.assertEqual(r.get("crystals_added"), 0)
+            self.assertEqual(r.get("reason"), "duplicate")
+
+    def test_too_short_says_too_short(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as td:
+            r = self._engine(Path(td)).eat("tiny")
+            self.assertEqual(r.get("reason"), "too_short")
+
+    def test_listener_reports_the_engines_reason_not_its_own_guess(self):
+        """The wiring: the sealed sentence must reach stdout, not 'already eaten'."""
+        import io, tempfile
+        from contextlib import redirect_stdout
+        from pathlib import Path
+        from linafish.listener import FishListener
+        with tempfile.TemporaryDirectory() as td:
+            e = self._engine(Path(td))
+            listener = FishListener(e)
+            listener.feed(self.TEXT, source="t")
+            e.fish.sealed = True
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                listener.feed("A different sentence about the well field survey entirely.",
+                              source="t")
+            out = buf.getvalue()
+            self.assertIn("sealed", out,
+                          "a sealed fish must announce itself on the stream")
+            self.assertNotIn("already eaten", out,
+                             "a sealed fish must never be reported as a duplicate")
+
+
+class TestRevertReportsFailure(unittest.TestCase):
+    """`revert` must exit non-zero when it fails.
+
+    Found in the 2.2.0 pre-ship review. cmd_revert printed "Failed: ..." and
+    fell off the end of the function, so every caller — a script, a hook, a
+    `&&` chain — saw exit 0 while the fish repo sat mid-revert with REVERT_HEAD
+    and unmerged paths, and the next listen committed on top of the conflict
+    and reported +1c. Rolling back a mind is precisely the operation that must
+    not lie about having failed.
+    """
+
+    def _cli(self, *args, **kw):
+        import subprocess, sys, os
+        repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return subprocess.run([sys.executable, "-m", "linafish", *args],
+                              capture_output=True, text=True, timeout=180,
+                              env=dict(os.environ, PYTHONPATH=repo), cwd=repo, **kw)
+
+    def test_failed_revert_exits_nonzero(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            self._cli("listen", "stdin", "-n", "rv", "--state-dir", str(tmp),
+                      input="The river runs past the old mill and the water is cold.\n")
+            p = self._cli("revert", "definitely-not-a-real-ref", "--state-dir", str(tmp), "--yes")
+            self.assertNotEqual(p.returncode, 0,
+                                "a failed revert must not report success")
+
+    def test_successful_revert_still_exits_zero(self):
+        """Negative control — the fix must not make every revert look failed."""
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            self._cli("listen", "stdin", "-n", "rv", "--state-dir", str(tmp),
+                      input="The river runs past the old mill and the water is cold.\n")
+            p = self._cli("revert", "--state-dir", str(tmp), "--yes")
+            self.assertEqual(p.returncode, 0,
+                             f"a valid revert must still succeed: {p.stderr[-200:]}")
