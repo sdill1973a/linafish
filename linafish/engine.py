@@ -2925,12 +2925,29 @@ class FishEngine:
                     },
                     ...
                 ],
+                "grounding": {          # ok=True path only
+                    "band": str,        # grounded|thin|ungrounded|thin-recent|error
+                    "max_evidence": float,
+                    "mean_evidence": float,
+                    "evidence": [(tok, tok, count), ...],
+                    "unknown_pairs": [(tok, tok), ...],
+                    "recent_support": float,
+                    "demoted_by": str,  # "composition", only when the floor fired
+                    "gamma": float,     # only alongside demoted_by
+                },
             }
 
         ``ok=False`` with ``reason`` set covers the empty-fish, not-frozen,
         no-signal, and no-resonance cases — same five terminal paths the
         text ``taste()`` returns. Consumers (guppies, federation tooling)
         check ``ok`` before iterating ``matches``.
+
+        ``grounding.band`` means **WELL-ATTESTED, NOT TRUE** — a fabrication
+        composed from real vocabulary in real pairings is indistinguishable
+        from a real memory within these statistics (see ``grounding.py``).
+        Honor the band: ``thin`` and ``ungrounded`` ARE the answer, not a
+        weak result to write around. A failure inside the verdict yields
+        ``{"band": "error"}`` rather than raising — the taste still returns.
         """
         total = len(self.fish.crystals)
 

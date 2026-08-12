@@ -53,7 +53,11 @@ Content-Type: application/json
 ```
 
 Returns the most relevant crystals by similarity score (`top` sets how many;
-default 5). Use this when
+default 5). Add `"format": "json"` to get the structured shape, which also
+carries `grounding.band`: `grounded`, `thin`, `ungrounded`, or `thin-recent`.
+**Honor the band.** `thin` and `ungrounded` mean the fish does not hold this —
+say so plainly rather than composing a plausible answer around weak matches.
+`grounded` means well-attested, NOT true. Use this when
 you want to say something like *"you've thought about this before, here's
 the shape of it"* instead of generating from your own priors.
 

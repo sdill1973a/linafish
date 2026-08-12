@@ -8,7 +8,9 @@ Sources:
   folder:/path            — watch directory for changes
   stdin                   — pipe text in
 
-All sources feed FishEngine.eat(). Git commits after each cycle.
+All sources feed FishEngine.eat(). Crystals are durable per eat (the JSONL
+append); the git commit is a per-session rollback point taken once when the
+stream ends — including in --school mode, where every fed fish gets one.
 Formation changes printed to stdout.
 """
 

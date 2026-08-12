@@ -238,7 +238,7 @@ linafish history           # when you learned what
 linafish diff              # what changed since yesterday
 ```
 
-Every feeding is a commit. Every session is a branch. Your fish's growth history IS your autobiography, versioned.
+Every feeding is a commit — streaming (`listen`) takes one commit per session instead. Every session is a branch. Your fish's growth history IS your autobiography, versioned.
 
 ### Watch Mode (The Fish That Never Sleeps)
 

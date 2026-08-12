@@ -95,7 +95,7 @@ Result: an 8-element float vector. Deterministic. Reproducible. No model weights
 1. Build a corpus-wide co-occurrence matrix.
 2. Compute mutual information between each term and each cognitive dimension using a canonical seed grammar (8 dimensions x ~10 seed terms).
 3. The MI vectorizer learns a vocabulary specific to the corpus — personal vocabulary, not a fixed keyword list.
-4. Crystals get both an `mi_vector` (full vocabulary length) and a `resonance` vector (reduced via PCA to `d^2 - 1` dimensions).
+4. Crystals carry an `mi_vector` (full vocabulary length). `resonance` is a runtime alias for it, kept because `formations.py` indexes `resonance` directly; it is not stored.
 
 The canonical seed grammar ("the grimoire") bootstraps new corpora. As R(n) grows with more exchanges, corpus-specific terms displace the seeds. The grimoire fades by design.
 
@@ -112,7 +112,7 @@ class Crystal:
     text: str                  # source text (capped at MAX_CRYSTAL_TEXT = 32768 chars)
     source: str                # file path or label
     mi_vector: List[float]     # MI-based vector (length = vocabulary)
-    resonance: List[float]     # reduced vector (d²-1 after PCA)
+    resonance: List[float]     # runtime alias for mi_vector; not persisted
     keywords: List[str]        # top tokens by MI contribution
     couplings: List[Tuple[str, float]]  # [(crystal_id, gamma)]
     structural: bool           # long-lived (True) vs ephemeral (False)
@@ -122,6 +122,10 @@ class Crystal:
     chains: List[Tuple[str, ...]]  # thought chains, e.g. [("IC","EW")]
     modifiers: Dict[str, float]    # ^depth +scope *focus ~flex !urgent
 ```
+On disk the vector is written once, as base64 float32 under the key `miv_b32`
+(~5x smaller than a JSON float64 list). The loader still reads the legacy plain
+`mi_vector` list, so no existing fish is migrated or rewritten.
+
 
 ### Ache
 

@@ -117,7 +117,9 @@ class Crystal:
     text: str
     source: str
     mi_vector: List[float]            # MI-based vector (length = vocabulary)
-    resonance: List[float]            # reduced vector (length = d²-1 after PCA)
+    resonance: List[float]            # runtime alias for mi_vector (formations.py
+                                      # indexes it); NOT persisted — see to_dict,
+                                      # restored on load. Never was PCA-reduced.
     keywords: List[str]               # top tokens by MI contribution
     couplings: List[Tuple[str, float]] = field(default_factory=list)
     wrapping_numbers: Dict[str, int] = field(default_factory=dict)

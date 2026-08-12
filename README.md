@@ -243,7 +243,9 @@ linafish listen mqtt://host:1883/#   # Sit in a stream. Ambient cognition.
 
 ## Your Mind, Versioned
 
-Every eat is a git commit. Every session is a branch. The fish has rollback.
+Every eat is a git commit — except streaming: `listen` takes one commit when the
+stream ends, so a long feed does not write a copy of the fish per message. Every
+session is a branch. The fish has rollback.
 
 ```bash
 linafish session start           # Branch the mind. Start a session.

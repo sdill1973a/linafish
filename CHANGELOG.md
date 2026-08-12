@@ -12,7 +12,34 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ## [Unreleased]
 
+### Added
+
+- **`taste` in JSON mode now returns a graded grounding verdict.** `taste_dict`
+  (and therefore `POST /taste` with `{"format":"json"}`) carries a new
+  `grounding` key: a band — `grounded` / `thin` / `ungrounded` / `thin-recent` —
+  the named co-occurrence pairs that earned it, and the unknown pairs that
+  didn't. A `grounded` band additionally requires whole-query resonance
+  (top-match gamma >= 0.885); pair evidence alone can be register-borrowed, and
+  a query wearing known vocabulary in known pairings without resonating as a
+  whole is demoted to `thin` with `demoted_by: "composition"`.
+  **`grounded` means WELL-ATTESTED, not TRUE** — a well-composed fabrication
+  built from real vocabulary is indistinguishable from a real memory within
+  these statistics, so callers holding load-bearing claims must still
+  cross-check the source. Additive: no existing field changes, no early-return
+  path breaks, and a failure inside the verdict yields `{"band": "error"}`
+  rather than raising. New module `linafish/grounding.py`, 15 tests.
+
 ### Fixed
+
+- **`listen --school` now gets the same commit cadence and dedupe as every
+  other stream.** The school built its own engines with the library defaults,
+  so `--school` discarded the configured engine and wrote one commit per eat
+  **per member** — the exact defect the one-commit-per-session change below
+  exists to stop, multiplied by the member count, in the one ingest path that
+  had no test. `School` now takes `git_autocommit`/`dedupe` and passes them to
+  central and members; the sealing commit covers every fish the stream fed.
+  Four regression tests, through the real CLI, including a negative control
+  that a default `School` still autocommits.
 
 - **`listen` no longer re-eats byte-identical text.** 2.1.0 gave `go`
   `dedupe=True` and this changelog said re-runs stop duplicating — but
@@ -63,8 +90,10 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 - **A skipped duplicate now says so.** Previously a dedupe-skip printed
   nothing, and "nothing printed" reads as "nothing to do" rather than
-  "already had this." `listen` now prints `skipped — already eaten` per
-  occurrence and totals them in the closing summary.
+  "already had this." `listen` now prints `skipped — already eaten` when it declines text the
+  fish already holds on disk, and totals those in the closing summary. (A
+  repeat within a single running process is absorbed silently by the
+  listener's in-memory hash set.)
 
 ---
 

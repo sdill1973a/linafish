@@ -1,6 +1,6 @@
 # Testing
 
-451 tests. All passing. Run time: a few seconds.
+478 tests. All passing. Run time: a few seconds.
 
 ```bash
 pip install pytest
@@ -17,7 +17,13 @@ larger groups (run `ls tests/` for the complete list):
 Chain metadata on crystals: chain ids, ordinal proximity, parent-child links,
 and the temporal coupling bonus they enable.
 
-### Dedup Tests (`test_dedup_helpers.py`) — 27 tests
+### Grounding Tests (`test_grounding.py`) — 15 tests
+The graded verdict on `taste_dict`: informative-token selection, pair evidence
+and specificity weighting, the band edges, the recency lift, and the composition
+floor (a `grounded` band demoted to `thin` when whole-query gamma falls below the
+floor; non-grounded bands never demoted).
+
+### Dedup Tests (`test_dedup_helpers.py`) — 39 tests
 The `normalize_for_dedup` rule: how incoming text is normalized before
 content-hash deduplication decides whether the fish has already eaten it.
 
