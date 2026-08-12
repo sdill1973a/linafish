@@ -1,0 +1,4 @@
+# Only Scott writes here. One version per line, e.g. v2.0.2
+# Anchor cannot push a version tag absent from this file (.git/hooks/pre-push).
+v2.1.0
+v2.2.0
