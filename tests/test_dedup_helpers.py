@@ -712,3 +712,104 @@ class TestCompactVectorStorage(unittest.TestCase):
                                 1e-4, label)
                 self.assertEqual(c.resonance, c.mi_vector,
                                  f"{label}: resonance must be restored on load")
+
+
+class TestListenCommitsOncePerSession(unittest.TestCase):
+    """The guard 26c9919 shipped without (found in the 2.2.0 doc sweep, 2026-08-12).
+
+    That commit changed ``listen`` from one-git-commit-per-eat to one per
+    session and its message claimed "proven both ways" — but it touched only
+    ``__main__.py`` and the changelog. Nothing in the tree exercised the
+    cadence, so the behaviour that stops a fish repo re-storing its whole
+    crystals JSONL on every message was unguarded against regression.
+
+    It regressed immediately, in the path nobody tested: ``listen --school``
+    built its own engines with the library defaults, so a school stream wrote
+    a per-eat commit *per member*. These run the real CLI end to end, because
+    the defect lived in the wiring between the CLI and the engines and an
+    in-process engine test cannot see it.
+    """
+
+    def _run_listen(self, state_dir, lines, school=False):
+        import subprocess, sys, os
+        repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        cmd = [sys.executable, "-m", "linafish", "listen", "stdin",
+               "-n", "central", "--state-dir", str(state_dir)]
+        if school:
+            cmd.append("--school")
+        env = dict(os.environ, PYTHONPATH=repo)
+        return subprocess.run(cmd, input="\n".join(lines) + "\n", text=True,
+                              capture_output=True, timeout=180, env=env, cwd=repo)
+
+    def _commits(self, repo_dir):
+        import subprocess
+        out = subprocess.run(["git", "-C", str(repo_dir), "log", "--oneline"],
+                             capture_output=True, text=True).stdout.splitlines()
+        return [line.split(" ", 1)[1] if " " in line else "" for line in out]
+
+    LINES = ["alpha one about the river", "beta two about the desk",
+             "gamma three about the radio", "delta four about the wood",
+             "epsilon five about the door"]
+
+    def test_single_fish_stream_takes_exactly_one_commit(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            self._run_listen(tmp, self.LINES)
+            msgs = self._commits(tmp)
+            self.assertEqual([m for m in msgs if m.startswith("ate:")], [],
+                             "a stream must not write a commit per eat")
+            self.assertEqual(len([m for m in msgs if m.startswith("listen:")]), 1,
+                             "a stream must write exactly one sealing commit")
+
+    def test_school_stream_takes_one_commit_per_fish_not_per_eat(self):
+        import json, tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            member = tmp / "school" / "facet_a"
+            member.mkdir(parents=True)
+            (tmp / "school" / "school.json").write_text(json.dumps(
+                {"central": "central", "members": {"facet_a": {"d": 4.0}}}))
+            self._run_listen(tmp, self.LINES, school=True)
+            for repo in (tmp, member):
+                msgs = self._commits(repo)
+                self.assertEqual([m for m in msgs if m.startswith("ate:")], [],
+                                 f"{repo.name}: school stream wrote per-eat commits")
+                self.assertEqual(len([m for m in msgs if m.startswith("listen:")]), 1,
+                                 f"{repo.name}: school fish must get its sealing commit")
+
+    def test_school_engines_inherit_the_streaming_settings(self):
+        """The mechanism, not just the symptom: School must PASS the flags down."""
+        import json, tempfile
+        from pathlib import Path
+        from linafish.school import School
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            (tmp / "school").mkdir()
+            (tmp / "school" / "facet_a").mkdir()
+            (tmp / "school" / "school.json").write_text(json.dumps(
+                {"central": "central", "members": {"facet_a": {"d": 4.0}}}))
+            s = School(state_dir=tmp / "school", central_state_dir=tmp,
+                       git_autocommit=False, dedupe=True)
+            for eng in (s.central, *s.members.values()):
+                self.assertFalse(eng.git_autocommit,
+                                 "school engine ignored git_autocommit=False")
+                self.assertTrue(getattr(eng, "dedupe", False),
+                                "school engine ignored dedupe=True")
+
+    def test_default_school_still_autocommits(self):
+        """The negative control: the fix must not silently disable commits for
+        non-streaming callers, who rely on per-eat rollback points."""
+        import json, tempfile
+        from pathlib import Path
+        from linafish.school import School
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            (tmp / "school").mkdir()
+            (tmp / "school" / "school.json").write_text(json.dumps(
+                {"central": "central", "members": {}}))
+            s = School(state_dir=tmp / "school", central_state_dir=tmp)
+            self.assertTrue(s.central.git_autocommit,
+                            "default School must keep per-eat commits")

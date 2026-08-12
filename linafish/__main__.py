@@ -1764,7 +1764,12 @@ def cmd_listen(args):
         state_dir = Path(args.state_dir) if args.state_dir else None
         school_dir = (state_dir or Path.home() / ".linafish") / "school"
         if school_dir.exists() and (school_dir / "school.json").exists():
-            school = School(state_dir=school_dir, central_state_dir=state_dir)
+            # Same commit cadence and dedupe as the single-fish path. Without
+            # this the school builds its own engines with the library defaults
+            # and a stream writes one commit per eat PER MEMBER — the defect
+            # this command was rewritten to stop, multiplied by member count.
+            school = School(state_dir=school_dir, central_state_dir=state_dir,
+                            git_autocommit=False, dedupe=dedupe)
             print(f"  School mode: feeding {len(school.members)} members", file=sys.stderr)
 
     listener = FishListener(engine, school=school)
@@ -1773,11 +1778,18 @@ def cmd_listen(args):
         """The single commit this stream is allowed. Runs on every exit path
         — clean end, Ctrl-C, or error — because a rollback point that only
         exists when nothing went wrong is not a rollback point."""
-        try:
-            engine.flush(commit=False)
-            engine.flush_commit(f"listen: {reason}")
-        except Exception as exc:                       # never mask the real error
-            print(f"  (final commit failed: {exc})", file=sys.stderr)
+        targets = [engine]
+        if school is not None:
+            # Seal every fish the stream actually fed, not just the one the
+            # listener holds — in school mode `engine` ate nothing.
+            targets = [school.central, *school.members.values()]
+        for target in targets:
+            try:
+                target.flush(commit=False)
+                target.flush_commit(f"listen: {reason}")
+            except Exception as exc:                   # never mask the real error
+                print(f"  (final commit failed for "
+                      f"{getattr(target, 'name', '?')}: {exc})", file=sys.stderr)
 
     source = args.source
     if source == "stdin":

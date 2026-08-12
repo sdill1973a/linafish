@@ -50,7 +50,9 @@ class School:
 
     def __init__(self, state_dir: Optional[Path] = None,
                  manifest_path: Optional[Path] = None,
-                 central_state_dir: Optional[Path] = None):
+                 central_state_dir: Optional[Path] = None,
+                 git_autocommit: bool = True,
+                 dedupe: bool = False):
         """Load or create a school.
 
         Args:
@@ -58,6 +60,15 @@ class School:
                        Defaults to ~/.linafish/school/
             manifest_path: Path to school.json manifest. Defaults to
                           state_dir/school.json
+            git_autocommit: Passed to EVERY engine the school builds (central
+                          and members). A streaming caller must pass False and
+                          drive commits itself via flush_commit() — a school fed
+                          by `listen` otherwise writes one commit per eat PER
+                          MEMBER, which is the same defect one-commit-per-session
+                          exists to stop, multiplied by the member count.
+            dedupe: Passed to every engine. A streaming caller passes the
+                          listener's setting so `--school` gets the same
+                          re-eat protection the single-fish path gets.
             central_state_dir: Where the central fish lives. Defaults to
                               ~/.linafish/ (the standard fish location)
         """
@@ -80,6 +91,8 @@ class School:
         self.central = FishEngine(
             state_dir=self.central_state_dir,
             name=central_name,
+            git_autocommit=git_autocommit,
+            dedupe=dedupe,
         )
 
         # Member engines — the nets
@@ -94,6 +107,8 @@ class School:
                 min_gamma=config.get("min_gamma"),
                 subtract_centroid=config.get("subtract_centroid", False),
                 vocab_size=config.get("vocab_size", 200),
+                git_autocommit=git_autocommit,
+                dedupe=dedupe,
             )
 
     def save_manifest(self):
