@@ -96,17 +96,59 @@ def test_load_warns_when_the_file_says_it_is_partial(tmp_path, monkeypatch, capl
     assert len(loaded.pair_counts) == 10
 
 
-def test_the_kept_pairs_are_the_common_ones(tmp_path, monkeypatch):
-    """most_common, so what survives is the head. Pinned because 'which half
-    survives' is the whole argument for why the loss lands on ache."""
-    monkeypatch.setenv("LINAFISH_MAX_PAIR_COUNTS", "5")
+def test_the_kept_pairs_are_the_informative_ones(tmp_path, monkeypatch):
+    """The valve, flipped (#56). This test's predecessor pinned most_common —
+    'which half survives is the whole argument for why the loss lands on
+    ache' — and #56 proved that argument pointed the other way: information
+    is surprise, so frequency-selection kept precisely the pairs carrying
+    ~zero information (measured 83.4%/87.1% overlap on two boxes; the evicted
+    13-17% were the names and the specifics). What survives now is the pair
+    that individuates, not the pair that upholsters."""
+    monkeypatch.setenv("LINAFISH_MAX_PAIR_COUNTS", "1")
     c3._PAIR_TRUNCATION_WARNED.clear()
     path = tmp_path / "mi.json"
-    _vectorizer_with_pairs(20).save(str(path))
 
+    v = MIVectorizer()
+    for _ in range(150):
+        v.feed("the")               # unigram mass, no pairs (single token)
+        v.feed("of")
+    for _ in range(8):
+        v.feed("the of")            # joint 8 on huge unigrams -> BELOW chance, negative MI
+    for _ in range(2):
+        v.feed("caroline valentine")  # joint 2, both rare -> nearly all the information
+    assert set(v.pair_counts) == {("of", "the"), ("caroline", "valentine")}
+    assert v.pair_counts[("of", "the")] > v.pair_counts[("caroline", "valentine")]
+
+    v.save(str(path))
     loaded = MIVectorizer()
     loaded.load(str(path))
-    assert set(loaded.pair_counts) == {(f"a{i}", f"b{i}") for i in range(5)}
+    # frequency would keep (of, the); information keeps the names.
+    assert set(loaded.pair_counts) == {("caroline", "valentine")}
+
+
+def test_true_total_survives_a_truncated_round_trip(tmp_path, monkeypatch):
+    """#56's core claim: 'the file forgets how much it lost.' Before this
+    field, save->load->save re-based the loss on the already-truncated table,
+    so a 60% loss reported itself as 0% after one round trip. The recovered
+    total must ride the file so truncation cannot edit its own history."""
+    monkeypatch.setenv("LINAFISH_MAX_PAIR_COUNTS", "10")
+    c3._PAIR_TRUNCATION_WARNED.clear()
+    path = tmp_path / "mi.json"
+    _vectorizer_with_pairs(25).save(str(path))
+
+    hop = MIVectorizer()
+    hop.load(str(path))
+    assert hop.pair_counts_true_total == 25
+    path2 = tmp_path / "mi2.json"
+    hop.save(str(path2))                      # saving from the TRUNCATED state
+
+    data2 = json.loads(path2.read_text())
+    assert data2["pair_counts_total"] == 10   # what is in memory, honestly
+    assert data2["pair_counts_true_total"] == 25   # what was ever known
+
+    third = MIVectorizer()
+    third.load(str(path2))
+    assert third.pair_counts_true_total == 25
 
 
 def test_zero_means_unbounded(tmp_path, monkeypatch, caplog):

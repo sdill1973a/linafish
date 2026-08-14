@@ -508,6 +508,10 @@ class MIVectorizer:
         # Phase 5 — per-token recency: the doc_count value when each token
         # was last fed. Drives use-recency decay at compaction time.
         self.token_last_doc = {}
+        # Highest pair count this vectorizer has ever KNOWN itself to hold,
+        # carried across save/load so truncation cannot edit its own history
+        # (linafish#56). 0 = never measured over cap.
+        self.pair_counts_true_total = 0
         # Cached sum of token_counts.values() — load-bearing perf win.
         # mi() is called O(vocab × tokens-per-doc) times per vectorize()
         # call; without this cache the sum was being recomputed every
@@ -739,10 +743,43 @@ class MIVectorizer:
         """
         cap = _max_pair_counts()
         total_pairs = len(self.pair_counts)
-        pairs = (self.pair_counts.most_common(cap) if cap
-                 else self.pair_counts.most_common())
         if cap and total_pairs > cap:
+            # THE VALVE, flipped (linafish#56): keep the cap-sized budget by MI
+            # CONTRIBUTION, not raw frequency. Information is surprise — the
+            # pair co-occurring 805 times carries almost none; the pair
+            # occurring twice between two rare names is nearly all of it.
+            # Frequency selection retained precisely the pairs carrying ~zero
+            # information and evicted the ones carrying it (measured two boxes,
+            # two corpora, two implementations: 83.4% / 87.1% overlap — the
+            # shipped valve spent ~13-17% of its budget on noise, and the
+            # evicted pairs were the names and the specifics).
+            total_tokens = sum(self.token_counts.values()) or 1
+            # (or 1: a pair table with no unigram counts is degenerate — every
+            # contribution becomes 0.0 and selection falls through to arbitrary
+            # order rather than crashing the save.)
+
+            def _contribution(item):
+                (t1, t2), joint = item
+                p_j = joint / total_tokens
+                p1 = self.token_counts.get(t1, 0) / total_tokens
+                p2 = self.token_counts.get(t2, 0) / total_tokens
+                if p_j <= 0 or p1 <= 0 or p2 <= 0:
+                    return 0.0
+                return p_j * math.log2(p_j / (p1 * p2))
+
+            import heapq
+            pairs = heapq.nlargest(cap, self.pair_counts.items(),
+                                   key=_contribution)
             _warn_pair_truncation(str(path), len(pairs), total_pairs)
+        else:
+            pairs = self.pair_counts.most_common()
+
+        # A file must remember how much it has lost, cumulatively. Before
+        # this field, each truncated save re-based "total" on the already-
+        # truncated table, so a 97% loss reported itself as 1% after one
+        # round trip — the evidence of the loss was in the part dropped
+        # (linafish#56: "the file forgets how much it lost").
+        true_total = max(total_pairs, getattr(self, 'pair_counts_true_total', 0))
 
         data = {
             'token_counts': dict(self.token_counts.most_common()),
@@ -756,6 +793,7 @@ class MIVectorizer:
             # round trip looks identical to a complete one.
             'pair_counts_kept': len(pairs),
             'pair_counts_total': total_pairs,
+            'pair_counts_true_total': true_total,
         }
         _atomic_write_json(path, data)
 
@@ -794,18 +832,24 @@ class MIVectorizer:
         self.doc_count = data.get('doc_count', 0)
         self.token_doc_counts = Counter(data.get('token_doc_counts', {}))
         self.token_last_doc = data.get('token_last_doc', {})
+        # Carry the recovered total across the round trip so the NEXT save
+        # cannot re-base the loss on an already-truncated table (#56 box 3).
+        self.pair_counts_true_total = data.get('pair_counts_true_total',
+                                               data.get('pair_counts_total', 0)) or 0
 
-        # Say what was loaded when the file records its own incompleteness.
-        # Files written before 2026-08-01 carry no provenance and are silent
-        # here; absence of the keys is not evidence the file is whole.
+        # Say what was loaded when the file records its own incompleteness,
+        # reporting against the RECOVERED total where one is known — a fish
+        # must not report a 1% loss while sitting on a 97% one. Files written
+        # before 2026-08-01 carry no provenance and are silent here; absence
+        # of the keys is not evidence the file is whole.
         kept = data.get('pair_counts_kept')
-        total = data.get('pair_counts_total')
+        total = max(data.get('pair_counts_total') or 0,
+                    self.pair_counts_true_total) or None
         if kept is not None and total is not None and total > kept:
             logging.getLogger(__name__).warning(
-                "MIVectorizer.load: %s holds %d of %d co-occurrence pairs "
-                "(%d dropped at save). The rare tail is gone; mi() will read "
-                "those pairs as never-co-occurred. Only re-eating the corpus "
-                "restores them.",
+                "MIVectorizer.load: %s holds %d of %d known co-occurrence pairs "
+                "(%d dropped at save). The dropped pairs read as never-"
+                "co-occurred to mi(). Only re-eating the corpus restores them.",
                 path, kept, total, total - kept,
             )
         # Re-seed mutation: invalidate the cached total so the next
