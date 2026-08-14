@@ -881,6 +881,22 @@ class FishEngine:
 
         # git reports "nothing to commit" on stdout, not stderr.
         blob = f"{out}\n{err}".lower()
+
+        # A fish repo is an internal ledger; its commits must not depend on
+        # the OPERATOR having a global git identity. That dependency killed
+        # every commit in a state dir for three weeks in July (warned, but
+        # only warned) and turned the sealing-commit tests red on every CI
+        # runner from the day they were written. Self-heal locally and retry
+        # once — boxes with a real identity never reach this branch.
+        if "please tell me who you are" in blob or "committer identity" in blob:
+            self._git_run("config", "user.name", "linafish")
+            self._git_run("config", "user.email", "fish@localhost")
+            rc, out, err = self._git_run(
+                "commit", "-m", message, "--allow-empty-message",
+            )
+            if rc == 0:
+                return True
+            blob = f"{out}\n{err}".lower()
         if any(s in blob for s in (
             "nothing to commit",
             "nothing added to commit",
