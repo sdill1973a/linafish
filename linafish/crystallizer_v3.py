@@ -745,14 +745,23 @@ class MIVectorizer:
         total_pairs = len(self.pair_counts)
         if cap and total_pairs > cap:
             # THE VALVE, flipped (linafish#56): keep the cap-sized budget by MI
-            # CONTRIBUTION, not raw frequency. Information is surprise — the
-            # pair co-occurring 805 times carries almost none; the pair
-            # occurring twice between two rare names is nearly all of it.
-            # Frequency selection retained precisely the pairs carrying ~zero
-            # information and evicted the ones carrying it (measured two boxes,
-            # two corpora, two implementations: 83.4% / 87.1% overlap — the
-            # shipped valve spent ~13-17% of its budget on noise, and the
-            # evicted pairs were the names and the specifics).
+            # CONTRIBUTION, not raw frequency. Honest scope (Olorina, #56
+            # review, measured on three corpora — 83.4% / 87.1% / 86.5%
+            # frequency-overlap): on real prose the HEAD of this ranking is
+            # still stopword pairs — `is|the` ranks FIRST, because p_j * PMI
+            # rewards above-chance-frequent mass. The flip does not evict the
+            # upholstery; it changes who gets the LAST ~13-17% of the budget,
+            # and that tail is the names and the specifics — the pairs
+            # frequency selection was evicting. (A below-chance pair like a
+            # chance-rate `of|the` DOES score ~0 and drop; see the cap=3
+            # ordering test for the three-way discrimination.)
+            #
+            # Known open question (#56 Attack 3, decision owed with the
+            # 2026-08-16 review): p_j normalizes by unigram mass while
+            # standard PMI uses pair mass; the mixed normalizer adds a
+            # joint-proportional tilt (log2(T/N_pairs), ~-3.1 bits on
+            # anchor-writing) that favors exactly the stopword head. Not
+            # changed here — the measured 87.1% basis was built on this form.
             total_tokens = sum(self.token_counts.values()) or 1
             # (or 1: a pair table with no unigram counts is degenerate — every
             # contribution becomes 0.0 and selection falls through to arbitrary
