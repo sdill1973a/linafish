@@ -187,3 +187,58 @@ def test_old_files_without_provenance_load_quietly(tmp_path, caplog):
 
     assert len(loaded.pair_counts) == 1
     assert "co-occurrence pairs" not in caplog.text
+
+
+def test_ordering_not_just_direction_at_cap_three(tmp_path, monkeypatch):
+    """Olorina's Attack 1 on PR #59: a cap of 1 over two candidates tests
+    DIRECTION (picked A, not B) and can never catch a criterion that ranks
+    the top pair right and mis-ranks the tail — the only regime that matters
+    at 100k against 5.2M. This corpus makes the kept SET order-sensitive and
+    three-way discriminating (worked numbers, T=10,000 unigram mass):
+
+      pair                 joint  c1,c2      MI contribution   frequency  raw PMI
+      (of, the)              100  1000,1000  100*log2(1)=0         #1       last
+      (anchor, fish)           8    40,40    8*log2(50)  =45.2     #2       #5
+      (caroline, valentine)    3     3,3     3*log2(3333)=35.1     #3       #4
+      (qq, zz)                 2     2,2     2*log2(5000)=24.6     #4       #3
+      (x1, y1)                 1     1,1     1*log2(1e4) =13.3    tied      #1 (tied)
+      (x2, y2)                 1     1,1     1*log2(1e4) =13.3    tied      #1 (tied)
+
+    cap=3 under MI contribution  -> {anchor-fish, caroline-valentine, qq-zz}
+    cap=3 under frequency        -> {of-the, anchor-fish, caroline-valentine}
+    cap=3 under raw PMI (no p_j) -> {x1-y1, x2-y2, qq-zz}  (the hapax flood)
+
+    One expected set refutes both wrong criteria: frequency keeps the
+    chance-rate pair, raw PMI fills the budget with singletons, and only
+    the p_j-weighted contribution keeps the repeated rare names ABOVE the
+    hapaxes while still evicting (of, the)."""
+    monkeypatch.setenv("LINAFISH_MAX_PAIR_COUNTS", "3")
+    c3._PAIR_TRUNCATION_WARNED.clear()
+    path = tmp_path / "mi.json"
+
+    v = MIVectorizer()
+    v.doc_count = 10
+    for tok, n in [("of", 1000), ("the", 1000), ("anchor", 40), ("fish", 40),
+                   ("caroline", 3), ("valentine", 3), ("qq", 2), ("zz", 2),
+                   ("x1", 1), ("y1", 1), ("x2", 1), ("y2", 1),
+                   ("filler", 7906)]:   # unigram mass sums to exactly 10,000
+        v.token_counts[tok] = n
+    assert sum(v.token_counts.values()) == 10_000
+    for pair, joint in [(("of", "the"), 100), (("anchor", "fish"), 8),
+                        (("caroline", "valentine"), 3), (("qq", "zz"), 2),
+                        (("x1", "y1"), 1), (("x2", "y2"), 1)]:
+        v.pair_counts[pair] = joint
+
+    # Preconditions that make the set discriminating, asserted inline:
+    # (of, the) co-occurs at exactly chance rate (joint == c1*c2/T), so its
+    # contribution is 0 while its count dominates; the singletons out-PMI
+    # every kept pair.
+    assert v.pair_counts[("of", "the")] * 10_000 == \
+        v.token_counts["of"] * v.token_counts["the"]
+    assert max(v.pair_counts.values()) == v.pair_counts[("of", "the")]
+
+    v.save(str(path))
+    loaded = MIVectorizer()
+    loaded.load(str(path))
+    assert set(loaded.pair_counts) == {
+        ("anchor", "fish"), ("caroline", "valentine"), ("qq", "zz")}
