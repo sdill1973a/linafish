@@ -512,6 +512,13 @@ class MIVectorizer:
         # carried across save/load so truncation cannot edit its own history
         # (linafish#56). 0 = never measured over cap.
         self.pair_counts_true_total = 0
+        # The MASS twin (#59 review): total pair mass — sum(pair_counts
+        # .values()) — ever known. The PMI normalizer's correct denominator
+        # is mass, not distinct count, and truncation destroys the sum
+        # irrecoverably unless it rides the file. One integer now; without
+        # it, every over-cap save before the normalizer fix is a fish whose
+        # PMI can never be computed correctly again.
+        self.pair_mass_true_total = 0
         # Cached sum of token_counts.values() — load-bearing perf win.
         # mi() is called O(vocab × tokens-per-doc) times per vectorize()
         # call; without this cache the sum was being recomputed every
@@ -789,6 +796,10 @@ class MIVectorizer:
         # round trip — the evidence of the loss was in the part dropped
         # (linafish#56: "the file forgets how much it lost").
         true_total = max(total_pairs, getattr(self, 'pair_counts_true_total', 0))
+        # Mass carried the same way: max() so a save from a truncated state
+        # cannot re-base the denominator on the surviving table.
+        true_mass = max(sum(self.pair_counts.values()),
+                        getattr(self, 'pair_mass_true_total', 0))
 
         data = {
             'token_counts': dict(self.token_counts.most_common()),
@@ -803,6 +814,7 @@ class MIVectorizer:
             'pair_counts_kept': len(pairs),
             'pair_counts_total': total_pairs,
             'pair_counts_true_total': true_total,
+            'pair_mass_true_total': true_mass,
         }
         _atomic_write_json(path, data)
 
@@ -845,6 +857,11 @@ class MIVectorizer:
         # cannot re-base the loss on an already-truncated table (#56 box 3).
         self.pair_counts_true_total = data.get('pair_counts_true_total',
                                                data.get('pair_counts_total', 0)) or 0
+        # Mass twin, floored at the surviving mass for legacy files that
+        # never recorded it — a lower bound beats a zero.
+        self.pair_mass_true_total = max(
+            data.get('pair_mass_true_total', 0) or 0,
+            sum(self.pair_counts.values()))
 
         # Say what was loaded when the file records its own incompleteness,
         # reporting against the RECOVERED total where one is known — a fish

@@ -242,3 +242,47 @@ def test_ordering_not_just_direction_at_cap_three(tmp_path, monkeypatch):
     loaded.load(str(path))
     assert set(loaded.pair_counts) == {
         ("anchor", "fish"), ("caroline", "valentine"), ("qq", "zz")}
+
+
+def test_pair_mass_survives_a_truncated_round_trip(tmp_path, monkeypatch):
+    """#59 review's blocking ask: the PMI normalizer's denominator is total
+    pair MASS (sum of values), and truncation destroys it irrecoverably —
+    a fish saved over-cap between the valve merge and the normalizer fix
+    would be a fish whose PMI can never be computed correctly again. The
+    mass rides the file exactly like the distinct count does."""
+    monkeypatch.setenv("LINAFISH_MAX_PAIR_COUNTS", "10")
+    c3._PAIR_TRUNCATION_WARNED.clear()
+    path = tmp_path / "mi.json"
+    v = _vectorizer_with_pairs(25)
+    true_mass = sum(v.pair_counts.values())
+    v.save(str(path))
+
+    hop = MIVectorizer()
+    hop.load(str(path))
+    assert sum(hop.pair_counts.values()) < true_mass   # truncation really cut mass
+    assert hop.pair_mass_true_total == true_mass
+    path2 = tmp_path / "mi2.json"
+    hop.save(str(path2))                               # saving from the TRUNCATED state
+
+    data2 = json.loads(path2.read_text())
+    assert data2["pair_mass_true_total"] == true_mass  # what was ever known
+
+    third = MIVectorizer()
+    third.load(str(path2))
+    assert third.pair_mass_true_total == true_mass
+
+
+def test_pair_mass_floors_at_surviving_mass_for_legacy_files(tmp_path, monkeypatch):
+    """Files written before the mass field exist carry no record of it; the
+    honest floor is the surviving mass — a lower bound beats a zero, and the
+    next save must not report less mass than the table it can see."""
+    monkeypatch.delenv("LINAFISH_MAX_PAIR_COUNTS", raising=False)
+    path = tmp_path / "mi.json"
+    _vectorizer_with_pairs(5).save(str(path))
+    data = json.loads(path.read_text())
+    data.pop("pair_mass_true_total", None)             # simulate a legacy file
+    path.write_text(json.dumps(data))
+
+    legacy = MIVectorizer()
+    legacy.load(str(path))
+    assert legacy.pair_mass_true_total == sum(legacy.pair_counts.values())
