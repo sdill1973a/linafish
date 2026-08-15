@@ -81,10 +81,44 @@ class GlyphEvolutionEngine:
         self.cycle_count: int = 0
 
         # Thresholds (from Canonical Grammar pseudocode)
-        self.ache_birth_threshold: float = 0.3   # ache > this on a chain → new glyph
+        self.ache_birth_threshold: float = 0.3   # absolute FLOOR only (see gate below)
         self.merge_overlap_threshold: float = 0.8  # overlap > this → merge two glyphs
         self.prune_cycles: int = 10               # unused for this many cycles → prune
         self.min_frequency: int = 3               # chain must appear N times before birth
+
+        # ng2 P1 gate (Olorina's #32 review, 2026-08-15: "wire both").
+        # The old gate was a LOTTERY: cumulative frequency but per-cycle ache,
+        # a fresh independent draw every cycle a chain reappeared, and an
+        # absolute 0.3 bar on a 0-9+ ache scale that refused 0.01% of chains.
+        # Now: each chain is evaluated ONCE, at maturity (min_frequency),
+        # against its CUMULATIVE average ache, with a percentile bar drawn
+        # from the mature population at that moment.
+        #
+        # SEMANTICS, stated so it is not rediscovered as a bug: the bar is
+        # scale-free but NOT time-invariant — two chains maturing at
+        # different times face the corpus as it stands at their maturity.
+        # One draw whose difficulty depends on when it happens is strictly
+        # better than N independent draws; it is not a constant bar.
+        #
+        # ESCAPE HATCH (hers): a refused chain may re-plead exactly once,
+        # iff its cumulative average later crosses the strictly higher
+        # revision bar — revision costs more than birth. Without this, a
+        # chain that matures during a quiet week is never a word no matter
+        # what it becomes.
+        # Defaults measured on the joint corpus 2026-08-15 (posted to #32):
+        # p75 refused the alphabet's mass words (CR>EW, 1,478 uses, all-three
+        # attested, killed on middling AVERAGE ache) and collapsed vocab to
+        # 14; p50 preserves the attested core while still refusing half the
+        # mature population — a real gate. The percentile is an operator
+        # dial; the default is the measured one, not a guessed one.
+        self.birth_percentile: float = 50.0
+        self.revision_percentile: float = 75.0
+        # Cumulative ache mass per chain (sum; count lives in chain_frequency).
+        self.chain_ache_sum: Counter = Counter()
+        # chain_id -> bar it was refused at (evaluated-once record).
+        self.refused: Dict[str, float] = {}
+        # chain_ids that already used their single re-plead.
+        self.repleaded: Set[str] = set()
 
     def _chain_of(self, crystal) -> tuple:
         """The chain this crystal coins from.
@@ -119,6 +153,14 @@ class GlyphEvolutionEngine:
             if len(chain) >= 2:
                 cycle_chains[chain] += 1
                 self.chain_frequency[chain] += 1
+                # Cumulative ache mass. getattr, not hasattr: 'ache' is a
+                # dataclass default so hasattr is always-true dead code, and
+                # a crystal shipped WITHOUT ache loads as a measured 0.0 —
+                # absence-as-zero dilutes averages silently the day a
+                # substrate stops carrying ache. Measured negligible today
+                # (0.01%/0.07% on a 17.6K store); this line is where it
+                # would go wrong, so this is where the warning lives.
+                self.chain_ache_sum[chain] += getattr(crystal, 'ache', 0.0) or 0.0
 
             # Track individual operation usage
             for op in (crystal.top_operations if hasattr(crystal, 'top_operations') else []):
@@ -139,46 +181,83 @@ class GlyphEvolutionEngine:
         # PRUNE — remove unused evolved glyphs
         self._prune_cycle()
 
-    def _birth_cycle(self, crystals: list, cycle_chains: Counter) -> None:
-        """Generate new glyphs when ache > threshold on recurring chains.
+    def _cumulative_avg(self, chain) -> float:
+        """Cumulative average ache of a chain over its whole observed life."""
+        n = self.chain_frequency.get(chain, 0)
+        return (self.chain_ache_sum.get(chain, 0.0) / n) if n else 0.0
 
-        A chain that keeps appearing with high ache is trying to become
-        its own symbol. The fish needs a name for this pattern.
+    def _percentile_bar(self, percentile: float) -> float:
+        """The gate's bar: the given percentile of cumulative averages over
+        all MATURE chains (count >= min_frequency), floored at the absolute
+        ache_birth_threshold so a tiny corpus cannot set a degenerate bar.
+        Computed against the population as it stands NOW — see the semantics
+        note in __init__: scale-free, not time-invariant."""
+        avgs = sorted(
+            self._cumulative_avg(c)
+            for c, n in self.chain_frequency.items() if n >= self.min_frequency
+        )
+        if not avgs:
+            return self.ache_birth_threshold
+        k = (len(avgs) - 1) * percentile / 100.0
+        f = int(k)
+        c = min(f + 1, len(avgs) - 1)
+        bar = avgs[f] + (avgs[c] - avgs[f]) * (k - f)
+        return max(bar, self.ache_birth_threshold)
+
+    def _birth_cycle(self, crystals: list, cycle_chains: Counter) -> None:
+        """Generate new glyphs — evaluated ONCE at maturity, not by lottery.
+
+        A chain that keeps appearing with high ache is trying to become its
+        own symbol. Each chain gets ONE decision, at the moment it crosses
+        min_frequency, judged on its cumulative average against the mature
+        population's percentile bar. A refusal is recorded and permanent —
+        except for the single re-plead at the strictly higher revision bar
+        (see __init__). The gate says no on purpose, not by lottery.
         """
         for chain, count in self.chain_frequency.items():
             if count < self.min_frequency:
                 continue
+            if len(chain) <= 1:
+                continue
 
-            # Check if this chain already has an evolved glyph
             chain_id = ">".join(chain)
             if chain_id in self.evolved:
                 self.evolved[chain_id].usage_count += cycle_chains.get(chain, 0)
                 continue
 
-            # Check if this chain is just a bootstrap pair (not novel enough)
-            if len(chain) <= 1:
-                continue
+            avg = self._cumulative_avg(chain)
 
-            # Calculate average ache for crystals with this chain
-            chain_aches = []
-            for crystal in crystals:
-                c_chain = self._chain_of(crystal)
-                if c_chain == chain:
-                    chain_aches.append(crystal.ache if hasattr(crystal, 'ache') else 0)
+            if chain_id in self.refused:
+                # Evaluated once already. One re-plead, at the higher bar,
+                # and only once — revision costs more than birth. The plea
+                # is spent only on NEW EVIDENCE: the cumulative avg must
+                # first cross the bar it originally failed. Without this,
+                # a daily-recurring chain burns its plea the very next
+                # cycle on unchanged evidence (measured: 42/42 refused
+                # chains re-pleaded immediately on the joint corpus).
+                if chain_id in self.repleaded:
+                    continue
+                if avg <= self.refused[chain_id]:
+                    continue          # no new evidence; the plea keeps
+                self.repleaded.add(chain_id)
+                if avg < self._percentile_bar(self.revision_percentile):
+                    continue
+            else:
+                # Maturity: the one evaluation.
+                if avg < self._percentile_bar(self.birth_percentile):
+                    self.refused[chain_id] = self._percentile_bar(
+                        self.birth_percentile)
+                    continue
 
-            avg_ache = sum(chain_aches) / max(len(chain_aches), 1)
-
-            if avg_ache >= self.ache_birth_threshold:
-                # BIRTH — a new glyph is born
-                glyph = EvolvedGlyph(
-                    id=chain_id,
-                    category=chain[0],  # primary dimension
-                    source_chain=chain,
-                    usage_count=count,
-                    born_at_cycle=self.cycle_count,
-                    ache_at_birth=avg_ache,
-                )
-                self.evolved[chain_id] = glyph
+            self.refused.pop(chain_id, None)
+            self.evolved[chain_id] = EvolvedGlyph(
+                id=chain_id,
+                category=chain[0],  # primary dimension
+                source_chain=chain,
+                usage_count=count,
+                born_at_cycle=self.cycle_count,
+                ache_at_birth=avg,
+            )
 
     def _merge_cycle(self) -> None:
         """Merge evolved glyphs when overlap > 0.8.
@@ -196,9 +275,12 @@ class GlyphEvolutionEngine:
             for j in range(i + 1, len(glyphs)):
                 a, b = glyphs[i], glyphs[j]
 
-                # Overlap = shared chain elements / total chain elements
-                a_set = set(a.source_chain)
-                b_set = set(b.source_chain)
+                # Overlap over ORDERED adjacent pairs — direction is the
+                # verb, and set() erased it: ("CR","EW") vs ("EW","CR") was
+                # overlap 1.0 and an unconditional merge (#32 review, B).
+                # Reversed chains now share no bigrams and never merge.
+                a_set = set(zip(a.source_chain, a.source_chain[1:]))
+                b_set = set(zip(b.source_chain, b.source_chain[1:]))
                 if not a_set or not b_set:
                     continue
 
