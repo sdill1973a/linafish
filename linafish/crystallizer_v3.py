@@ -526,6 +526,11 @@ class MIVectorizer:
         # under revectorize). Invalidated whenever feed() mutates counts.
         # See the tuning-session root-cause finding 2026-05-23.
         self._total_tokens_cache = None
+        # Cached sum of pair_counts.values() — the FLOOR for the pair-mass
+        # denominator when the live counter was bypassed (hand-built tables
+        # in tests, direct attribute surgery). Same invalidation discipline
+        # as _total_tokens_cache.
+        self._pair_mass_cache = None
 
     def tokenize(self, text: str) -> List[str]:
         """Default tokenizer: lowercase alpha tokens.
@@ -548,8 +553,9 @@ class MIVectorizer:
             self.token_doc_counts[t] += 1
             self.token_last_doc[t] = self.doc_count
 
-        # Invalidate the cached total — token_counts has changed.
+        # Invalidate the cached totals — counts are changing.
         self._total_tokens_cache = None
+        self._pair_mass_cache = None
 
         # Update co-occurrence (within window of 10 tokens)
         window = 10
@@ -559,6 +565,12 @@ class MIVectorizer:
                 if t1 != t2:
                     pair = tuple(sorted([t1, t2]))
                     self.pair_counts[pair] += 1
+                    # Live pair-mass counter: every observation counts toward
+                    # the PMI denominator FOREVER, including observations a
+                    # later truncated save() drops from the table. Kept exact
+                    # here so mi() reads the true mass between saves, not the
+                    # save-time snapshot (#56 Attack 3 fix, 2026-08-15).
+                    self.pair_mass_true_total += 1
 
     def mi(self, t1: str, t2: str) -> float:
         """Pointwise mutual information between two tokens."""
@@ -576,7 +588,22 @@ class MIVectorizer:
         if total == 0:
             return 0.0
 
-        p_joint = joint / total
+        # #56 Attack 3 FIX (2026-08-15; decision was owed with the 08-16
+        # review, taken a day early because #59's mass field made it
+        # computable): p_joint normalizes by PAIR mass, not token mass.
+        # The old mixed normalizer read every PMI log2(P/T) bits hot
+        # (+2.18 measured on Olorina's me-fish) — a constant that changed
+        # no ranking in mi() itself but smuggled a joint-proportional
+        # frequency term back into the save()-valve criterion downstream.
+        # P = the true observation mass (live counter, survives truncation);
+        # the cached sum is the floor for hand-built tables that never fed().
+        if self._pair_mass_cache is None:
+            self._pair_mass_cache = sum(self.pair_counts.values())
+        pair_mass = max(self.pair_mass_true_total, self._pair_mass_cache)
+        if pair_mass == 0:
+            return 0.0
+
+        p_joint = joint / pair_mass
         p_t1 = self.token_counts.get(t1, 0) / total
         p_t2 = self.token_counts.get(t2, 0) / total
 
@@ -763,20 +790,27 @@ class MIVectorizer:
             # chance-rate `of|the` DOES score ~0 and drop; see the cap=3
             # ordering test for the three-way discrimination.)
             #
-            # Known open question (#56 Attack 3, decision owed with the
-            # 2026-08-16 review): p_j normalizes by unigram mass while
-            # standard PMI uses pair mass; the mixed normalizer adds a
-            # joint-proportional tilt (log2(T/N_pairs), ~-3.1 bits on
-            # anchor-writing) that favors exactly the stopword head. Not
-            # changed here — the measured 87.1% basis was built on this form.
+            # #56 Attack 3 DECIDED (2026-08-15, a day ahead of the 08-16
+            # review date, because #59's mass field made the correct form
+            # computable): p_j normalizes by PAIR mass. The old mixed
+            # normalizer (unigram-mass denominator) added a joint-
+            # proportional tilt — expand the criterion and the buggy form is
+            #   (joint/T)·PMI_true + (joint/T)·log2(P/T)
+            # i.e. the exact frequency term this valve was built to replace,
+            # re-entering through the denominator (Olorina's #59 review:
+            # ~10% of the kept budget under the old form was `(the,v)`-class
+            # pairs kept over +12-bit names). Marginals stay over token
+            # mass — they are unigram probabilities.
             total_tokens = sum(self.token_counts.values()) or 1
             # (or 1: a pair table with no unigram counts is degenerate — every
             # contribution becomes 0.0 and selection falls through to arbitrary
             # order rather than crashing the save.)
+            pair_mass = max(self.pair_mass_true_total,
+                            sum(self.pair_counts.values())) or 1
 
             def _contribution(item):
                 (t1, t2), joint = item
-                p_j = joint / total_tokens
+                p_j = joint / pair_mass
                 p1 = self.token_counts.get(t1, 0) / total_tokens
                 p2 = self.token_counts.get(t2, 0) / total_tokens
                 if p_j <= 0 or p1 <= 0 or p2 <= 0:
@@ -878,9 +912,15 @@ class MIVectorizer:
                 "co-occurred to mi(). Only re-eating the corpus restores them.",
                 path, kept, total, total - kept,
             )
-        # Re-seed mutation: invalidate the cached total so the next
-        # mi() call computes from the freshly-loaded counts.
+        # Re-seed mutation: invalidate the cached totals so the next
+        # mi() call computes from the freshly-loaded counts. BOTH caches —
+        # Olorina's #56 review probe showed max(true_total, stale_cache)
+        # picks the STALE pair-mass cache exactly when the previous corpus
+        # was larger (the rebind case): 78x inflated denominator, 6.3 bits,
+        # sign flipped. The max() floor is the mechanism that lets it
+        # through, not the guard against it.
         self._total_tokens_cache = None
+        self._pair_mass_cache = None
 
     def ache_relevance(self, text: str) -> float:
         """How much unresolved tension (prediction error) this text carries.

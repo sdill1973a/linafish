@@ -194,25 +194,31 @@ def test_ordering_not_just_direction_at_cap_three(tmp_path, monkeypatch):
     DIRECTION (picked A, not B) and can never catch a criterion that ranks
     the top pair right and mis-ranks the tail — the only regime that matters
     at 100k against 5.2M. This corpus makes the kept SET order-sensitive and
-    three-way discriminating (worked numbers, T=10,000 unigram mass):
+    three-way discriminating.
 
-      pair                 joint  c1,c2      MI contribution   frequency  raw PMI
-      (of, the)              100  1000,1000  100*log2(1)=0         #1       last
-      (anchor, fish)           8    40,40    8*log2(50)  =45.2     #2       #5
-      (caroline, valentine)    3     3,3     3*log2(3333)=35.1     #3       #4
-      (qq, zz)                 2     2,2     2*log2(5000)=24.6     #4       #3
-      (x1, y1)                 1     1,1     1*log2(1e4) =13.3    tied      #1 (tied)
-      (x2, y2)                 1     1,1     1*log2(1e4) =13.3    tied      #1 (tied)
+    REWORKED 2026-08-15 with the Attack-3 normalizer fix: p_j is joint/P
+    (pair mass), marginals stay c/T (token mass), so "chance" is now
+    joint/P == (c1/T)(c2/T). Exact-integer construction: T=10,000,
+    (of,the) joint J=101 with pad pair (w1,w2)=9984 gives P=10,100 and
+    J·T² == c_of·c_the·P exactly. Worked numbers (contribution = p_j·PMI):
 
-    cap=3 under MI contribution  -> {anchor-fish, caroline-valentine, qq-zz}
-    cap=3 under frequency        -> {of-the, anchor-fish, caroline-valentine}
-    cap=3 under raw PMI (no p_j) -> {x1-y1, x2-y2, qq-zz}  (the hapax flood)
+      pair                 joint  c1,c2      PMI      contribution  freq  raw PMI
+      (w1, w2)              9984  500,500    +8.63    8.53e+0        #1      #5
+      (of, the)              101  1000,1000   0.00    0              #2      last
+      (anchor, fish)           8    40,40    +5.63    4.46e-3        #3      #6
+      (caroline, valentine)    3     3,3    +11.69    3.47e-3        #4      #4
+      (qq, zz)                 2     2,2    +12.27    2.43e-3        #5      #3
+      (x1, y1) / (x2, y2)      1     1,1    +13.27    1.31e-3       tied     #1
+
+    cap=4 under MI contribution  -> {w1-w2, anchor-fish, caroline-valentine, qq-zz}
+    cap=4 under frequency        -> {w1-w2, of-the, anchor-fish, caroline-valentine}
+    cap=4 under raw PMI (no p_j) -> {x1-y1, x2-y2, qq-zz, caroline-valentine}
 
     One expected set refutes both wrong criteria: frequency keeps the
-    chance-rate pair, raw PMI fills the budget with singletons, and only
+    chance-rate pair, raw PMI floods the budget with singletons, and only
     the p_j-weighted contribution keeps the repeated rare names ABOVE the
     hapaxes while still evicting (of, the)."""
-    monkeypatch.setenv("LINAFISH_MAX_PAIR_COUNTS", "3")
+    monkeypatch.setenv("LINAFISH_MAX_PAIR_COUNTS", "4")
     c3._PAIR_TRUNCATION_WARNED.clear()
     path = tmp_path / "mi.json"
 
@@ -221,27 +227,32 @@ def test_ordering_not_just_direction_at_cap_three(tmp_path, monkeypatch):
     for tok, n in [("of", 1000), ("the", 1000), ("anchor", 40), ("fish", 40),
                    ("caroline", 3), ("valentine", 3), ("qq", 2), ("zz", 2),
                    ("x1", 1), ("y1", 1), ("x2", 1), ("y2", 1),
-                   ("filler", 7906)]:   # unigram mass sums to exactly 10,000
+                   ("w1", 500), ("w2", 500),
+                   ("filler", 6906)]:   # unigram mass sums to exactly 10,000
         v.token_counts[tok] = n
     assert sum(v.token_counts.values()) == 10_000
-    for pair, joint in [(("of", "the"), 100), (("anchor", "fish"), 8),
+    for pair, joint in [(("of", "the"), 101), (("anchor", "fish"), 8),
                         (("caroline", "valentine"), 3), (("qq", "zz"), 2),
-                        (("x1", "y1"), 1), (("x2", "y2"), 1)]:
+                        (("x1", "y1"), 1), (("x2", "y2"), 1),
+                        (("w1", "w2"), 9984)]:
         v.pair_counts[pair] = joint
 
     # Preconditions that make the set discriminating, asserted inline:
-    # (of, the) co-occurs at exactly chance rate (joint == c1*c2/T), so its
-    # contribution is 0 while its count dominates; the singletons out-PMI
-    # every kept pair.
-    assert v.pair_counts[("of", "the")] * 10_000 == \
-        v.token_counts["of"] * v.token_counts["the"]
-    assert max(v.pair_counts.values()) == v.pair_counts[("of", "the")]
+    # (of, the) co-occurs at exactly chance rate under the CORRECT
+    # normalizer (joint/P == (c1/T)(c2/T), cross-multiplied to stay in
+    # integers), so its contribution is 0 while its count dominates all
+    # but the pad; the singletons out-PMI every kept pair.
+    P = sum(v.pair_counts.values())
+    assert P == 10_100
+    assert v.pair_counts[("of", "the")] * 10_000 ** 2 == \
+        v.token_counts["of"] * v.token_counts["the"] * P
 
     v.save(str(path))
     loaded = MIVectorizer()
     loaded.load(str(path))
     assert set(loaded.pair_counts) == {
-        ("anchor", "fish"), ("caroline", "valentine"), ("qq", "zz")}
+        ("w1", "w2"), ("anchor", "fish"),
+        ("caroline", "valentine"), ("qq", "zz")}
 
 
 def test_pair_mass_survives_a_truncated_round_trip(tmp_path, monkeypatch):
