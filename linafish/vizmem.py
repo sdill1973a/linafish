@@ -187,6 +187,22 @@ def parse_formation(name: str) -> list[str]:
     return [d.strip().upper() for d in dims]
 
 
+class RenderUnreachable(RuntimeError):
+    """The image lane could not be reached — and it says WHICH lane.
+
+    ``sketch`` talks to two different servers: the fish it reads state from
+    (``--url``) and the renderer it draws on (``--render-url``). A single
+    except-block that blames one of them for both failures sends the reader
+    to debug a service that is running fine. This exception carries the URL
+    that actually refused, so the message can name the right organ.
+    """
+
+    def __init__(self, url: str, reason):
+        super().__init__(f"{url} ({reason})")
+        self.url = url
+        self.reason = reason
+
+
 def render_sigil(prompt: str, seed: int, render_url: str, out_dir: Path,
                  timeout: int = 600) -> Optional[Path]:
     """Render one glyph on a ComfyUI-compatible lane. Returns the saved PNG.
@@ -195,6 +211,7 @@ def render_sigil(prompt: str, seed: int, render_url: str, out_dir: Path,
     unless you pass one in. A mind with no renderer keeps a sketchpad by binding
     images it already has.
     """
+    import urllib.error
     import urllib.parse
     import urllib.request
     import time
@@ -220,7 +237,11 @@ def render_sigil(prompt: str, seed: int, render_url: str, out_dir: Path,
     req = urllib.request.Request(base + "/prompt",
                                  data=json.dumps({"prompt": graph}).encode(),
                                  headers={"Content-Type": "application/json"})
-    pid = json.load(urllib.request.urlopen(req, timeout=60))["prompt_id"]
+    try:
+        pid = json.load(urllib.request.urlopen(req, timeout=60))["prompt_id"]
+    except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
+        # Name the renderer, not whatever URL the caller happened to pass first.
+        raise RenderUnreachable(base, getattr(e, "reason", e)) from e
     deadline = time.time() + timeout
     while time.time() < deadline:
         time.sleep(2)

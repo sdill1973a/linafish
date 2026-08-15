@@ -11,6 +11,7 @@ never hide a real failure, and stay silent when there is simply nothing
 to commit.
 """
 import logging
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -101,27 +102,35 @@ def test_nothing_to_commit_is_silent_and_false(caplog):
             f"idle commit warned: {[r.getMessage() for r in caplog.records]}"
 
 
-def test_missing_identity_warns_and_returns_false(caplog):
-    """The original bug: no committer identity, every commit lost, silently."""
+def test_missing_identity_self_heals_and_commits(caplog):
+    """The original bug: no committer identity, every commit lost — for three
+    weeks, with only a warning. The warning was the wrong fix: a fish repo is
+    an internal ledger, and its commits must not depend on who runs the
+    process. The engine now sets a LOCAL identity in the fish repo and
+    retries, so the ledger survives the operator."""
     with tempfile.TemporaryDirectory() as tmp:
         state = _repo(tmp, identity=False)
         (state / "fish.md").write_text("# fish\n", encoding="utf-8")
+        engine = _engine(state)
 
         with caplog.at_level(logging.WARNING, logger="linafish.engine"):
-            assert _engine(state)._git_commit("doomed") is False
+            assert engine._git_commit("healed, not doomed") is True
 
-        assert len(caplog.records) == 1, "expected exactly one warning"
-        msg = caplog.records[0].getMessage()
-        assert "NOT being versioned" in msg
-        assert "config user.email" in msg, "warning must name the fix"
+        assert caplog.records == [], \
+            f"self-heal warned: {[r.getMessage() for r in caplog.records]}"
+        rc, out, _ = engine._git_run("log", "--format=%an <%ae>", "-1")
+        assert rc == 0 and "linafish <fish@localhost>" in out
 
 
 def test_warning_is_deduped_across_instances(caplog):
     """A persistently broken repo must warn once, not once per eat —
-    including across the short-lived engines the CLI builds in a loop."""
+    including across the short-lived engines the CLI builds in a loop.
+    (Identity failures self-heal now, so the persistent breakage here is a
+    repo whose .git is gone — nothing an engine can quietly repair.)"""
     with tempfile.TemporaryDirectory() as tmp:
-        state = _repo(tmp, identity=False)
+        state = _repo(tmp)
         (state / "fish.md").write_text("# fish\n", encoding="utf-8")
+        shutil.rmtree(state / ".git")
 
         FishEngine._git_warned.clear()
         with caplog.at_level(logging.WARNING, logger="linafish.engine"):
