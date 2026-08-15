@@ -632,10 +632,6 @@ class TestListenDoesNotDuplicate(unittest.TestCase):
                                "--allow-duplicates must restore old behaviour")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestCompactVectorStorage(unittest.TestCase):
     """Regression guard for the 2026-08-09 storage change.
 
@@ -924,3 +920,7 @@ class TestRevertReportsFailure(unittest.TestCase):
             p = self._cli("revert", "--state-dir", str(tmp), "--yes")
             self.assertEqual(p.returncode, 0,
                              f"a valid revert must still succeed: {p.stderr[-200:]}")
+
+
+if __name__ == "__main__":
+    unittest.main()
