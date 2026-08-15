@@ -72,3 +72,79 @@ def test_rewrite_survives_lone_surrogates(tmp_path):
     # the log must remain parseable line-by-line after the rewrite
     for line in open(eng.fish.crystal_log_path, encoding="utf-8"):
         json.loads(line)
+
+
+def test_verify_failure_without_prior_log_names_the_missing_backup(tmp_path, monkeypatch):
+    """Review rider 1 (#57, Olorina 2026-08-15): in the no-prior-log arm there
+    is no backup, and the raise must SAY so — the unpatched message claimed
+    'backup restored' unconditionally, reassuring in the one arm where the
+    store is genuinely unprotected. A message that cannot fail."""
+    import os as _os
+    eng = _grown_engine(tmp_path)
+    log = eng.fish.crystal_log_path
+    _os.remove(log)                       # no prior log -> no backup possible
+    bak = log + ".bak-pre-rewrite"
+    if _os.path.exists(bak):
+        _os.remove(bak)
+
+    real_replace = _os.replace
+
+    def short_replace(src, dst):
+        # land the rewrite one line short — a truncated write, exactly what
+        # the verify claims to catch (Olorina's probe, taken as offered)
+        if str(src).endswith(".rewrite-tmp"):
+            lines = open(src, encoding="utf-8").readlines()
+            with open(src, "w", encoding="utf-8") as f:
+                f.writelines(lines[:-1])
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(_os, "replace", short_replace)
+
+    with pytest.raises(RuntimeError) as e:
+        eng.fish._rewrite_crystal_log()
+    msg = str(e.value)
+    assert "backup restored" not in msg, (
+        "raise must not claim a restore that never happened")
+    assert "NO BACKUP" in msg
+
+
+def test_interrupted_restore_never_leaves_a_partial_log(tmp_path, monkeypatch):
+    """Review rider 2 (#57): the recovery arm rides the same atomic discipline
+    as the write arm. An interrupted restore may lose the RESTORE (retryable —
+    the backup survives) but must never leave the log itself half-written;
+    truncate-then-write recovery is the seven-zeroed-stores pattern."""
+    import os as _os
+    import shutil as _shutil
+    eng = _grown_engine(tmp_path)
+    n = len(eng.fish.crystals)
+    log = eng.fish.crystal_log_path
+
+    real_replace = _os.replace
+
+    def short_replace(src, dst):
+        if str(src).endswith(".rewrite-tmp"):
+            lines = open(src, encoding="utf-8").readlines()
+            with open(src, "w", encoding="utf-8") as f:
+                f.writelines(lines[:-1])
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(_os, "replace", short_replace)
+
+    class Interrupted(Exception):
+        pass
+
+    def dying_copy(src, dst, *a, **k):
+        dst.write(src.read(10))           # a few bytes land, then the crash
+        raise Interrupted("interrupted mid-restore")
+
+    monkeypatch.setattr(_shutil, "copyfileobj", dying_copy)
+
+    with pytest.raises(Interrupted):
+        eng.fish._rewrite_crystal_log()
+
+    rows = sum(1 for _ in open(log, encoding="utf-8"))
+    assert rows == n - 1, (
+        "log must still be the complete short-written file — the interrupted "
+        "restore must not have half-overwritten it in place")
+    bak_rows = sum(1 for _ in open(log + ".bak-pre-rewrite", encoding="utf-8"))
+    assert bak_rows == n, "backup must survive the interrupted restore intact"

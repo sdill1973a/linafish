@@ -1610,11 +1610,15 @@ class UniversalFish:
         import json
         import shutil
         log = self.crystal_log_path
-        if not os.path.exists(log):
-            # nothing on disk yet — fall through to a plain atomic write
-            pass
-        else:
-            shutil.copyfile(log, log + ".bak-pre-rewrite")
+        bak = log + ".bak-pre-rewrite"
+        # Review rider 1 (#57, Olorina 2026-08-15): the backup is CONDITIONAL,
+        # so everything downstream that talks about it must be conditional too —
+        # a raise that says "backup restored" in the arm where no backup exists
+        # is a message that cannot fail, reassuring exactly where the store is
+        # unprotected.
+        backed_up = os.path.exists(log)
+        if backed_up:
+            shutil.copyfile(log, bak)
         tmp = log + ".rewrite-tmp"
         n = 0
         with open(tmp, 'w', encoding='utf-8') as f:
@@ -1626,14 +1630,27 @@ class UniversalFish:
                     s = json.dumps(c.to_dict(), default=str, ensure_ascii=True)
                 f.write(s + '\n')
                 n += 1
+            f.flush()
+            os.fsync(f.fileno())  # survive power loss, not just process death
         os.replace(tmp, log)
         written = sum(1 for _ in open(log, encoding='utf-8', errors='replace'))
         if written != n or n != len(self.crystals):
-            if os.path.exists(log + ".bak-pre-rewrite"):
-                shutil.copyfile(log + ".bak-pre-rewrite", log)
+            if backed_up:
+                # Review rider 2: the RECOVERY arm rides the same atomic
+                # discipline as the write arm — a truncate-then-write restore
+                # interrupted mid-copy would half-write the log, the exact
+                # failure this method exists to prevent.
+                rtmp = log + ".restore-tmp"
+                with open(bak, 'rb') as src, open(rtmp, 'wb') as dst:
+                    shutil.copyfileobj(src, dst)
+                    dst.flush()
+                    os.fsync(dst.fileno())
+                os.replace(rtmp, log)
             raise RuntimeError(
                 f"crystal log rewrite verify FAILED ({written} on disk, "
-                f"{n} written, {len(self.crystals)} in memory) — backup restored")
+                f"{n} written, {len(self.crystals)} in memory) — "
+                + ("backup restored" if backed_up else
+                   "no pre-existing log, NO BACKUP TO RESTORE"))
         return n
 
     def crystallize_batch(self, texts: List[str], source: str = "unknown",
