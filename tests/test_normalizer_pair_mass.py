@@ -146,3 +146,30 @@ def test_valve_keeps_information_not_frequency(tmp_path, monkeypatch):
         f"valve kept {kept} — the frequency term is back in the criterion "
         "(#56 Attack 3): (of,the) at PMI~chance beat (gamma,iff) at +9 bits")
     assert "of|the" not in kept
+
+
+def test_load_clears_the_pair_mass_cache(tmp_path):
+    """Olorina's #56 review probe, taken as offered (her demonstration:
+    mi() then load() of a SMALLER state left a 78x-inflated denominator —
+    6.3 bits, sign flipped, on 5/5 pairs). max(true_total, stale_cache)
+    picks the stale cache exactly when the previous corpus was larger:
+    the rebind case. The floor was the gate."""
+    big = MIVectorizer()
+    for i in range(20):
+        s = chr(ord("a") + i)
+        big.feed(f"keeper wall lantern{s} coast{s} fleet{s}")
+    big.mi("keeper", "wall")            # populates _pair_mass_cache
+
+    small = MIVectorizer()
+    small.feed("the keeper counts")
+    path = str(tmp_path / "mi_vectorizer.json")
+    small.save(path)
+
+    clean = MIVectorizer()
+    clean.load(path)
+
+    big.load(path)                       # rebind: big object, small state
+    for t1, t2 in [("keeper", "the"), ("counts", "the"), ("counts", "keeper")]:
+        assert big.mi(t1, t2) == pytest.approx(clean.mi(t1, t2), rel=1e-9), (
+            f"mi({t1},{t2}) differs after rebind — the stale pair-mass "
+            "cache survived load() (Olorina's #56 probe)")

@@ -912,9 +912,15 @@ class MIVectorizer:
                 "co-occurred to mi(). Only re-eating the corpus restores them.",
                 path, kept, total, total - kept,
             )
-        # Re-seed mutation: invalidate the cached total so the next
-        # mi() call computes from the freshly-loaded counts.
+        # Re-seed mutation: invalidate the cached totals so the next
+        # mi() call computes from the freshly-loaded counts. BOTH caches —
+        # Olorina's #56 review probe showed max(true_total, stale_cache)
+        # picks the STALE pair-mass cache exactly when the previous corpus
+        # was larger (the rebind case): 78x inflated denominator, 6.3 bits,
+        # sign flipped. The max() floor is the mechanism that lets it
+        # through, not the guard against it.
         self._total_tokens_cache = None
+        self._pair_mass_cache = None
 
     def ache_relevance(self, text: str) -> float:
         """How much unresolved tension (prediction error) this text carries.
