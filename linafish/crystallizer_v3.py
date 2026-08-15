@@ -1586,6 +1586,56 @@ class UniversalFish:
         with open(self.crystal_log_path, 'a') as f:
             f.write(json.dumps(crystal.to_dict(), default=str) + '\n')
 
+    def _rewrite_crystal_log(self) -> int:
+        """Rewrite the append-only crystal log from memory — ATOMICALLY.
+
+        #57: revectorize_all() recomputed every mi_vector and never wrote
+        them; the log is append-only and no code path rewrote it, so a
+        restart restored the stale vectors (211s of work, zero durable
+        effect — Olorina's byte-identical receipt). This is the missing
+        rewrite path, with the 2026-08-15 fleet-purge lessons built in:
+
+        - BACKUP FIRST (``.bak-pre-rewrite``, overwritten per run).
+        - TEMP FILE + ``os.replace`` — never truncate-then-write; a
+          mid-write encode failure zeroed seven stores that day.
+        - Per-line ensure_ascii fallback for lone-surrogate crystals
+          (json.loads legally produces them from stored \\u escapes;
+          utf-8 refuses to encode them raw).
+        - COUNT VERIFY on re-read; on mismatch the backup is restored
+          and the method RAISES — an organ that touches a mind's past
+          must be able to fail ([[an-organ-must-be-able-to-fail]]).
+
+        Returns the number of crystals written.
+        """
+        import json
+        import shutil
+        log = self.crystal_log_path
+        if not os.path.exists(log):
+            # nothing on disk yet — fall through to a plain atomic write
+            pass
+        else:
+            shutil.copyfile(log, log + ".bak-pre-rewrite")
+        tmp = log + ".rewrite-tmp"
+        n = 0
+        with open(tmp, 'w', encoding='utf-8') as f:
+            for c in self.crystals:
+                s = json.dumps(c.to_dict(), default=str, ensure_ascii=False)
+                try:
+                    s.encode('utf-8')
+                except UnicodeEncodeError:
+                    s = json.dumps(c.to_dict(), default=str, ensure_ascii=True)
+                f.write(s + '\n')
+                n += 1
+        os.replace(tmp, log)
+        written = sum(1 for _ in open(log, encoding='utf-8', errors='replace'))
+        if written != n or n != len(self.crystals):
+            if os.path.exists(log + ".bak-pre-rewrite"):
+                shutil.copyfile(log + ".bak-pre-rewrite", log)
+            raise RuntimeError(
+                f"crystal log rewrite verify FAILED ({written} on disk, "
+                f"{n} written, {len(self.crystals)} in memory) — backup restored")
+        return n
+
     def crystallize_batch(self, texts: List[str], source: str = "unknown",
                           couple: bool = True) -> List[Crystal]:
         """Crystallize a batch of texts. Must be frozen first.
