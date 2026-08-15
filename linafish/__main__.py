@@ -254,10 +254,19 @@ def cmd_vizmem(args):
 
     if args.action in ("mint", "sketch"):
         import urllib.error
+        from . import vizmem as _vm
         try:
             return _cmd_vizmem_render(args, state_dir)
+        except _vm.RenderUnreachable as e:
+            # The IMAGE lane refused. Named separately because this block used
+            # to blame `args.url` for both servers and tell you to pass --url —
+            # sending you to debug a fish that was answering fine.
+            print(f"vizmem {args.action}: image lane not reachable at "
+                  f"{e.url} ({e.reason}). Start it, or pass --render-url.",
+                  file=sys.stderr)
+            sys.exit(1)
         except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
-            print(f"vizmem {args.action}: render server not reachable at "
+            print(f"vizmem {args.action}: fish server not reachable at "
                   f"{args.url} ({getattr(e, 'reason', e)}). Start it, or pass "
                   f"--url.", file=sys.stderr)
             sys.exit(1)

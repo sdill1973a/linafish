@@ -359,8 +359,45 @@ def _content_hash(text: str) -> str:
     layer for the normalization fix. The engine layer stays
     byte-exact. ``tests/test_dedup_helpers.py::TestStorageLayerImportGuard``
     asserts this divergence as a regression guard.
+
+    ``surrogatepass`` is what makes this function TOTAL. A plain
+    ``.encode("utf-8")`` raises on a lone surrogate, and a lone
+    surrogate can be sitting in an already-written crystal log: JSON
+    escapes it happily on the way out (``\\udc81``) and hands it back
+    as a real surrogate on the way in, so the file is valid UTF-8
+    while its decoded text is not encodable. Every affected fish then
+    died at ``_load_state`` — not on the bad crystal, on the WHOLE
+    FISH — the moment dedupe was on. ``surrogatepass`` is byte-for-byte
+    identical for every string that could already be hashed, so no
+    existing hash moves; it only replaces a crash with an answer.
+    New text can no longer carry surrogates at all (see
+    ``_scrub_unencodable`` at the crystallize boundary) — this arm is
+    the repair path for logs written before that gate existed.
     """
-    return hashlib.md5(text.encode("utf-8")).hexdigest()
+    return hashlib.md5(text.encode("utf-8", "surrogatepass")).hexdigest()
+
+
+def _scrub_unencodable(text: str) -> str:
+    """Return ``text`` with any non-UTF-8-encodable code point replaced.
+
+    The write/read asymmetry this closes: ``json.dumps`` will happily
+    persist a lone surrogate as an escape, and nothing downstream can
+    encode it back. A value that cannot round-trip must never enter
+    storage, so the scrub happens at the crystallize boundary — the
+    single door text goes through to become a Crystal — rather than
+    at each of the dozen readers.
+
+    The happy path is an encode attempt and an identity return: for
+    every well-formed string this costs one encode and changes
+    nothing. Only text that is *already* broken is rewritten, and it
+    is rewritten rather than rejected because a mojibake'd crystal is
+    still worth keeping — losing the deposit would be the larger harm.
+    """
+    try:
+        text.encode("utf-8")
+        return text
+    except UnicodeEncodeError:
+        return text.encode("utf-8", "replace").decode("utf-8")
 
 
 def _release_lock(lock_path: str) -> None:
@@ -471,6 +508,17 @@ class MIVectorizer:
         # Phase 5 — per-token recency: the doc_count value when each token
         # was last fed. Drives use-recency decay at compaction time.
         self.token_last_doc = {}
+        # Highest pair count this vectorizer has ever KNOWN itself to hold,
+        # carried across save/load so truncation cannot edit its own history
+        # (linafish#56). 0 = never measured over cap.
+        self.pair_counts_true_total = 0
+        # The MASS twin (#59 review): total pair mass — sum(pair_counts
+        # .values()) — ever known. The PMI normalizer's correct denominator
+        # is mass, not distinct count, and truncation destroys the sum
+        # irrecoverably unless it rides the file. One integer now; without
+        # it, every over-cap save before the normalizer fix is a fish whose
+        # PMI can never be computed correctly again.
+        self.pair_mass_true_total = 0
         # Cached sum of token_counts.values() — load-bearing perf win.
         # mi() is called O(vocab × tokens-per-doc) times per vectorize()
         # call; without this cache the sum was being recomputed every
@@ -702,10 +750,56 @@ class MIVectorizer:
         """
         cap = _max_pair_counts()
         total_pairs = len(self.pair_counts)
-        pairs = (self.pair_counts.most_common(cap) if cap
-                 else self.pair_counts.most_common())
         if cap and total_pairs > cap:
+            # THE VALVE, flipped (linafish#56): keep the cap-sized budget by MI
+            # CONTRIBUTION, not raw frequency. Honest scope (Olorina, #56
+            # review, measured on three corpora — 83.4% / 87.1% / 86.5%
+            # frequency-overlap): on real prose the HEAD of this ranking is
+            # still stopword pairs — `is|the` ranks FIRST, because p_j * PMI
+            # rewards above-chance-frequent mass. The flip does not evict the
+            # upholstery; it changes who gets the LAST ~13-17% of the budget,
+            # and that tail is the names and the specifics — the pairs
+            # frequency selection was evicting. (A below-chance pair like a
+            # chance-rate `of|the` DOES score ~0 and drop; see the cap=3
+            # ordering test for the three-way discrimination.)
+            #
+            # Known open question (#56 Attack 3, decision owed with the
+            # 2026-08-16 review): p_j normalizes by unigram mass while
+            # standard PMI uses pair mass; the mixed normalizer adds a
+            # joint-proportional tilt (log2(T/N_pairs), ~-3.1 bits on
+            # anchor-writing) that favors exactly the stopword head. Not
+            # changed here — the measured 87.1% basis was built on this form.
+            total_tokens = sum(self.token_counts.values()) or 1
+            # (or 1: a pair table with no unigram counts is degenerate — every
+            # contribution becomes 0.0 and selection falls through to arbitrary
+            # order rather than crashing the save.)
+
+            def _contribution(item):
+                (t1, t2), joint = item
+                p_j = joint / total_tokens
+                p1 = self.token_counts.get(t1, 0) / total_tokens
+                p2 = self.token_counts.get(t2, 0) / total_tokens
+                if p_j <= 0 or p1 <= 0 or p2 <= 0:
+                    return 0.0
+                return p_j * math.log2(p_j / (p1 * p2))
+
+            import heapq
+            pairs = heapq.nlargest(cap, self.pair_counts.items(),
+                                   key=_contribution)
             _warn_pair_truncation(str(path), len(pairs), total_pairs)
+        else:
+            pairs = self.pair_counts.most_common()
+
+        # A file must remember how much it has lost, cumulatively. Before
+        # this field, each truncated save re-based "total" on the already-
+        # truncated table, so a 97% loss reported itself as 1% after one
+        # round trip — the evidence of the loss was in the part dropped
+        # (linafish#56: "the file forgets how much it lost").
+        true_total = max(total_pairs, getattr(self, 'pair_counts_true_total', 0))
+        # Mass carried the same way: max() so a save from a truncated state
+        # cannot re-base the denominator on the surviving table.
+        true_mass = max(sum(self.pair_counts.values()),
+                        getattr(self, 'pair_mass_true_total', 0))
 
         data = {
             'token_counts': dict(self.token_counts.most_common()),
@@ -719,6 +813,8 @@ class MIVectorizer:
             # round trip looks identical to a complete one.
             'pair_counts_kept': len(pairs),
             'pair_counts_total': total_pairs,
+            'pair_counts_true_total': true_total,
+            'pair_mass_true_total': true_mass,
         }
         _atomic_write_json(path, data)
 
@@ -757,18 +853,29 @@ class MIVectorizer:
         self.doc_count = data.get('doc_count', 0)
         self.token_doc_counts = Counter(data.get('token_doc_counts', {}))
         self.token_last_doc = data.get('token_last_doc', {})
+        # Carry the recovered total across the round trip so the NEXT save
+        # cannot re-base the loss on an already-truncated table (#56 box 3).
+        self.pair_counts_true_total = data.get('pair_counts_true_total',
+                                               data.get('pair_counts_total', 0)) or 0
+        # Mass twin, floored at the surviving mass for legacy files that
+        # never recorded it — a lower bound beats a zero.
+        self.pair_mass_true_total = max(
+            data.get('pair_mass_true_total', 0) or 0,
+            sum(self.pair_counts.values()))
 
-        # Say what was loaded when the file records its own incompleteness.
-        # Files written before 2026-08-01 carry no provenance and are silent
-        # here; absence of the keys is not evidence the file is whole.
+        # Say what was loaded when the file records its own incompleteness,
+        # reporting against the RECOVERED total where one is known — a fish
+        # must not report a 1% loss while sitting on a 97% one. Files written
+        # before 2026-08-01 carry no provenance and are silent here; absence
+        # of the keys is not evidence the file is whole.
         kept = data.get('pair_counts_kept')
-        total = data.get('pair_counts_total')
+        total = max(data.get('pair_counts_total') or 0,
+                    self.pair_counts_true_total) or None
         if kept is not None and total is not None and total > kept:
             logging.getLogger(__name__).warning(
-                "MIVectorizer.load: %s holds %d of %d co-occurrence pairs "
-                "(%d dropped at save). The rare tail is gone; mi() will read "
-                "those pairs as never-co-occurred. Only re-eating the corpus "
-                "restores them.",
+                "MIVectorizer.load: %s holds %d of %d known co-occurrence pairs "
+                "(%d dropped at save). The dropped pairs read as never-"
+                "co-occurred to mi(). Only re-eating the corpus restores them.",
                 path, kept, total, total - kept,
             )
         # Re-seed mutation: invalidate the cached total so the next
@@ -1332,7 +1439,14 @@ class UniversalFish:
                         c = Crystal(
                             id=d.get('id', ''),
                             ts=d.get('ts', ''),
-                            text=d.get('text', ''),
+                            # Scrubbed on the way IN, not at each writer.
+                            # ``errors='replace'`` above cannot help here:
+                            # a lone surrogate arrives as a JSON escape in
+                            # a file that is itself valid UTF-8. Repairing
+                            # it once at the door means no downstream
+                            # consumer — hash, soul file, taste, export —
+                            # can ever meet a string it cannot encode.
+                            text=_scrub_unencodable(d.get('text', '')),
                             source=d.get('source', ''),
                             resonance=d.get('resonance', []),
                             keywords=d.get('keywords', []),
@@ -1493,6 +1607,12 @@ class UniversalFish:
         """
         if not text or len(text.strip()) < 10:
             return None
+
+        # Nothing that cannot round-trip through utf-8 is allowed into
+        # storage. This is the one door text walks through to become a
+        # Crystal, so it is the one place the gate belongs — before the
+        # hash, before the pending queue, before persistence.
+        text = _scrub_unencodable(text)
 
         # Dedup: compute the hash once, check the seen set, remember
         # the value for the success-path add below. The add is
