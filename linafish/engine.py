@@ -2853,6 +2853,12 @@ class FishEngine:
         # Phase 5: Persist — do not autocommit regardless of engine flag;
         # revectorize is a bulk rewrite and the caller decides when to commit.
         _progress("Phase 5: persisting state")
+        # #57: the recomputed vectors live on the crystals, and the crystal
+        # log is append-only — without this rewrite the whole run has zero
+        # durable effect (restart restores stale vectors). Atomic, backed
+        # up, count-verified; raises on mismatch rather than half-writing.
+        rewritten = self.fish._rewrite_crystal_log()
+        _progress(f"Phase 5: crystal log rewritten ({rewritten} crystals)")
         self.fish._save_state()
         self._save_state(commit=False)
         _progress(f"All phases complete in {_time.monotonic() - _t0:.1f}s")
@@ -2865,6 +2871,7 @@ class FishEngine:
             "revectorized": True,
             "epoch": self.fish.epoch,
             "crystals_processed": revectored,
+            "crystals_rewritten": rewritten,
             "vocab_size": len(new_vocab),
             "vocab_size_before": len(pre_vocab),
             "d": d_val,
