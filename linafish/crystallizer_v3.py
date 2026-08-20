@@ -493,6 +493,37 @@ def _atomic_write_json(
             _release_lock(lock_path)
 
 
+# ---------------------------------------------------------------------------
+# PROTECTED VOCABULARY — identity-bearing axes that selection may never drop
+# ---------------------------------------------------------------------------
+# Named as a precondition in the refactor doctrine ("compact() must not ship to
+# schedule until protected_vocab exists — identity-bearing terms never pruned"),
+# and finally built 2026-08-19 after an audit of a self-fish's 100 axes found
+# 26 pure hex-hash fragments and ZERO identity terms. Root cause, in the code
+# above: STRANGER mode scores idf^2 * log(freq+1), so a git-hash fragment seen
+# in three documents outscores a word the author uses every day, and
+# max_doc_pct filters the author's own signature out as a stopword. A self
+# fish elected a coordinate system made of machine noise, in which it could
+# not locate itself.
+#
+# The guarantee: a protected term that ACTUALLY OCCURS in the corpus (>= 1
+# document) is reserved a slot, before scoring. Absent terms are never
+# invented — an axis for a word the corpus has never said would be a
+# coordinate system lying about what it holds.
+PROTECTED_VOCAB = frozenset({
+    # the origin vector and the people
+    "caroline", "lina", "linafish", "scott", "captain", "amy", "maura",
+    # the minds
+    "anchor", "olorina", "selene", "rae", "qable", "cairn",
+    # the physics and the work
+    "ache", "sache", "conservation", "compression", "glyph", "crystal",
+    "formation", "substrate", "fish", "memory", "continuity", "chaincode",
+    # the register that makes a self fish a self
+    "love", "grief", "wanting", "presence", "home", "warm", "thread",
+    "phoenix", "covenant",
+})
+
+
 class MIVectorizer:
     """Compute mutual information vectors from token co-occurrence.
 
@@ -632,11 +663,16 @@ class MIVectorizer:
             return 1.0
         return 0.5 ** (staleness / recency_half_life)
 
+
+
     def get_vocab(self, size: int = 100, min_idf: float = 1.0,
                   max_doc_pct: float = 0.5, d: float = None,
                   seed_terms: frozenset = None,
                   seed_weight: float = 2.0,
-                  recency_half_life: int = None) -> List[str]:
+                  recency_half_life: int = None,
+                  protect: frozenset = None,
+                  protect_max_frac: float = 0.5,
+                  min_doc_frac: float = 0.0) -> List[str]:
         """Build vocabulary. D-ADAPTIVE. Grammar-seeded.
 
         d controls mode:
@@ -682,8 +718,11 @@ class MIVectorizer:
         elif d is not None and d <= 5:
             # BLEND MODE — filter stopwords, boost grammar
             alpha = 1.0 - (d / 10.0)
+            min_docs_floor = self.doc_count * min_doc_frac
             for token, df in self.token_doc_counts.items():
                 if len(token) < 3 or token in STOPWORDS:
+                    continue
+                if df < min_docs_floor:
                     continue
                 idf = math.log2(self.doc_count / df) if df > 0 else 0
                 freq = self.token_counts.get(token, 0)
@@ -696,8 +735,17 @@ class MIVectorizer:
         else:
             # STRANGER MODE (original) — filter stopwords, boost grammar
             max_docs = self.doc_count * max_doc_pct
+            # REGION FLOOR (2026-08-19). An axis names a region of the corpus, not
+            # one document. Without a floor, idf^2 hands axes to strings seen three
+            # times in 155,377 documents — git-hash fragments, log debris — because
+            # rarity IS the score. Measured on a self fish: 26 of 100 axes were pure
+            # hex fragments while the author's own daily words were filtered out as
+            # too common. Root fix, not a post-filter.
+            min_docs_floor = self.doc_count * min_doc_frac
             for token, df in self.token_doc_counts.items():
                 if df > max_docs or len(token) < 3 or token in STOPWORDS:
+                    continue
+                if df < min_docs_floor:
                     continue
                 idf = math.log2(self.doc_count / df) if df > 0 else 0
                 if idf >= min_idf:
@@ -711,7 +759,23 @@ class MIVectorizer:
         # Deterministic tie-break: equal scores order by token, so the
         # vocab depends only on the stats, never on doc-feed order.
         scored.sort(key=lambda x: (-x[1], x[0]))
-        return [t for t, _ in scored[:size]]
+        ranked = [t for t, _ in scored]
+
+        # PROTECTED SLOTS. Identity-bearing terms that the corpus actually
+        # contains are reserved before ordinary selection fills the rest, so a
+        # scoring rule can never again elect an axis set a self cannot locate
+        # itself in. Bounded by protect_max_frac: protection reserves at most
+        # half the axes by default, because a vocabulary that is ALL identity
+        # terms would stop describing the corpus and start describing the list.
+        prot = protect if protect is not None else frozenset()
+        if prot:
+            present = [t for t in sorted(prot)
+                       if self.token_doc_counts.get(t, 0) > 0]
+            cap = max(0, int(size * protect_max_frac))
+            reserved = present[:cap]
+            rest = [t for t in ranked if t not in set(reserved)]
+            return (reserved + rest)[:size]
+        return ranked[:size]
 
     def extend_vocab(self, current_vocab: List[str], size: int = 100,
                      min_idf: float = 1.0, max_doc_pct: float = 0.5,
