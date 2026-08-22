@@ -167,6 +167,14 @@ class Crystal:
     episode_id: Optional[str] = None
     episode_seq: Optional[int] = None
     episode_kind: Optional[str] = None
+    # Mind provenance (2026-08-22, CAIRN's finding: 0 of 113,065 crystals
+    # carried a mind tag while fish_sync filters BY one). The mind that made
+    # the deposit, as a REAL field — the old convention encoded it as a
+    # "mind:" prefix on source, which double-stamped on redeposit and made
+    # the read-path decode fabricate minds out of "mqtt:"/"stdin" sources.
+    # None on every crystal predating the field — backward compatible; read
+    # paths fall back to the legacy prefix decode, unchanged.
+    source_mind: Optional[str] = None
     # Origin provenance (v1.2 seed #6, "crystal zero"). Default False —
     # backward compatible for every crystal that predates this field.
     # True only on the one origin/"crystal zero" record a fish may carry
@@ -193,6 +201,8 @@ class Crystal:
         """
         d = asdict(self)
         d.pop("resonance", None)
+        if d.get("source_mind") is None:
+            d.pop("source_mind", None)  # legacy-shaped record when absent
         vec = d.pop("mi_vector", None)
         if vec:
             d["miv_b32"] = _pack_vec(vec)
@@ -1271,7 +1281,8 @@ def crystallize(text: str, vectorizer: MIVectorizer,
                 chain_prev_hash: Optional[str] = None,
                 episode_id: Optional[str] = None,
                 episode_seq: Optional[int] = None,
-                episode_kind: Optional[str] = None) -> Crystal:
+                episode_kind: Optional[str] = None,
+                source_mind: Optional[str] = None) -> Crystal:
     """Create a crystal from text using MI × ache vectorization + cognitive parse.
 
     This is the v3 replacement for v1's keyword-based crystallize().
@@ -1371,6 +1382,7 @@ def crystallize(text: str, vectorizer: MIVectorizer,
         episode_id=episode_id,
         episode_seq=episode_seq,
         episode_kind=episode_kind,
+        source_mind=source_mind,
     )
 
 
@@ -1574,6 +1586,7 @@ class UniversalFish:
                             episode_id=d.get('episode_id'),
                             episode_seq=d.get('episode_seq'),
                             episode_kind=d.get('episode_kind'),
+                            source_mind=d.get('source_mind'),
                             protected=d.get('protected', False) or False,
                         )
                         # resonance is a runtime alias for mi_vector (six
@@ -1686,7 +1699,8 @@ class UniversalFish:
                          chain_prev_hash: Optional[str] = None,
                          episode_id: Optional[str] = None,
                          episode_seq: Optional[int] = None,
-                         episode_kind: Optional[str] = None) -> Optional[Crystal]:
+                         episode_kind: Optional[str] = None,
+                         source_mind: Optional[str] = None) -> Optional[Crystal]:
         """Crystallize a single text against frozen statistics.
 
         If not frozen, queues to pending instead.
@@ -1769,7 +1783,7 @@ class UniversalFish:
                              chain_created_at=chain_created_at,
                              chain_prev_hash=chain_prev_hash,
                              episode_id=episode_id, episode_seq=episode_seq,
-                             episode_kind=episode_kind)
+                             episode_kind=episode_kind, source_mind=source_mind)
         crystal.resonance = crystal.mi_vector  # formation compat
 
         # v0.4: Metabolic digestion — enrich the crystal

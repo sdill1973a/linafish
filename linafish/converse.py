@@ -118,6 +118,10 @@ class ConverseHandler(BaseHTTPRequestHandler):
         elif parsed.path == "/minds":
             minds = set()
             for c in self.engine.crystals:
+                sm = getattr(c, "source_mind", None)
+                if sm:
+                    minds.add(sm)
+                    continue
                 src = c.source or ""
                 if ":" in src:
                     minds.add(src.split(":")[0])
@@ -185,7 +189,7 @@ class ConverseHandler(BaseHTTPRequestHandler):
                 source_mind = c.get("source_mind", c.get("from", "unknown"))
                 source = c.get("source", "converse")
                 if text and len(text.strip()) > 10:
-                    self.engine.eat(text, source=f"{source_mind}:{source}")
+                    self.engine.eat(text, source=source, source_mind=source_mind)
                     eaten += 1
             self._respond(200, json.dumps({
                 "accepted": eaten,
@@ -200,8 +204,12 @@ class ConverseHandler(BaseHTTPRequestHandler):
             if not text:
                 self._respond(400, json.dumps({"error": "missing text"}), "application/json")
                 return
+            # source_mind is a REAL field now (2026-08-22) — the old
+            # f"{mind}:{source}" prefix double-stamped ("anchor:anchor:…")
+            # and poisoned the legacy read-path decode. Source stays as the
+            # caller sent it.
             result = self.engine.eat(
-                text, source=f"{source_mind}:{source}",
+                text, source=source, source_mind=source_mind,
                 chain_id=body.get("chain_id"),
                 chain_seq=body.get("chain_seq"),
                 chain_created_at=body.get("chain_created_at"),
@@ -434,7 +442,8 @@ class ConverseHandler(BaseHTTPRequestHandler):
             # Filter by mind
             if mind:
                 src = c.source or ""
-                crystal_mind = src.split(":")[0] if ":" in src else self.mind_name
+                crystal_mind = getattr(c, "source_mind", None) or (
+                    src.split(":")[0] if ":" in src else self.mind_name)
                 if crystal_mind != mind:
                     continue
 
@@ -442,7 +451,8 @@ class ConverseHandler(BaseHTTPRequestHandler):
                 "id": c.id,
                 "text": c.text,
                 "source": c.source,
-                "source_mind": (c.source or "").split(":")[0] if ":" in (c.source or "") else self.mind_name,
+                "source_mind": getattr(c, "source_mind", None) or (
+                    (c.source or "").split(":")[0] if ":" in (c.source or "") else self.mind_name),
                 "ts": c.ts,
                 "keywords": c.keywords[:5] if c.keywords else [],
             })

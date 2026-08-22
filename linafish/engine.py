@@ -2048,7 +2048,8 @@ class FishEngine:
             chain_prev_hash: Optional[str] = None,
             episode_id: Optional[str] = None,
             episode_seq: Optional[int] = None,
-            episode_kind: Optional[str] = None) -> dict:
+            episode_kind: Optional[str] = None,
+            source_mind: Optional[str] = None) -> dict:
         """Feed text to the fish. Two-phase: learn then crystallize.
 
         If this is the first eat and assessment is available, runs
@@ -2092,6 +2093,7 @@ class FishEngine:
 
             prev_count = len(self.fish.crystals)
             crystal = self.fish.crystallize_text(text, source=source,
+                                                 source_mind=source_mind,
                                                  chain_id=chain_id,
                                                  chain_seq=chain_seq,
                                                  chain_created_at=chain_created_at,
