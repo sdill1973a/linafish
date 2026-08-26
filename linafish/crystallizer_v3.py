@@ -1793,7 +1793,14 @@ class UniversalFish:
             metabolic = self.metabolic_engine.digest(moment)
             # Transfer metabolic data onto the v3 crystal
             crystal.cognitive_vector = metabolic.dimension_vector
-            crystal.chains = [(d,) for d in metabolic.chain] if metabolic.chain else crystal.chains
+            # ONE chain, not one-per-dimension. metabolic.chain is the FIRING ORDER
+            # (moment.py:83) — the grammar. `[(d,) for d in ...]` stored it as N
+            # one-element chains, and glyph_evolution._birth_cycle skips len<=1, so
+            # ZERO glyphs were ever coined: 79,945 stored chains, 100% length 1,
+            # 0 births from 59,945, and _merge_cycle's bigram test never once fired.
+            # The order survived in the list (395/400 rejoin exactly); the GROUPING
+            # did not, and nothing downstream knew to rejoin it. 2026-08-26.
+            crystal.chains = [tuple(metabolic.chain)] if metabolic.chain else crystal.chains
             crystal.modifiers = {
                 r.pathway: r.activation
                 for r in metabolic.residues.values() if r.activation > 0.1
