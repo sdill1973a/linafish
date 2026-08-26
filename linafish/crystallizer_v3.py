@@ -1526,6 +1526,16 @@ class UniversalFish:
                 self.living_vocab = state.get('living_vocab', False)
                 self.sealed = state.get('sealed', False)
                 self.sealed_at = state.get('sealed_at', None)
+                # Restore the private language. Best-effort by contract: the engine's
+                # load_state skips a bad row rather than raising, because a corrupt
+                # vocabulary must not take the fish down — same discipline as the
+                # rest of this loader.
+                if getattr(self, 'glyph_evolution', None):
+                    try:
+                        self.glyph_evolution.load_state(state.get('glyph_evolution'))
+                    except Exception as exc:      # never fatal
+                        logging.getLogger(__name__).warning(
+                            'UniversalFish._load_state: glyph_evolution not restored (%s)', exc)
             elif state is not None:
                 logging.getLogger(__name__).warning(
                     "UniversalFish._load_state: %s did not contain a JSON object; using defaults",
@@ -1635,6 +1645,11 @@ class UniversalFish:
                 'doc_count': self.vectorizer.doc_count,
                 'crystal_count': len(self.crystals),
                 'pending_count': len(self.pending),
+                # The private language, so it survives a restart. Before this the
+                # engine was rebuilt fresh every construction and nothing saved it,
+                # so an evolved vocabulary died with the process. 2026-08-26.
+                'glyph_evolution': (self.glyph_evolution.to_state()
+                                    if getattr(self, 'glyph_evolution', None) else None),
                 'updated': datetime.now(timezone.utc).isoformat(),
             },
             indent=2,
