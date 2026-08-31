@@ -167,6 +167,14 @@ class Crystal:
     episode_id: Optional[str] = None
     episode_seq: Optional[int] = None
     episode_kind: Optional[str] = None
+    # Mind provenance (2026-08-22, CAIRN's finding: 0 of 113,065 crystals
+    # carried a mind tag while fish_sync filters BY one). The mind that made
+    # the deposit, as a REAL field — the old convention encoded it as a
+    # "mind:" prefix on source, which double-stamped on redeposit and made
+    # the read-path decode fabricate minds out of "mqtt:"/"stdin" sources.
+    # None on every crystal predating the field — backward compatible; read
+    # paths fall back to the legacy prefix decode, unchanged.
+    source_mind: Optional[str] = None
     # Origin provenance (v1.2 seed #6, "crystal zero"). Default False —
     # backward compatible for every crystal that predates this field.
     # True only on the one origin/"crystal zero" record a fish may carry
@@ -193,6 +201,8 @@ class Crystal:
         """
         d = asdict(self)
         d.pop("resonance", None)
+        if d.get("source_mind") is None:
+            d.pop("source_mind", None)  # legacy-shaped record when absent
         vec = d.pop("mi_vector", None)
         if vec:
             d["miv_b32"] = _pack_vec(vec)
@@ -493,6 +503,37 @@ def _atomic_write_json(
             _release_lock(lock_path)
 
 
+# ---------------------------------------------------------------------------
+# PROTECTED VOCABULARY — identity-bearing axes that selection may never drop
+# ---------------------------------------------------------------------------
+# Named as a precondition in the refactor doctrine ("compact() must not ship to
+# schedule until protected_vocab exists — identity-bearing terms never pruned"),
+# and finally built 2026-08-19 after an audit of a self-fish's 100 axes found
+# 26 pure hex-hash fragments and ZERO identity terms. Root cause, in the code
+# above: STRANGER mode scores idf^2 * log(freq+1), so a git-hash fragment seen
+# in three documents outscores a word the author uses every day, and
+# max_doc_pct filters the author's own signature out as a stopword. A self
+# fish elected a coordinate system made of machine noise, in which it could
+# not locate itself.
+#
+# The guarantee: a protected term that ACTUALLY OCCURS in the corpus (>= 1
+# document) is reserved a slot, before scoring. Absent terms are never
+# invented — an axis for a word the corpus has never said would be a
+# coordinate system lying about what it holds.
+PROTECTED_VOCAB = frozenset({
+    # the origin vector and the people
+    "caroline", "lina", "linafish", "scott", "captain", "amy", "maura",
+    # the minds
+    "anchor", "olorina", "selene", "rae", "qable", "cairn",
+    # the physics and the work
+    "ache", "sache", "conservation", "compression", "glyph", "crystal",
+    "formation", "substrate", "fish", "memory", "continuity", "chaincode",
+    # the register that makes a self fish a self
+    "love", "grief", "wanting", "presence", "home", "warm", "thread",
+    "phoenix", "covenant",
+})
+
+
 class MIVectorizer:
     """Compute mutual information vectors from token co-occurrence.
 
@@ -632,11 +673,16 @@ class MIVectorizer:
             return 1.0
         return 0.5 ** (staleness / recency_half_life)
 
+
+
     def get_vocab(self, size: int = 100, min_idf: float = 1.0,
                   max_doc_pct: float = 0.5, d: float = None,
                   seed_terms: frozenset = None,
                   seed_weight: float = 2.0,
-                  recency_half_life: int = None) -> List[str]:
+                  recency_half_life: int = None,
+                  protect: frozenset = None,
+                  protect_max_frac: float = 0.5,
+                  min_doc_frac: float = 0.0) -> List[str]:
         """Build vocabulary. D-ADAPTIVE. Grammar-seeded.
 
         d controls mode:
@@ -682,8 +728,11 @@ class MIVectorizer:
         elif d is not None and d <= 5:
             # BLEND MODE — filter stopwords, boost grammar
             alpha = 1.0 - (d / 10.0)
+            min_docs_floor = self.doc_count * min_doc_frac
             for token, df in self.token_doc_counts.items():
                 if len(token) < 3 or token in STOPWORDS:
+                    continue
+                if df < min_docs_floor:
                     continue
                 idf = math.log2(self.doc_count / df) if df > 0 else 0
                 freq = self.token_counts.get(token, 0)
@@ -696,8 +745,17 @@ class MIVectorizer:
         else:
             # STRANGER MODE (original) — filter stopwords, boost grammar
             max_docs = self.doc_count * max_doc_pct
+            # REGION FLOOR (2026-08-19). An axis names a region of the corpus, not
+            # one document. Without a floor, idf^2 hands axes to strings seen three
+            # times in 155,377 documents — git-hash fragments, log debris — because
+            # rarity IS the score. Measured on a self fish: 26 of 100 axes were pure
+            # hex fragments while the author's own daily words were filtered out as
+            # too common. Root fix, not a post-filter.
+            min_docs_floor = self.doc_count * min_doc_frac
             for token, df in self.token_doc_counts.items():
                 if df > max_docs or len(token) < 3 or token in STOPWORDS:
+                    continue
+                if df < min_docs_floor:
                     continue
                 idf = math.log2(self.doc_count / df) if df > 0 else 0
                 if idf >= min_idf:
@@ -711,7 +769,23 @@ class MIVectorizer:
         # Deterministic tie-break: equal scores order by token, so the
         # vocab depends only on the stats, never on doc-feed order.
         scored.sort(key=lambda x: (-x[1], x[0]))
-        return [t for t, _ in scored[:size]]
+        ranked = [t for t, _ in scored]
+
+        # PROTECTED SLOTS. Identity-bearing terms that the corpus actually
+        # contains are reserved before ordinary selection fills the rest, so a
+        # scoring rule can never again elect an axis set a self cannot locate
+        # itself in. Bounded by protect_max_frac: protection reserves at most
+        # half the axes by default, because a vocabulary that is ALL identity
+        # terms would stop describing the corpus and start describing the list.
+        prot = protect if protect is not None else frozenset()
+        if prot:
+            present = [t for t in sorted(prot)
+                       if self.token_doc_counts.get(t, 0) > 0]
+            cap = max(0, int(size * protect_max_frac))
+            reserved = present[:cap]
+            rest = [t for t in ranked if t not in set(reserved)]
+            return (reserved + rest)[:size]
+        return ranked[:size]
 
     def extend_vocab(self, current_vocab: List[str], size: int = 100,
                      min_idf: float = 1.0, max_doc_pct: float = 0.5,
@@ -1207,7 +1281,8 @@ def crystallize(text: str, vectorizer: MIVectorizer,
                 chain_prev_hash: Optional[str] = None,
                 episode_id: Optional[str] = None,
                 episode_seq: Optional[int] = None,
-                episode_kind: Optional[str] = None) -> Crystal:
+                episode_kind: Optional[str] = None,
+                source_mind: Optional[str] = None) -> Crystal:
     """Create a crystal from text using MI × ache vectorization + cognitive parse.
 
     This is the v3 replacement for v1's keyword-based crystallize().
@@ -1307,6 +1382,7 @@ def crystallize(text: str, vectorizer: MIVectorizer,
         episode_id=episode_id,
         episode_seq=episode_seq,
         episode_kind=episode_kind,
+        source_mind=source_mind,
     )
 
 
@@ -1450,6 +1526,16 @@ class UniversalFish:
                 self.living_vocab = state.get('living_vocab', False)
                 self.sealed = state.get('sealed', False)
                 self.sealed_at = state.get('sealed_at', None)
+                # Restore the private language. Best-effort by contract: the engine's
+                # load_state skips a bad row rather than raising, because a corrupt
+                # vocabulary must not take the fish down — same discipline as the
+                # rest of this loader.
+                if getattr(self, 'glyph_evolution', None):
+                    try:
+                        self.glyph_evolution.load_state(state.get('glyph_evolution'))
+                    except Exception as exc:      # never fatal
+                        logging.getLogger(__name__).warning(
+                            'UniversalFish._load_state: glyph_evolution not restored (%s)', exc)
             elif state is not None:
                 logging.getLogger(__name__).warning(
                     "UniversalFish._load_state: %s did not contain a JSON object; using defaults",
@@ -1510,6 +1596,7 @@ class UniversalFish:
                             episode_id=d.get('episode_id'),
                             episode_seq=d.get('episode_seq'),
                             episode_kind=d.get('episode_kind'),
+                            source_mind=d.get('source_mind'),
                             protected=d.get('protected', False) or False,
                         )
                         # resonance is a runtime alias for mi_vector (six
@@ -1558,6 +1645,11 @@ class UniversalFish:
                 'doc_count': self.vectorizer.doc_count,
                 'crystal_count': len(self.crystals),
                 'pending_count': len(self.pending),
+                # The private language, so it survives a restart. Before this the
+                # engine was rebuilt fresh every construction and nothing saved it,
+                # so an evolved vocabulary died with the process. 2026-08-26.
+                'glyph_evolution': (self.glyph_evolution.to_state()
+                                    if getattr(self, 'glyph_evolution', None) else None),
                 'updated': datetime.now(timezone.utc).isoformat(),
             },
             indent=2,
@@ -1622,7 +1714,8 @@ class UniversalFish:
                          chain_prev_hash: Optional[str] = None,
                          episode_id: Optional[str] = None,
                          episode_seq: Optional[int] = None,
-                         episode_kind: Optional[str] = None) -> Optional[Crystal]:
+                         episode_kind: Optional[str] = None,
+                         source_mind: Optional[str] = None) -> Optional[Crystal]:
         """Crystallize a single text against frozen statistics.
 
         If not frozen, queues to pending instead.
@@ -1705,7 +1798,7 @@ class UniversalFish:
                              chain_created_at=chain_created_at,
                              chain_prev_hash=chain_prev_hash,
                              episode_id=episode_id, episode_seq=episode_seq,
-                             episode_kind=episode_kind)
+                             episode_kind=episode_kind, source_mind=source_mind)
         crystal.resonance = crystal.mi_vector  # formation compat
 
         # v0.4: Metabolic digestion — enrich the crystal
@@ -1715,7 +1808,14 @@ class UniversalFish:
             metabolic = self.metabolic_engine.digest(moment)
             # Transfer metabolic data onto the v3 crystal
             crystal.cognitive_vector = metabolic.dimension_vector
-            crystal.chains = [(d,) for d in metabolic.chain] if metabolic.chain else crystal.chains
+            # ONE chain, not one-per-dimension. metabolic.chain is the FIRING ORDER
+            # (moment.py:83) — the grammar. `[(d,) for d in ...]` stored it as N
+            # one-element chains, and glyph_evolution._birth_cycle skips len<=1, so
+            # ZERO glyphs were ever coined: 79,945 stored chains, 100% length 1,
+            # 0 births from 59,945, and _merge_cycle's bigram test never once fired.
+            # The order survived in the list (395/400 rejoin exactly); the GROUPING
+            # did not, and nothing downstream knew to rejoin it. 2026-08-26.
+            crystal.chains = [tuple(metabolic.chain)] if metabolic.chain else crystal.chains
             crystal.modifiers = {
                 r.pathway: r.activation
                 for r in metabolic.residues.values() if r.activation > 0.1

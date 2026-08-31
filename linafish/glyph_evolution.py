@@ -324,6 +324,67 @@ class GlyphEvolutionEngine:
     def evolved_count(self) -> int:
         return len(self.evolved)
 
+    # --- persistence -------------------------------------------------------
+    # The engine was rebuilt fresh on every FishEngine construction and nothing
+    # ever saved it, so a private language died at each restart. A language that
+    # cannot accumulate is not a language. 2026-08-26.
+
+    def to_state(self) -> dict:
+        """The evolved vocabulary, serialised. Bootstrap 48 is not stored — it is
+        constant and lives in code."""
+        return {
+            "cycle_count": self.cycle_count,
+            "evolved": [
+                {"id": g.id, "category": g.category,
+                 "source_chain": list(g.source_chain),
+                 "usage_count": g.usage_count,
+                 "born_at_cycle": g.born_at_cycle,
+                 "ache_at_birth": g.ache_at_birth,
+                 "merged_from": list(g.merged_from)}
+                for g in self.evolved.values()
+            ],
+            "chain_frequency": {">".join(k): v for k, v in self.chain_frequency.items()},
+            "chain_ache_sum": {">".join(k): v for k, v in self.chain_ache_sum.items()},
+            "refused": dict(self.refused),
+            "repleaded": sorted(self.repleaded),
+        }
+
+    def load_state(self, state) -> int:
+        """Restore a saved vocabulary. BEST-EFFORT BY CONTRACT: a missing key, a
+        malformed payload or a bad row is skipped, never raised — a corrupt state
+        file must not take the fish down with it. Returns how many were restored."""
+        if not isinstance(state, dict):
+            return 0
+        n = 0
+        for row in (state.get("evolved") or []):
+            try:
+                chain = tuple(row["source_chain"])
+                if not chain:
+                    continue
+                self.evolved[row["id"]] = EvolvedGlyph(
+                    id=row["id"],
+                    category=row.get("category") or chain[0],
+                    source_chain=chain,
+                    usage_count=int(row.get("usage_count") or 0),
+                    born_at_cycle=int(row.get("born_at_cycle") or 0),
+                    ache_at_birth=float(row.get("ache_at_birth") or 0.0),
+                    merged_from=list(row.get("merged_from") or []),
+                )
+                n += 1
+            except (KeyError, TypeError, ValueError):
+                continue          # one bad row is not a reason to lose the rest
+        try:
+            self.cycle_count = int(state.get("cycle_count") or self.cycle_count)
+            for k, v in (state.get("chain_frequency") or {}).items():
+                self.chain_frequency[tuple(k.split(">"))] = int(v)
+            for k, v in (state.get("chain_ache_sum") or {}).items():
+                self.chain_ache_sum[tuple(k.split(">"))] = float(v)
+            self.refused.update(state.get("refused") or {})
+            self.repleaded.update(state.get("repleaded") or [])
+        except (TypeError, ValueError, AttributeError):
+            pass
+        return n
+
     def get_private_language(self) -> Dict[str, EvolvedGlyph]:
         """Return all evolved (private) glyphs."""
         return dict(self.evolved)
