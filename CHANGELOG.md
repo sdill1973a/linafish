@@ -12,6 +12,43 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ## [Unreleased]
 
+### Added
+
+- **linafish speaks up when the code that runs is not the code you installed.**
+  New module `linafish/install_health.py`, a section in `linafish doctor`, and
+  an annotation on the crash path.
+
+  This exists because of the bug immediately below it. A box had two linafish
+  copies — a pipx venv at `2.2.1.dev0` and a `pip --user` copy at `2.2.0` —
+  and `import linafish` resolved to the older one. Six fish went unfed for two
+  consecutive nights while every check anyone ran came back green, because
+  every check asked the *repository* what the code said instead of asking the
+  *filesystem* what was going to execute. The fix for the crash was already on
+  the same disk.
+
+  `doctor` now lists every linafish package on the machine, marks the one that
+  will actually be imported, and raises an INSTALL SKEW warning — naming the
+  known fixes the executing copy is missing — when a strictly newer copy
+  exists locally. An uncaught exception is annotated with the same information
+  and, if the crash matches a known-and-fixed signature, the version that
+  fixed it.
+
+  Deliberate limits: **no network** (filesystem only — the PyPI lookup stays
+  opt-in behind `doctor --check-updates`, where it always was), **total** (the
+  auditor never raises inside the program it audits), and **silent by
+  default** (a healthy single-install box gets one line, and the crash
+  annotation prints nothing when it knows nothing — asserted in both
+  directions by 15 tests). A dev build ranks *with* its release rather than
+  before it, so the advisory never tells you to upgrade to code you are
+  already running.
+
+  The honest limit, stated in the module: a build can only carry knowledge of
+  fixes that existed when it was built, so a local table can never tell a
+  stale install it is stale. That is why the primary signal is skew between
+  copies present on the machine — which is knowable offline and with
+  certainty — rather than a table consulted by the very build that lacks the
+  entry.
+
 ### Fixed
 
 - **One bad character no longer kills an entire fish.** A lone surrogate in a

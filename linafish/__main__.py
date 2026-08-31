@@ -2424,6 +2424,33 @@ def cmd_doctor(args):
         print(f"Install mode: wheel ({location})")
     print()
 
+    # -- Install skew: is the code that RUNS the newest code on this box? --
+    # Offline, filesystem-only. Silent on a healthy single-install machine.
+    # Added 2026-08-31 after two linafish copies on one box (pipx 2.2.1.dev0
+    # and pip --user 2.2.0) let the OLDER one execute for two nights while
+    # every check stayed green, because every check read the repo.
+    try:
+        from .install_health import find_installs, format_skew, skew_report
+
+        _rep = skew_report()
+        _installs = _rep.get("installs") or []
+        if len(_installs) > 1:
+            print(f"Installs found on this box: {len(_installs)}")
+            for _i in _installs:
+                _mark = "->" if _i["executing"] else "  "
+                print(f"  {_mark} {_i['version']:<14} {_i['path']}")
+            _skew = format_skew(_rep)
+            if _skew:
+                print(_skew)
+            else:
+                print("  The executing copy is the newest one present.")
+        else:
+            print("Installs found on this box: 1 (no skew)")
+        print()
+    except Exception as _e:  # never let the auditor break the audit
+        print(f"Install skew check unavailable: {_e}")
+        print()
+
     # -- Optional dependencies --
     print("Optional dependencies:")
     deps = [
@@ -3574,7 +3601,24 @@ def main():
         sys.exit(0)
 
     commands = _COMMAND_TABLE
-    commands[args.command](args)
+    # The crash path is the one moment the user is definitely paying attention,
+    # and it was the one moment linafish said nothing useful. Annotate, then
+    # re-raise UNCHANGED — the advisory never swallows, alters, or delays the
+    # exception, and it prints nothing when it knows nothing.
+    try:
+        commands[args.command](args)
+    except Exception as exc:
+        try:
+            import traceback as _tb
+
+            from .install_health import crash_advisory
+
+            note = crash_advisory(exc, _tb.format_exc())
+            if note:
+                print(note, file=sys.stderr)
+        except Exception:
+            pass
+        raise
 
 
 if __name__ == "__main__":
