@@ -2942,10 +2942,22 @@ def cmd_capabilities(args):
     print()
     print("## CLI commands")
     print("  Run `linafish <command> --help` for details on any of these:")
-    print("  go, eat, taste, recall, ask, status, serve, http, demo,")
-    print("  watch, fuse, room, listen, session, history, diff, revert,")
-    print("  absorb, converse, school, whisper, check, hunt, emerge,")
-    print("  feedback, capabilities")
+    # Derived from the dispatch table, never a literal. A hardcoded list here
+    # under-reported 17 of 43 commands (meditate, daily, doctor, update, soul,
+    # heart, keeper, ... ) — verbs that existed and answered --help, but that
+    # `capabilities` denied. Found by Calcifer 2026-08-31: he trusted this list
+    # over his own instrument and concluded the verbs were dev-branch only.
+    # An inventory that cannot notice a missing entry always reads as complete.
+    _cmds = sorted(_COMMAND_TABLE)
+    _line = " "
+    for _c in _cmds:
+        _piece = f" {_c}," if _c != _cmds[-1] else f" {_c}"
+        if len(_line) + len(_piece) > 72:
+            print(_line)
+            _line = " "
+        _line += _piece
+    if _line.strip():
+        print(_line)
     print()
     print("## Docs")
     print("  README.md, AGENTS.md, CHANGELOG.md,")
@@ -2953,6 +2965,56 @@ def cmd_capabilities(args):
     print("  docs/owners-manual.md, docs/configuration.md, docs/privacy.md,")
     print("  docs/research.md, docs/testing.md, docs/worked-example.md")
 
+
+# The dispatch table IS the command list. `capabilities` derives from this, never a literal.
+_COMMAND_TABLE = {
+    "go": cmd_go,
+    "eat": cmd_eat,
+    "taste": cmd_taste,
+    "heart": cmd_heart,
+    "vizmem": cmd_vizmem,
+    "recall": cmd_recall,
+    "status": cmd_status,
+    "serve": cmd_serve,
+    "http": cmd_http,
+    "demo": cmd_demo,
+    "watch": cmd_watch,
+    "fuse": cmd_fuse,
+    "room": cmd_room,
+    "listen": cmd_listen,
+    "session": cmd_session,
+    "history": cmd_history,
+    "diff": cmd_diff,
+    "revert": cmd_revert,
+    "heart": cmd_heart,
+    "vizmem": cmd_vizmem,
+    "recall": cmd_recall,
+    "ask": cmd_ask,
+    "absorb": cmd_absorb,
+    "revectorize": cmd_revectorize,
+    "live": cmd_live,
+    "seal": cmd_seal,
+    "compact": cmd_compact,
+    "converse": cmd_converse,
+    "whisper": cmd_whisper,
+    "meditate": cmd_meditate,
+    "check": cmd_check,
+    "classify": cmd_classify,
+    "bridge": cmd_bridge,
+    "daily": cmd_daily,
+    "keeper": cmd_keeper,
+    "style": cmd_style,
+    "soul": cmd_soul,
+    "school": cmd_school,
+    "afferent": cmd_afferent,
+    "hunt": cmd_hunt,
+    "emerge": cmd_emerge,
+    "feedback": cmd_feedback,
+    "capabilities": cmd_capabilities,
+    "update": cmd_update,
+    "doctor": cmd_doctor,
+    "introduce": cmd_introduce,
+}
 
 def main():
     # Windows cp1252 stdout crashes on unicode in help text / docstrings /
@@ -3511,54 +3573,7 @@ def main():
         print("Your mind. Versioned. Everywhere.")
         sys.exit(0)
 
-    commands = {
-        "go": cmd_go,
-        "eat": cmd_eat,
-        "taste": cmd_taste,
-        "heart": cmd_heart,
-        "vizmem": cmd_vizmem,
-        "recall": cmd_recall,
-        "status": cmd_status,
-        "serve": cmd_serve,
-        "http": cmd_http,
-        "demo": cmd_demo,
-        "watch": cmd_watch,
-        "fuse": cmd_fuse,
-        "room": cmd_room,
-        "listen": cmd_listen,
-        "session": cmd_session,
-        "history": cmd_history,
-        "diff": cmd_diff,
-        "revert": cmd_revert,
-        "heart": cmd_heart,
-        "vizmem": cmd_vizmem,
-        "recall": cmd_recall,
-        "ask": cmd_ask,
-        "absorb": cmd_absorb,
-        "revectorize": cmd_revectorize,
-        "live": cmd_live,
-        "seal": cmd_seal,
-        "compact": cmd_compact,
-        "converse": cmd_converse,
-        "whisper": cmd_whisper,
-        "meditate": cmd_meditate,
-        "check": cmd_check,
-        "classify": cmd_classify,
-        "bridge": cmd_bridge,
-        "daily": cmd_daily,
-        "keeper": cmd_keeper,
-        "style": cmd_style,
-        "soul": cmd_soul,
-        "school": cmd_school,
-        "afferent": cmd_afferent,
-        "hunt": cmd_hunt,
-        "emerge": cmd_emerge,
-        "feedback": cmd_feedback,
-        "capabilities": cmd_capabilities,
-        "update": cmd_update,
-        "doctor": cmd_doctor,
-        "introduce": cmd_introduce,
-    }
+    commands = _COMMAND_TABLE
     commands[args.command](args)
 
 
