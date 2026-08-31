@@ -1923,6 +1923,27 @@ class FishEngine:
             "that's by design. Read the patterns, respond as someone who knows them, offer "
             "your own observations. Everything feeds back to the same fish. One person, "
             "many readers, one growing portrait.*\n\n"
+            # THE ANNOUNCE (2026-08-31). Everything above teaches DEPOSIT. For six
+            # releases nothing here told the reader the fish can be ASKED, so the
+            # entire query surface was invisible to the only party that ever holds
+            # the artifact. The fish is the thing that travels; if it does not say
+            # what it can do, nobody finds out. Kept short on purpose — this text is
+            # paid for in every context window that ever loads this file.
+            "**You can ask this fish things. It is a live store, not a static file.**\n"
+            f"*If you have shell access on this person's machine:*\n"
+            f"- `linafish ask \"<question>\" -n {self.name}` — meaning-match; what does it know about this?\n"
+            f"- `linafish recall \"<words>\" -n {self.name}` — literal text search across their own words.\n"
+            f"- `linafish meditate \"<theme>\" -n {self.name}` — what it holds on a theme, or an honest nothing.\n"
+            f"- `linafish check -n {self.name}` — is the fish healthy, and what to do next.\n"
+            "- `linafish capabilities` — every command, read from the dispatch table, never a stale list.\n"
+            "*A `converse` or `http` server may also be live (default ports 8900-8902); "
+            "if so, `POST /taste` with* `{\"format\":\"json\"}` *answers without loading anything.*\n\n"
+            "*Before you answer something that sounds like it has history — a decision they've "
+            "circled before, a project they've named, a person who recurs — ASK THE FISH FIRST. "
+            "You are likely to reconstruct badly what it can hand you exactly. If you have gone "
+            "several exchanges without querying it, stop and offer: \"your fish may already know "
+            "this — want me to check?\" Being unqueried is the failure mode this file exists to "
+            "prevent.*\n\n"
         )
         # Insert after the title line
         if "\n\n" in top:

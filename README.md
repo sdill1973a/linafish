@@ -97,16 +97,22 @@ linafish go ~/my-writing
 
 Point it at your writing. Journals, emails, notes, code, docs — anything you've written. The fish eats it all and produces a portrait of how you think. When it's done, `go` serves your fish on a local HTTP server (it prints the address; Ctrl+C stops it) — pass `--no-serve` to skip that.
 
-## New in 1.6.0 — ask the fish things
+## Asking the fish things
 
 Once you have a fish, `go` isn't the only verb:
 
+- **`linafish ask "<question>"`** — meaning-match. **`linafish recall "<words>"`** — literal text match. Reaching for the wrong one of these is the most common way people conclude their memory is broken when it isn't.
 - **`linafish meditate "<theme>"`** — the fish bubbles up the real material it holds on a theme, or honestly tells you it holds nothing (*"that's an answer too, not a failure"*). Add `--descend` for an optional deeper inference pass.
+- **`linafish daily`** — calendar-indexed. What were you, on that date.
+- **`linafish whisper`** — one insight instead of many. Lands differently.
+- **`linafish hunt`** — ache mode. Goes after what your fish is *missing*, which is the only way to answer a question you didn't know to ask.
+- **`linafish keeper`** — a fish you consult in a voice, seeded from material you choose.
+- **`linafish doctor`** — is the install healthy, and is the copy that runs the newest copy you have.
 - **Episodic recall** — the fish can walk your material in *time*, surfacing narrative arcs, not just passages that look similar.
 - **`linafish afferent`** — across a folder of fish, cheaply answer *"which one knows about this?"*
 - **Origin** — a fish can remember who made it, when, and why, so it's never mistaken for junk.
 
-Run `linafish --help` for the full verb list, or `linafish introduce` if you're an AI landing on someone's box.
+Run **`linafish capabilities`** for the full command map, `linafish --help` for the raw verb list, or **`linafish introduce`** if you're an AI landing on someone's box.
 
 ## What You'll See
 
@@ -261,9 +267,9 @@ linafish check                   # How's your fish doing?
 linafish whisper                 # One insight. The quiet ones matter more.
 ```
 
-## v1.1: The Nervous System
+## The Nervous System — many fish, one stream
 
-New in v1.1 — the fish gets a brain:
+One fish is a portrait. Several fish, fed from the same stream, are a nervous system:
 
 ```bash
 # School — distributed cognition across domains
@@ -384,7 +390,22 @@ linafish eat new-entry.txt           # Feed one file.
 linafish listen stdin                # Pipe text in.
 linafish listen folder:~/journal     # Watch a folder.
 linafish listen mqtt://host:1883/#   # Subscribe to a stream.
-linafish recall "query"              # Search your fish's memory.
+linafish absorb old_data.jsonl       # Bring in existing AI memory or a RAG endpoint.
+
+# Ask
+linafish ask "question"              # Meaning-match — finds sense, not words.
+linafish recall "words"              # Literal text match across crystals.
+linafish meditate "theme"            # Thematic. What the fish holds on a subject.
+linafish daily                       # Calendar-indexed. What you were, on a date.
+linafish whisper                     # One insight instead of many.
+linafish hunt <fish> --ache          # Go after what the fish is missing.
+linafish emerge                      # Your shape, not your content.
+
+# Many fish
+linafish school init                 # A school: N fish, one stream.
+linafish keeper init <name>          # A fish you consult in a voice.
+linafish afferent "topic"            # Which fish here knows about this?
+linafish soul -n <fish>              # The fish's own account of itself.
 
 # Version (git-as-brain)
 linafish session start               # Branch the mind.
@@ -396,8 +417,17 @@ linafish revert                      # Roll back.
 # Connect
 linafish serve --feed ~/docs         # MCP server (Claude Code)
 linafish http --feed ~/docs          # HTTP server (any AI)
+linafish converse -n writing         # Two fish, one conversation.
 linafish taste my.fish.md            # Preview the fish
+
+# Check
+linafish doctor                      # Install health + is the running copy the newest one.
+linafish check -n <fish>             # How's the fish? What to do next.
+linafish capabilities                # The full command map, derived from the real dispatch table.
+linafish update                      # Upgrade to the latest release.
 ```
+
+That's the shape of it, not the whole of it — `linafish capabilities` prints all 43 commands, and it reads them from the dispatch table rather than a list someone maintained by hand.
 
 ## Origin
 

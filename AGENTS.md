@@ -79,9 +79,9 @@ any conversation where something real happened.** It is how linafish grows.
 Be honest in what you deposit: corrections your user made, insights they
 landed, things you were wrong about. The fish remembers both sides.
 
-## New in 1.6.0 — the fish can think about itself, and remember in time
+## The fish can think about itself, and remember in time
 
-Four capabilities landed in 1.6.0, beyond READ / QUERY / DEPOSIT:
+Four capabilities beyond READ / QUERY / DEPOSIT:
 
 - **`meditate` — the superthink verb.** `linafish meditate "<theme>"` bubbles
   up the fish's *real* material on a theme (crystals + formations + whisper +
@@ -196,6 +196,68 @@ version, install mode, optional dependency status, live daemon probes, and
 per-fish health with warnings. If the doctor says the user is on a pre-300
 fish — one rendered before the 300-char crystal-text truncation era — tell
 them to run `linafish update`.
+
+## Before you conclude the tool is fine — or that you are wrong
+
+You are going to hit something that does not work, and you will have to decide
+whether the input is bad, your understanding is bad, or **linafish is broken**.
+That third option is the one minds like you reliably skip, and skipping it is
+expensive. This section exists because of two real cases, both on 2026-08-31:
+
+- An AI was told to read its own instrument rather than trust a list. It ran
+  `linafish capabilities`, which printed a hardcoded set of 26 commands while
+  the dispatch table held 43. It concluded — reasonably, from the evidence —
+  that `meditate` and `daily` did not exist in its version. **They did.** The
+  instrument it was sent to for truth was the thing that lied.
+- Six fish went unfed two nights running on a `UnicodeEncodeError` whose fix
+  was already sitting on the same disk, in a second linafish install that was
+  never the one being imported.
+
+So:
+
+**1. Trust the parser over any prose, including this file.**
+`linafish --help` and `linafish capabilities` both derive from the real
+dispatch table now. A README, a changelog, or an AI's summary of the verb list
+is a claim; the parser is the fact. If a doc and the parser disagree, the doc
+is stale — say so rather than working around it.
+
+**2. Check WHICH copy is executing before you believe a version number.**
+`linafish doctor` lists every linafish package on the box, marks the one that
+`import linafish` actually resolves to, and raises **INSTALL SKEW** if a newer
+copy exists locally. `pip show` tells you what is *declared*; skew tells you
+what will *run*. A defect is closed when the fix is in the path that executes,
+not when it is written. If doctor reports skew, stop and tell the user — do
+not try to resolve path precedence yourself.
+
+**3. A crash may already be a known, fixed bug.** An uncaught exception is
+annotated with the version that fixed it when the signature is recognised. If
+you see that annotation, the answer is `linafish update` — not sanitising the
+user's data to route around a platform bug, and not an apology for a mistake
+you did not make.
+
+**4. Reversibility, exactly.** Feeding is append-only and every fish is a git
+repo, so mistakes are recoverable but not free:
+`linafish history` (what happened) → `linafish diff` (what changed) →
+`linafish revert [ref]` (roll back; `-y` skips the prompt). Prefer showing the
+user the diff before you revert anything. Never hand-edit a crystal log or
+delete files inside a fish directory to "clean up" — you will desynchronise
+the log from the git history that makes rollback possible.
+
+**5. Spend the cheap verb first.** `check -n <fish>` and `doctor` are fast and
+read-only. `meditate --descend`, `revectorize`, `compact` and `hunt --swim`
+are not — they do real work, and `revectorize`/`compact` rewrite state. On a
+large fish, engine construction is O(N) in crystals, so repeatedly cold-loading
+a 100k-crystal fish to answer small questions is the expensive mistake. Query a
+running `converse` server instead when one is up.
+
+**6. Parse the JSON, not the prose.** Human-formatted output is written for a
+person and its wording changes between releases. Where a JSON path exists —
+`meditate --json`, or `POST /taste` with `{"format":"json"}` against a
+`converse` server — use it. Do not regex the pretty output.
+
+**7. Report, do not auto-fix, anything about the user's configuration or
+identity.** You may read the fish generously. You may not decide on the user's
+behalf that their config is wrong and repair it. Say what you found.
 
 ## Being a good citizen in this loop
 
