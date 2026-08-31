@@ -105,6 +105,53 @@ def test_every_command_the_docs_promise_actually_exists(doc):
     )
 
 
+def test_the_fish_header_only_advertises_commands_that_exist():
+    """The fish announces its own query surface. That announce is an inventory.
+
+    Added with the announce block itself, 2026-08-31. The fish.md is the artifact
+    that TRAVELS — it is pasted into other people's AIs, on machines we will never
+    see. A stale verb here does not produce a stale document; it produces a reader
+    that runs a command that does not exist and concludes the fish is broken.
+    That is precisely what happened to a mind reading `capabilities` this morning.
+    """
+    import subprocess
+    import sys
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as td:
+        src = Path(td) / "src"
+        src.mkdir()
+        (src / "a.md").write_text(
+            "I keep starting things at night and abandoning them by Thursday, "
+            "losing interest the moment it turns into maintenance.\n",
+            encoding="utf-8",
+        )
+        state = Path(td) / "state"
+        subprocess.run(
+            [
+                sys.executable, "-m", "linafish", "eat", str(src),
+                "-n", "probe", "--state-dir", str(state),
+            ],
+            capture_output=True,
+            cwd=str(REPO),
+        )
+        fish = state / "probe.fish.md"
+        if not fish.is_file():
+            pytest.skip("fish did not render in this environment")
+        advertised = _documented_commands(fish.read_text(encoding="utf-8"))
+        missing = sorted(c for c in advertised if c not in _COMMAND_TABLE)
+        assert not missing, (
+            f"the fish header advertises commands that do not exist: {missing}. "
+            f"This file gets pasted into strangers' AIs — it must not lie to them."
+        )
+        # And it must actually advertise SOMETHING queryable, or the announce
+        # has silently regressed to deposit-only, which is the bug it fixed.
+        assert advertised & {"ask", "recall", "meditate"}, (
+            "the fish header no longer tells its reader it can be QUERIED"
+        )
+
+
 def test_capabilities_is_derived_not_hardcoded():
     """Guard the 2026-08-31 fix from being un-fixed by a well-meaning edit.
 
