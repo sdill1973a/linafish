@@ -10,7 +10,7 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
-## [Unreleased]
+## [2.2.1] - 2026-08-31
 
 ### Added
 
