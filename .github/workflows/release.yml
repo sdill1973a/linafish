@@ -1,0 +1,94 @@
+# Publish to PyPI on a version tag — via PyPI Trusted Publishing (OIDC).
+#
+# Why this exists (2026-08-31): 2.2.1 was tagged and could not be published,
+# because the PyPI token lives only in Captain's password manager. It was never
+# on .162 and it is not on .140 either — every prior release was cut from the
+# Windows box with the token typed in by hand. That makes releasing depend on
+# one person being at one machine with one secret, which is the same
+# single-point-of-failure shape as everything else caught this session.
+#
+# Trusted Publishing removes the token entirely: GitHub mints a short-lived
+# OIDC credential, PyPI verifies it came from this repo and this workflow, and
+# nothing long-lived is ever stored anywhere. No secret to leak, rotate, lose,
+# or leave on a decommissioned box.
+#
+# ONE-TIME SETUP, and only Captain can do it (it is his PyPI account):
+#   https://pypi.org/manage/project/linafish/settings/publishing/
+#   Add a GitHub publisher:
+#     Owner:            sdill1973a
+#     Repository:       linafish
+#     Workflow name:    release.yml
+#     Environment:      pypi
+#   It is a web form, not a shell. Once, and never again.
+#
+# Until that is done this workflow is INERT — it only fires on a v* tag, and
+# without the trusted publisher configured the upload step fails loudly rather
+# than silently doing nothing.
+#
+# The release gate still holds: a tag cannot exist unless the version is in
+# RELEASE_BLESSING, because .git/hooks/pre-push refuses to push it. This
+# workflow publishes what was tagged; it does not decide what gets tagged.
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify the tag matches the packaged version
+        # A tag that disagrees with __version__ ships a lie to every user who
+        # then cannot tell which code they have. Fail here, loudly, not later.
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(python -c "import re;print(re.search(r'__version__\s*=\s*[\"\047]([^\"\047]+)',open('linafish/__init__.py').read()).group(1))")
+          echo "tag=$TAG package=$PKG"
+          test "$TAG" = "$PKG" || { echo "::error::tag $TAG != package $PKG"; exit 1; }
+
+      - name: Verify the version is blessed
+        # Belt and braces. The pre-push hook enforces this locally; enforce it
+        # again here, because a hook lives on one machine and a workflow does not.
+        run: |
+          grep -qx "${GITHUB_REF_NAME}" RELEASE_BLESSING \
+            || { echo "::error::${GITHUB_REF_NAME} absent from RELEASE_BLESSING"; exit 1; }
+
+      - name: Run the suite
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . pytest
+          python -m pytest -q
+
+      - name: Build sdist + wheel
+        run: |
+          pip install build
+          python -m build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write   # the whole point: OIDC instead of a stored secret
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
