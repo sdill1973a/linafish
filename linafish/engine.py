@@ -287,6 +287,8 @@ class FishEngine:
         # living regardless of how the engine is constructed.
         if living_vocab:
             self.fish.living_vocab = True
+        if getattr(self.fish, "living_vocab", False):
+            self.fish.vectorizer.track_emergence = True
 
         self.formations: List[Formation] = []
         self.docs_ingested = 0
@@ -736,9 +738,17 @@ class FishEngine:
         """
         seed_terms, seed_weight = self._resolve_seed_terms()
         if self.fish.living_vocab:
+            # Two doors (linafish#71, §TRADITIONAL.VS.EMERGING 2026-09-06): the
+            # traditional top-`size` by lifetime standing, and the emerging door for
+            # terms rising in the recent window. Append-only either way.
+            self.fish.vectorizer.track_emergence = True
             self.fish.vocab = self.fish.vectorizer.extend_vocab(
                 self.fish.vocab, size=self.vocab_size, d=self.d,
                 seed_terms=seed_terms, seed_weight=seed_weight,
+                emerging=True,
+                emerge_min_recent=self.emerge_min_recent,
+                emerge_min_ratio=self.emerge_min_ratio,
+                emerge_limit=self.emerge_limit,
             )
         else:
             self.fish.vocab = self.fish.vectorizer.get_vocab(
@@ -746,9 +756,18 @@ class FishEngine:
                 seed_terms=seed_terms, seed_weight=seed_weight,
             )
 
+    # §TRADITIONAL.VS.EMERGING — the emerging door's three numbers. A term must have
+    # been seen in >= emerge_min_recent recent docs (one-offs and hex debris never
+    # qualify) at >= emerge_min_ratio times its lifetime rate (steady words never
+    # qualify), and at most emerge_limit enter per rebuild.
+    emerge_min_recent: float = 5.0
+    emerge_min_ratio: float = 3.0
+    emerge_limit: int = 5
+
     def enable_living_vocab(self):
         """Turn this fish's vocabulary living — append-only growth, durably."""
         self.fish.living_vocab = True
+        self.fish.vectorizer.track_emergence = True
         self._save_state()
 
     def seal(self):

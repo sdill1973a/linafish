@@ -549,6 +549,16 @@ class MIVectorizer:
         # Phase 5 — per-token recency: the doc_count value when each token
         # was last fed. Drives use-recency decay at compaction time.
         self.token_last_doc = {}
+        # §TRADITIONAL.VS.EMERGING (linafish#71, 2026-09-06). get_vocab ranks by
+        # lifetime standing — the TRADITIONAL door, sized for `size` incumbents. A
+        # living fish also needs an EMERGING door: a term whose recent-window
+        # document-frequency is out of proportion to its lifetime rate. Tracked as
+        # an exponentially-decayed df per token (half-life in docs), updated lazily
+        # on feed so the cost is O(tokens in the text). Off unless the engine turns
+        # it on (living fish only) — non-living fish carry nothing extra.
+        self.track_emergence = False
+        self.emerge_half_life = 500      # docs; effective window ~ H/ln2 ~ 1.44H
+        self.emerge_df = {}              # token -> decayed recent doc-frequency
         # Highest pair count this vectorizer has ever KNOWN itself to hold,
         # carried across save/load so truncation cannot edit its own history
         # (linafish#56). 0 = never measured over cap.
@@ -590,9 +600,20 @@ class MIVectorizer:
         # Update global counts
         for t in tokens:
             self.token_counts[t] += 1
-        for t in token_set:
-            self.token_doc_counts[t] += 1
-            self.token_last_doc[t] = self.doc_count
+        if self.track_emergence:
+            H = self._emerge_h()
+            for t in token_set:
+                self.token_doc_counts[t] += 1
+                last = self.token_last_doc.get(t)
+                prev = self.emerge_df.get(t, 0.0)
+                if prev and last:
+                    prev *= 0.5 ** ((self.doc_count - last) / H)
+                self.emerge_df[t] = prev + 1.0
+                self.token_last_doc[t] = self.doc_count
+        else:
+            for t in token_set:
+                self.token_doc_counts[t] += 1
+                self.token_last_doc[t] = self.doc_count
 
         # Invalidate the cached totals — counts are changing.
         self._total_tokens_cache = None
@@ -652,6 +673,63 @@ class MIVectorizer:
             return 0.0
 
         return math.log2(p_joint / (p_t1 * p_t2))
+
+    # --- §TRADITIONAL.VS.EMERGING ---------------------------------------------
+    def _emerge_h(self) -> float:
+        """Effective half-life: at most emerge_half_life, and at most an eighth of
+        the fish's life — on a young fish "recent" must mean a slice of it, or
+        every term is recent and nothing can emerge."""
+        return max(1.0, min(float(self.emerge_half_life), self.doc_count / 8.0))
+
+    def emerge_recent(self, token: str) -> float:
+        """Decayed recent doc-frequency of `token` as of now (staleness applied)."""
+        v = self.emerge_df.get(token, 0.0)
+        if not v:
+            return 0.0
+        last = self.token_last_doc.get(token)
+        if last:
+            v *= 0.5 ** ((self.doc_count - last) / self._emerge_h())
+        return v
+
+    def emergence(self, token: str):
+        """(recent, ratio): ratio = recent df / the recent df this token WOULD have if
+        it were spread evenly over the fish's life (df * window / doc_count). A steady
+        word scores ~1 whatever its frequency; a term rising in the window scores >1;
+        the ceiling for a term seen only inside the window is doc_count / window."""
+        recent = self.emerge_recent(token)
+        df = self.token_doc_counts.get(token, 0)
+        if not recent or not df or not self.doc_count:
+            return 0.0, 0.0
+        window = self._emerge_h() / math.log(2)
+        expected = df * min(1.0, window / self.doc_count)
+        return recent, (recent / expected if expected else 0.0)
+
+    def emerging_terms(self, exclude=(), min_recent: float = 5.0,
+                       min_ratio: float = 3.0, max_doc_pct: float = 0.5,
+                       limit: int = None):
+        """Terms rising in the recent window: the EMERGING door for a living vocab.
+
+        Admits a token when it is real (len >= 3, not a stopword, not in more than
+        max_doc_pct of docs), has been seen in at least `min_recent` recent docs
+        (kills hex fragments, typos, one-offs), and its recent rate is at least
+        `min_ratio` times its lifetime rate (kills steady words that merely have a
+        high lifetime df — those belong to the traditional door or nowhere).
+        Returns [(token, ratio, recent)] sorted by ratio desc, capped at `limit`."""
+        if not self.track_emergence or not self.doc_count:
+            return []
+        ex = set(exclude)
+        max_docs = self.doc_count * max_doc_pct
+        out = []
+        for t, df in self.token_doc_counts.items():
+            if t in ex or len(t) < 3 or t in STOPWORDS or df > max_docs:
+                continue
+            if t not in self.emerge_df:
+                continue
+            recent, ratio = self.emergence(t)
+            if recent >= min_recent and ratio >= min_ratio:
+                out.append((t, ratio, recent))
+        out.sort(key=lambda x: (-x[1], -x[2], x[0]))
+        return out[:limit] if limit else out
 
     def _recency_factor(self, token: str, recency_half_life) -> float:
         """Score multiplier in (0, 1] from how long ago `token` was fed.
@@ -790,7 +868,9 @@ class MIVectorizer:
     def extend_vocab(self, current_vocab: List[str], size: int = 100,
                      min_idf: float = 1.0, max_doc_pct: float = 0.5,
                      d: float = None, seed_terms: frozenset = None,
-                     seed_weight: float = 2.0) -> List[str]:
+                     seed_weight: float = 2.0, emerging: bool = False,
+                     emerge_min_recent: float = 5.0, emerge_min_ratio: float = 3.0,
+                     emerge_limit: int = 5) -> List[str]:
         """Append-only vocab growth — the living-vocabulary path.
 
         Existing terms keep their EXACT positions; newly-qualifying terms
@@ -804,7 +884,17 @@ class MIVectorizer:
                                max_doc_pct=max_doc_pct, d=d,
                                seed_terms=seed_terms, seed_weight=seed_weight)
         present = set(current_vocab)
-        additions = [t for t in fresh if t not in present]
+        additions = [t for t in fresh if t not in present]   # the TRADITIONAL door
+        if emerging:
+            # the EMERGING door (linafish#71): terms rising in the recent window that
+            # will never out-rank the incumbents on lifetime standing. Capped per
+            # rebuild so one noisy hour cannot flood the axis set.
+            seen = present | set(additions)
+            for t, _ratio, _recent in self.emerging_terms(
+                    exclude=seen, min_recent=emerge_min_recent,
+                    min_ratio=emerge_min_ratio, max_doc_pct=max_doc_pct,
+                    limit=emerge_limit):
+                additions.append(t)
         return list(current_vocab) + additions
 
     def vectorize(self, text: str, vocab: List[str] = None) -> List[float]:
@@ -915,6 +1005,8 @@ class MIVectorizer:
             'doc_count': self.doc_count,
             'token_doc_counts': dict(self.token_doc_counts.most_common()),
             'token_last_doc': dict(self.token_last_doc),
+            'emerge_df': {k: round(v, 4) for k, v in self.emerge_df.items()} if self.emerge_df else {},
+            'emerge_half_life': self.emerge_half_life,
             # Provenance for the reader: how much of the co-occurrence
             # distribution this file actually holds. Without it, load() cannot
             # tell a small fish from a large one that was cut down, and every
@@ -961,6 +1053,9 @@ class MIVectorizer:
         self.doc_count = data.get('doc_count', 0)
         self.token_doc_counts = Counter(data.get('token_doc_counts', {}))
         self.token_last_doc = data.get('token_last_doc', {})
+        # legacy files have no emergence record — counting starts at load, honestly.
+        self.emerge_df = dict(data.get('emerge_df', {}) or {})
+        self.emerge_half_life = data.get('emerge_half_life', self.emerge_half_life)
         # Carry the recovered total across the round trip so the NEXT save
         # cannot re-base the loss on an already-truncated table (#56 box 3).
         self.pair_counts_true_total = data.get('pair_counts_true_total',
