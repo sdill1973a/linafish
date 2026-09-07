@@ -235,7 +235,19 @@ _RELATIONAL_PREPS = frozenset({"with", "between", "among", "beside",
                                 "alongside", "toward", "towards", "against",
                                 "together", "for"})
 
-# Stopwords that carry no cognitive signal
+# Stopwords that carry no cognitive signal — the 'stop' branch of _guess_pos(), NOT a
+# filter. One of three stopword-like sets in the package (see the cross-reference at
+# crystallizer_v3.STOPWORDS; pinned by tests/test_stopword_sets_are_deliberate.py).
+# A token tagged 'stop' or 'aux' is skipped for DIMENSION scoring only; the modifier
+# channel (^depth +scope *focus ~flex !urgent) reads the raw token list, so "also"
+# still feeds +scope, "might"/"could" feed ~flex, "because"/"therefore" feed ^depth.
+# Reviewed against original intent 2026-09-07: pronouns/auxiliaries are deliberately
+# absent here because they carry relating/acting. The one delta found, left for
+# Captain: "just" and "very" (also "too", "so") are tagged 'stop' and appear in NO
+# marker set, so the parser treats them as pure noise — while the vectorizer keeps
+# "just" as a vocabulary axis in 49 live fish. Degree/hedge words are the design's
+# own class of signal (docs/vision.md); whether they belong in ~flex or a dimension
+# is a grammar decision, not a cleanup.
 _STOPWORDS = frozenset({
     "the", "a", "an", "and", "or", "but", "in", "on", "at", "to",
     "of", "not", "no", "this", "that", "these", "those",

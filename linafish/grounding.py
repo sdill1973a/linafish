@@ -28,6 +28,9 @@ the recency-lift threshold are not tunable knobs; they're the spec.
 import math
 import re
 
+# One of three stopword-like sets in the package, each with its own job — see the
+# cross-reference at crystallizer_v3.STOPWORDS. This one is a superset of the vectorizer's
+# set by construction (pinned by tests/test_stopword_sets_are_deliberate.py).
 # Small, deliberately short — this is a stopword FLOOR, not an NLP
 # pipeline. Anything longer than this belongs in a real tokenizer, not
 # a grounding check that has to stay legible.
