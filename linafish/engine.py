@@ -46,9 +46,8 @@ from typing import List, Optional, Dict
 from .crystallizer_v3 import (
     Crystal, MIVectorizer, UniversalFish,
     crystallize as v3_crystallize,
-    gamma, pca_reduce,
-    CANONICAL_SEED_SET, MAX_CRYSTAL_TEXT,
-)
+    gamma,
+    CANONICAL_SEED_SET, MAX_CRYSTAL_TEXT)
 from .formations import (
     detect_formations, hierarchical_merge, formations_to_codebook_text,
     Formation, interpret_formation, formation_rank_key,
@@ -3487,61 +3486,6 @@ class FishEngine:
             }
 
         return json.dumps(health_data, indent=2)
-
-    def assessment_summary(self) -> str:
-        """Return a human-readable summary of the assessment history.
-
-        Shows the RTI trajectory: how the fish adapted over time.
-        What the pre-assessment found, what each formative cycle changed,
-        and the R(n) curve.
-        """
-        if not self.assessment_log:
-            return "No assessments yet. Feed the fish to begin."
-
-        lines = [f"Assessment History: {self.name}", "=" * 40]
-
-        for entry in self.assessment_log:
-            atype = entry.get("type", "unknown")
-            epoch = entry.get("epoch", "?")
-            ts = entry.get("timestamp", "?")
-
-            if atype == "pre_assessment":
-                lines.append(f"\n[PRE] Epoch {epoch} @ {ts}")
-                lines.append(f"  Recommended d: {entry.get('recommended_d', '?')}")
-                lines.append(f"  Seeds: {entry.get('active_seeds', '?')}/{entry.get('seed_count', '?')} active")
-                lines.append(f"  Docs screened: {entry.get('doc_count', '?')}")
-
-            elif atype == "formative":
-                lines.append(f"\n[FORMATIVE] Epoch {epoch} @ {ts}")
-                r_n = entry.get("r_n")
-                if r_n is not None:
-                    lines.append(f"  R(n): {r_n:.4f}")
-                r_delta = entry.get("r_n_delta")
-                if r_delta is not None:
-                    direction = "+" if r_delta > 0 else ""
-                    lines.append(f"  R(n) delta: {direction}{r_delta:.4f}")
-                lines.append(f"  Crystals: {entry.get('crystal_count', '?')}")
-                lines.append(f"  Formations: {entry.get('formation_count', '?')}")
-
-                survived = entry.get("survived")
-                dissolved = entry.get("dissolved")
-                emerged = entry.get("emerged")
-                if survived is not None:
-                    lines.append(f"  Survived: {survived}")
-                if dissolved is not None:
-                    lines.append(f"  Dissolved: {dissolved}")
-                if emerged is not None:
-                    lines.append(f"  Emerged: {emerged}")
-
-        if self.r_n_history:
-            lines.append(f"\nR(n) curve: {', '.join(f'{r:.4f}' for r in self.r_n_history)}")
-            if len(self.r_n_history) >= 2:
-                trend = self.r_n_history[-1] - self.r_n_history[0]
-                lines.append(f"Overall trend: {'improving' if trend > 0 else 'declining'} "
-                             f"({'+' if trend > 0 else ''}{trend:.4f})")
-
-        return "\n".join(lines)
-
 
 # Re-export for server.py
 from .crystallizer_v3 import MIVectorizer  # noqa

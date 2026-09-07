@@ -24,7 +24,6 @@ The 8 dimensions (from qlp_is_cognitive_architecture_2026-01-14):
   AI = Meta — thinking about thinking
 """
 
-import math
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field

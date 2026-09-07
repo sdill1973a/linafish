@@ -19,14 +19,13 @@ Design constraints:
 s85, 2026-04-01. The diagnostic that makes the fish teach, not just eat.
 """
 
-import math
 import re
 import time
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 
-from .crystallizer_v3 import CANONICAL_SEED, CANONICAL_SEED_SET, STOPWORDS
+from .crystallizer_v3 import CANONICAL_SEED, STOPWORDS
 
 
 # ---------------------------------------------------------------------------

@@ -17,7 +17,6 @@ from datetime import datetime, timezone
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field, asdict
 from typing import List, Tuple, Optional, Dict
-from itertools import combinations
 
 
 # Maximum text length stored per crystal. Set to 0 to disable truncation.
@@ -1148,56 +1147,9 @@ class MIVectorizer:
 # COMPONENT 2: GEOMETRY — emergent d from PCA
 # ---------------------------------------------------------------------------
 
-def pca_reduce(vectors: List[List[float]], variance_threshold: float = 0.90):
-    """Find effective dimensionality from MI vectors.
-
-    Returns (reduced_vectors, n_components, explained_variance).
-    Pure math. No numpy required for small datasets.
-    """
-    if not vectors or not vectors[0]:
-        return vectors, 0, []
-
-    # Need numpy for PCA on real data
-    try:
-        import numpy as np
-        X = np.array(vectors)
-        X_centered = X - X.mean(axis=0)
-
-        # SVD
-        U, S, Vt = np.linalg.svd(X_centered, full_matrices=False)
-        explained = (S**2) / (S**2).sum()
-        cumulative = np.cumsum(explained)
-
-        # Find d where cumulative variance exceeds threshold
-        d = 1
-        for i, c in enumerate(cumulative):
-            if c >= variance_threshold:
-                d = i + 1
-                break
-        else:
-            d = len(S)
-
-        # Project to d dimensions
-        reduced = (X_centered @ Vt[:d].T).tolist()
-
-        return reduced, d, explained[:d].tolist()
-
-    except ImportError:
-        # Fallback: no reduction, use raw vectors
-        return vectors, len(vectors[0]) if vectors else 0, []
-
-
 def su_d_dimensions(d: int) -> int:
     """SU(d) manifold dimensionality: d²-1."""
     return d * d - 1
-
-
-def possible_mappings(d: int) -> int:
-    """Number of possible topological maps: (d²-1 choose 3)."""
-    n = su_d_dimensions(d)
-    if n < 3:
-        return 0
-    return math.comb(n, 3)
 
 
 # ---------------------------------------------------------------------------
@@ -1374,11 +1326,6 @@ def wrapping_number(angle: float) -> int:
     # Basin width ≈ BASIN_ANGLE
     ratio = BASIN_ANGLE / angle if angle > 0 else 0
     return max(0, round(ratio))
-
-
-def topological_ache(n_expected: int, n_measured: int) -> int:
-    """Ache as integer mismatch between expected and measured wrapping numbers."""
-    return abs(n_expected - n_measured)
 
 
 # ---------------------------------------------------------------------------
@@ -2492,16 +2439,6 @@ def get_fish() -> UniversalFish:
     if _fish is None:
         _fish = UniversalFish()
     return _fish
-
-
-def crystallize_v3(text: str, source: str = "unknown") -> Optional[Crystal]:
-    """Drop-in replacement for v1 crystallize().
-
-    Same signature: crystallize(text, source) -> Crystal
-    Uses MI × ache instead of keyword counting.
-    """
-    fish = get_fish()
-    return fish.ingest(text, source)
 
 
 # Note: the sandbox_compare() v1-vs-v3 dev test that lived here was removed
