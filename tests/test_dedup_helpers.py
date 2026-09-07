@@ -795,9 +795,14 @@ class TestListenCommitsOncePerSession(unittest.TestCase):
                 self.assertTrue(getattr(eng, "dedupe", False),
                                 "school engine ignored dedupe=True")
 
-    def test_default_school_still_autocommits(self):
-        """The negative control: the fix must not silently disable commits for
-        non-streaming callers, who rely on per-eat rollback points."""
+    def test_default_school_declares_a_live_commit_policy(self):
+        """The negative control, kept for its PURPOSE: the July listen fix must not
+        silently disable commits for other callers. It used to assert per-eat
+        commits (git_autocommit=True); linafish#76 retires per-eat as the default.
+        The contract now: a default School is NOT per-eat AND NOT zero — every
+        engine it builds carries a periodic policy, so history keeps advancing
+        without a commit per crystal (Olorina, #76 review: with the library
+        default off, an undeclared daemon goes to zero commits, forever)."""
         import json, tempfile
         from pathlib import Path
         from linafish.school import School
@@ -805,10 +810,13 @@ class TestListenCommitsOncePerSession(unittest.TestCase):
             tmp = Path(td)
             (tmp / "school").mkdir()
             (tmp / "school" / "school.json").write_text(json.dumps(
-                {"central": "central", "members": {}}))
+                {"central": "central", "members": {"m": {}}}))
             s = School(state_dir=tmp / "school", central_state_dir=tmp)
-            self.assertTrue(s.central.git_autocommit,
-                            "default School must keep per-eat commits")
+            for eng in (s.central, *s.members.values()):
+                self.assertFalse(eng.git_autocommit,
+                                 "default School must not commit per eat")
+                self.assertGreater(eng.commit_every_n_eats, 0,
+                                   "default School must not go to zero commits")
 
 
 class TestSkipReasonsAreNotGuessed(unittest.TestCase):

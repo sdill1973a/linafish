@@ -200,8 +200,10 @@ def build_daily_fish(
     fish_name = f"{fish_name_prefix}-{date_iso}"
 
     from .engine import FishEngine
-    engine = FishEngine(name=fish_name, state_dir=daily_dir)
+    engine = FishEngine(name=fish_name, state_dir=daily_dir,
+                        git_autocommit=False)       # seeder: never per eat (linafish#76)
     engine.eat_path(seed_file)
+    engine.flush_commit("daily seeded")             # one rollback point as the stream closes
 
     # Count crystals after eat.
     crystal_file = daily_dir / f"{fish_name}_crystals.jsonl"
