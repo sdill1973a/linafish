@@ -161,7 +161,7 @@ class FishEngine:
                  vocab_size: int = 200, d: float = 4.0,
                  seed_grammar: bool = True, min_gamma: float = None,
                  subtract_centroid: bool = False,
-                 git_autocommit: bool = True,
+                 git_autocommit: bool = False,
                  dedupe: bool = False,
                  addressed_formations: bool = True,
                  commit_every_n_eats: int = 0,
@@ -178,16 +178,24 @@ class FishEngine:
         self.min_gamma = min_gamma  # Override adaptive gamma (for single-author corpora)
         self.subtract_centroid = subtract_centroid  # Remove global signal before coupling
         self.seed_grammar = seed_grammar
-        # git_autocommit: if True (default) every _save_state commits the
-        # fish repo. Interactive single-shot eat() expects this — you want
-        # per-eat versioning for the debug log and scar replay. Batch
-        # consumers (mass re-ingest, corpus load, bulk eat_many) should
-        # pass git_autocommit=False and drive commits manually (or skip
-        # them entirely) — every eat() otherwise runs `git commit` which
-        # Ollie's codex empirically measured as the dominant cost on
-        # 200-doc batches (12.666 ms first-20 mean -> 114.381 ms last-20
-        # mean — the latency slope is the git commit overhead, not the
-        # crystallization work).
+        # git_autocommit: if True, EVERY _save_state runs `git commit`. Default is
+        # False (changed 2026-09-07, review R2). It was True from the start, and
+        # the cost was measured twice: Ollie's codex saw the commit overhead as
+        # the dominant latency slope on 200-doc batches (12.7 ms first-20 mean
+        # -> 114.4 ms last-20), and in July 2026 one feeding session on
+        # phoenix-keeper produced 1,734 commits, each re-storing a 379 MB JSONL
+        # as a full loose object: 194.5 GiB of .git for ~420 MB of fish. The
+        # July fix reached only the CLI `listen` path; every programmatic
+        # caller (20 of 23 in the operator's own runtime) still inherited
+        # per-eat commits from this default. A library default should be the
+        # safe one. Durability never depended on the commit — every eat already
+        # appends to the JSONL via _persist_crystal; the commit is a ROLLBACK
+        # POINT, and one per stream is what a rollback point is for.
+        #   * single-shot CLI `eat` passes git_autocommit=True: one eat, one
+        #     commit, exactly the interactive behaviour it always had.
+        #   * long-running daemons pass commit_every_n_eats=N (below).
+        #   * batch consumers leave both off and call flush_commit()/session_end()
+        #     when the stream closes.
         self.git_autocommit = git_autocommit
         # commit_every_n_eats: periodic-commit mode for long-running daemons
         # (HTTP / converse servers) that never call session_end. 0 means
@@ -2842,6 +2850,13 @@ class FishEngine:
         # Phase 1: Fresh vectorizer, re-learn from all crystal texts
         _progress(f"Phase 1: re-feeding {n_total} crystals into fresh vectorizer")
         new_vec = MIVectorizer()
+        # A living fish keeps its emerging door through a revectorize: the re-feed
+        # below then rebuilds emerge_df from the crystal sequence instead of
+        # silently wiping it (review P1, 2026-09-07).
+        new_vec.track_emergence = bool(getattr(self.fish.vectorizer, "track_emergence", False)
+                                       or getattr(self.fish, "living_vocab", False))
+        new_vec.emerge_half_life = getattr(self.fish.vectorizer, "emerge_half_life",
+                                           new_vec.emerge_half_life)
         fed = 0
         for c in crystals:
             if c.text and len(c.text.strip()) > 10:

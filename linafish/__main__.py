@@ -89,7 +89,8 @@ def cmd_eat(args):
             name = source.stem
             print(f"  No fish found here — creating '{name}'")
     engine = FishEngine(state_dir=_resolve_state_dir(name, explicit_root),
-                        name=name)
+                        name=name,
+                        git_autocommit=True)  # one eat, one commit — the interactive contract (review R2)
     result = engine.eat_path(source)
 
     if not engine.fish.crystals:

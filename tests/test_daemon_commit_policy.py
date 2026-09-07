@@ -25,10 +25,14 @@ class TestCommitPolicy(unittest.TestCase):
         # we don't need a populated vocabulary for these counter tests.
         return FishEngine(state_dir=self.state_dir, name="t", **kw)
 
-    def test_default_is_legacy_per_eat_autocommit(self):
+    def test_default_is_no_per_eat_autocommit(self):
+        # Review R2, 2026-09-07: the library default is the SAFE one. Per-eat
+        # commits stored 1,734 full copies of a 379 MB JSONL in one July session.
+        # The single-shot CLI `eat` opts in explicitly; daemons use
+        # commit_every_n_eats; batch callers flush when the stream closes.
         e = self._engine()
         self.assertEqual(e.commit_every_n_eats, 0)
-        self.assertTrue(e.git_autocommit)
+        self.assertFalse(e.git_autocommit)
 
     def test_commit_every_n_eats_clamps_negative_to_zero(self):
         e = self._engine(commit_every_n_eats=-5)

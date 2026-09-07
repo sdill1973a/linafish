@@ -558,6 +558,13 @@ class MIVectorizer:
         self.track_emergence = False
         self.emerge_half_life = 500      # docs; effective window ~ H/ln2 ~ 1.44H
         self.emerge_df = {}              # token -> decayed recent doc-frequency
+        # Its OWN clock (review P1, 2026-09-07). The first version decayed emerge_df
+        # against token_last_doc, which _recency_factor also owns and which advances
+        # on EVERY feed — tracking on or off. After an off period the decay saw a
+        # recent `last`, so stale bursts read as fresh: measured 2.2x overstated
+        # (5.15 -> 1.62 vs an always-on control of 0.74). Two counters, one clock,
+        # only one guaranteed to advance. Now each counter carries its own.
+        self.emerge_last_doc = {}        # token -> doc_count at last TRACKED feed
         # Highest pair count this vectorizer has ever KNOWN itself to hold,
         # carried across save/load so truncation cannot edit its own history
         # (linafish#56). 0 = never measured over cap.
@@ -603,11 +610,15 @@ class MIVectorizer:
             H = self._emerge_h()
             for t in token_set:
                 self.token_doc_counts[t] += 1
-                last = self.token_last_doc.get(t)
                 prev = self.emerge_df.get(t, 0.0)
-                if prev and last:
+                if prev:
+                    # A df with no clock decays from doc 0 — the CONSERVATIVE direction.
+                    # (Olorina, #76 review: an unguarded `if last:` let a clockless df
+                    # through UNDECAYED, the same direction as the bug being fixed.)
+                    last = self.emerge_last_doc.get(t, 0)
                     prev *= 0.5 ** ((self.doc_count - last) / H)
                 self.emerge_df[t] = prev + 1.0
+                self.emerge_last_doc[t] = self.doc_count
                 self.token_last_doc[t] = self.doc_count
         else:
             for t in token_set:
@@ -685,9 +696,8 @@ class MIVectorizer:
         v = self.emerge_df.get(token, 0.0)
         if not v:
             return 0.0
-        last = self.token_last_doc.get(token)
-        if last:
-            v *= 0.5 ** ((self.doc_count - last) / self._emerge_h())
+        last = self.emerge_last_doc.get(token, 0)   # no clock -> decay from doc 0
+        v *= 0.5 ** ((self.doc_count - last) / self._emerge_h())
         return v
 
     def emergence(self, token: str):
@@ -1006,6 +1016,7 @@ class MIVectorizer:
             'token_last_doc': dict(self.token_last_doc),
             'emerge_df': {k: round(v, 4) for k, v in self.emerge_df.items()} if self.emerge_df else {},
             'emerge_half_life': self.emerge_half_life,
+            'emerge_last_doc': dict(self.emerge_last_doc) if self.emerge_last_doc else {},
             # Provenance for the reader: how much of the co-occurrence
             # distribution this file actually holds. Without it, load() cannot
             # tell a small fish from a large one that was cut down, and every
@@ -1055,6 +1066,13 @@ class MIVectorizer:
         # legacy files have no emergence record — counting starts at load, honestly.
         self.emerge_df = dict(data.get('emerge_df', {}) or {})
         self.emerge_half_life = data.get('emerge_half_life', self.emerge_half_life)
+        # Files written before the clock existed: fall back to token_last_doc ONCE at
+        # load, which is exactly the old (shared-clock) behaviour until the next
+        # tracked feed re-stamps each token. Honest, and self-healing.
+        self.emerge_last_doc = dict(data.get('emerge_last_doc', {}) or {})
+        if self.emerge_df and not self.emerge_last_doc:
+            self.emerge_last_doc = {k: self.token_last_doc[k]
+                                    for k in self.emerge_df if k in self.token_last_doc}
         # Carry the recovered total across the round trip so the NEXT save
         # cannot re-base the loss on an already-truncated table (#56 box 3).
         self.pair_counts_true_total = data.get('pair_counts_true_total',
