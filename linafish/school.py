@@ -51,8 +51,9 @@ class School:
     def __init__(self, state_dir: Optional[Path] = None,
                  manifest_path: Optional[Path] = None,
                  central_state_dir: Optional[Path] = None,
-                 git_autocommit: bool = True,
-                 dedupe: bool = False):
+                 git_autocommit: bool = False,
+                 dedupe: bool = False,
+                 commit_every_n_eats: int = 100):
         """Load or create a school.
 
         Args:
@@ -74,6 +75,11 @@ class School:
         """
         self.state_dir = (state_dir or Path.home() / ".linafish" / "school").resolve()
         self.state_dir.mkdir(parents=True, exist_ok=True)
+        # Commit policy for EVERY engine this school builds (linafish#76 review,
+        # Olorina): a school is a long-running daemon that never closes its stream,
+        # so 'flush at the end' never reaches it. Periodic, never per-eat, never zero.
+        self.git_autocommit = git_autocommit
+        self.commit_every_n_eats = commit_every_n_eats
 
         self.manifest_path = manifest_path or (self.state_dir / "school.json")
         self.central_state_dir = central_state_dir or Path.home() / ".linafish"
@@ -92,6 +98,7 @@ class School:
             state_dir=self.central_state_dir,
             name=central_name,
             git_autocommit=git_autocommit,
+            commit_every_n_eats=commit_every_n_eats,
             dedupe=dedupe,
         )
 
@@ -108,6 +115,7 @@ class School:
                 subtract_centroid=config.get("subtract_centroid", False),
                 vocab_size=config.get("vocab_size", 200),
                 git_autocommit=git_autocommit,
+            commit_every_n_eats=commit_every_n_eats,
                 dedupe=dedupe,
             )
 
@@ -141,6 +149,8 @@ class School:
             min_gamma=min_gamma,
             subtract_centroid=subtract_centroid,
             vocab_size=vocab_size,
+            git_autocommit=self.git_autocommit,
+            commit_every_n_eats=self.commit_every_n_eats,
         )
 
     def eat(self, text: str, source: str = "session") -> dict:
@@ -251,6 +261,8 @@ class School:
             min_gamma=config.get("min_gamma"),
             subtract_centroid=config.get("subtract_centroid", False),
             vocab_size=config.get("vocab_size", 200),
+            git_autocommit=self.git_autocommit,
+            commit_every_n_eats=self.commit_every_n_eats,
         )
         self.members[member_name] = engine
 

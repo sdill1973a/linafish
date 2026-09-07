@@ -611,9 +611,12 @@ class MIVectorizer:
             H = self._emerge_h()
             for t in token_set:
                 self.token_doc_counts[t] += 1
-                last = self.emerge_last_doc.get(t)
                 prev = self.emerge_df.get(t, 0.0)
-                if prev and last:
+                if prev:
+                    # A df with no clock decays from doc 0 — the CONSERVATIVE direction.
+                    # (Olorina, #76 review: an unguarded `if last:` let a clockless df
+                    # through UNDECAYED, the same direction as the bug being fixed.)
+                    last = self.emerge_last_doc.get(t, 0)
                     prev *= 0.5 ** ((self.doc_count - last) / H)
                 self.emerge_df[t] = prev + 1.0
                 self.emerge_last_doc[t] = self.doc_count
@@ -694,9 +697,8 @@ class MIVectorizer:
         v = self.emerge_df.get(token, 0.0)
         if not v:
             return 0.0
-        last = self.emerge_last_doc.get(token)
-        if last:
-            v *= 0.5 ** ((self.doc_count - last) / self._emerge_h())
+        last = self.emerge_last_doc.get(token, 0)   # no clock -> decay from doc 0
+        v *= 0.5 ** ((self.doc_count - last) / self._emerge_h())
         return v
 
     def emergence(self, token: str):

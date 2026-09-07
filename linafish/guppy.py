@@ -455,6 +455,8 @@ def main():
         name=args.name,
         d=args.d,
         subtract_centroid=args.centroid,
+        git_autocommit=False,          # never per eat (linafish#76)
+        commit_every_n_eats=100,       # swim: periodic rollback points
     )
 
     guppy = Guppy(engine, hunt_ache=args.ache)
@@ -465,6 +467,7 @@ def main():
         guppy.swim(interval=args.interval)
     else:
         result = guppy.hunt_once()
+        engine.flush_commit("guppy hunt")   # one-shot: the stream closes here
         print(json.dumps(result, indent=2))
 
 

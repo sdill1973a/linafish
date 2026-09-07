@@ -23,6 +23,13 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
   per-eat commits. The single-shot CLI `eat` passes `git_autocommit=True` explicitly, so
   its one-eat-one-commit behaviour is unchanged. Daemons use `commit_every_n_eats`;
   batch consumers call `flush_commit()` or `session_end()` when the stream closes.
+  Every in-package daemon and seeder now declares its policy explicitly — `School`
+  defaults to `commit_every_n_eats=100` for the central fish and every member, the
+  guppy swims periodic and flushes after a one-shot hunt, and the keeper/daily seeders
+  flush once as their seed stream closes. Guarded by
+  `tests/test_daemons_declare_commit_policy.py`, which fails on any `FishEngine(` in a
+  daemon module with no policy (review by Olorina: a daemon never closes its stream, so
+  with the new default an undeclared one would go to ZERO commits, forever, silently).
 
 ### Fixed
 

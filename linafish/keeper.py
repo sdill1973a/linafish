@@ -140,8 +140,10 @@ def init_keeper(
             raise FileNotFoundError(f"seed path not found: {seed_path}")
         # Defer import so this module loads fast even if engine isn't needed.
         from .engine import FishEngine
-        engine = FishEngine(name=full_name, state_dir=keeper_dir)
+        engine = FishEngine(name=full_name, state_dir=keeper_dir,
+                            git_autocommit=False)   # seeder: never per eat (linafish#76)
         engine.eat_path(seed_path)
+        engine.flush_commit("keeper seeded")         # one rollback point as the stream closes
 
     return KeeperInfo(
         name=name.removesuffix(KEEPER_SUFFIX),
@@ -225,7 +227,8 @@ def invoke_keeper(
 
     # Defer engine import for fast-path on info/list verbs.
     from .engine import FishEngine
-    engine = FishEngine(name=info.full_name, state_dir=info.state_dir)
+    engine = FishEngine(name=info.full_name, state_dir=info.state_dir,
+                        git_autocommit=False)   # read-only use; declared anyway
 
     # Persona = top formation interpretation, if any.
     persona = ""
