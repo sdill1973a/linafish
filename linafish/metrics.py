@@ -241,32 +241,6 @@ class GrowthTracker:
         """
         return [(i, s.r_n) for i, s in enumerate(self.snapshots)]
 
-    def coupling_curve(self) -> List[Tuple[int, float]]:
-        """Return (snapshot_index, coupling_density) pairs.
-
-        Should grow then plateau. The plateau IS the ~170 glyph
-        saturation from the paper.
-        """
-        return [(i, s.coupling_density) for i, s in enumerate(self.snapshots)]
-
-    def stability_curve(self) -> List[Tuple[int, float]]:
-        """Return (delta_index, stability_ratio) pairs.
-
-        High stability across re-eat cycles = real structure.
-        Low stability = noise washing out. This IS the Bell test
-        applied to re-eat cycles instead of random shuffles.
-        """
-        return [(i, d.stability_ratio) for i, d in enumerate(self.deltas)]
-
-    def drift_curve(self) -> List[Tuple[int, float]]:
-        """Return (delta_index, vocab_drift_rate) pairs.
-
-        High drift early = still learning. High drift late = instability.
-        Low drift = convergence. The drift rate IS the d-trajectory.
-        When it stabilizes, the fish has found its language.
-        """
-        return [(i, d.vocab_drift_rate) for i, d in enumerate(self.deltas)]
-
     def dimension_balance(self) -> Dict[str, float]:
         """Current dimension balance from the latest snapshot.
 

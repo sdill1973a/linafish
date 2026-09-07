@@ -121,8 +121,18 @@ def cmd_eat(args):
 
     # Save to --output or default. Mirrors v1's filesystem footprint;
     # the persistent copy at engine.fish_file is the new addition.
-    output = Path(args.output) if args.output else Path(f"{name}.fish.md")
-    output.write_text(codebook, encoding="utf-8")
+    # Review R1 (2026-09-07): the v1 "cwd copy" was written even when --state-dir was
+    # explicit, so every `eat` left a duplicate render wherever it was run — including
+    # three fish in this repo's root on every test run. With an explicit state dir the
+    # persistent copy IS the output; -o still writes wherever you point it.
+    if args.output:
+        output = Path(args.output)
+        output.write_text(codebook, encoding="utf-8")
+    elif explicit_root:
+        output = engine.fish_file
+    else:
+        output = Path(f"{name}.fish.md")
+        output.write_text(codebook, encoding="utf-8")
     print(f"\nFish: {output} ({len(codebook)} chars, "
           f"{result.get('formations', 0)} formations)")
     print(f"Persisted: {engine.fish_file}")
@@ -2899,7 +2909,6 @@ def cmd_capabilities(args):
             ("feedback", "Usage-weighted learning (formations earn weight when used)"),
             ("emergence", "Semantic Novelty Threshold (nu, mu, rho, Psi, phase classification)"),
             ("glyph_evolution", "Private language growth beyond the 48 bootstrap glyphs"),
-            ("seed_formations", "5 universal superglyph attractors for cold fish bootstrap"),
         ]),
         ("Feeding", [
             ("ingest", "File readers — 39 extensions, falls through for unknown suffixes"),

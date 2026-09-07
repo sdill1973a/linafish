@@ -891,7 +891,6 @@ def hierarchical_merge(
         if total_crystals > 0:
             centroid = [round(v / total_crystals, 4) for v in centroid]
 
-        from collections import Counter
         top_kw = [kw for kw, _ in Counter(all_keywords).most_common(5)]
         name = "_".join(top_kw[:3]).upper() if top_kw else f"META_{i}"
 
