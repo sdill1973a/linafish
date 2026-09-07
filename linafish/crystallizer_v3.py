@@ -240,6 +240,22 @@ def _unpack_vec(blob) -> list:
 
 # ---------------------------------------------------------------------------
 # STOPWORDS — minimal set, guaranteed useless in any corpus.
+#
+# THREE STOPWORD-LIKE SETS EXIST IN THIS PACKAGE, ON PURPOSE (reviewed 2026-09-07 after a
+# reviewer — Anchor — filed them as one drifted list; measured, they are three organs):
+#   * THIS ONE (51) — the vectorizer's strip-list for BLEND/STRANGER mode only. Kept minimal
+#     because the fish's whole premise is that positional cognitive words ("because,
+#     therefore, actually, honestly, look, think, feel") are THE signal — the words TF-IDF
+#     throws away (docs/vision.md; design note 2026-04-14). Adding a word here removes an
+#     axis from every fish that has it: measured, the union of all three sets would evict
+#     1,004 vocabulary entries across 89 live fish. Do not widen casually.
+#   * parser._STOPWORDS (24) — NOT a filter. One branch of _guess_pos(): the 'stop' tag,
+#     beside 'aux' / 'pron_self' / 'pron_other' / 'prep_rel'. Pronouns and auxiliaries are
+#     deliberately absent from it because they carry the relating/acting dimensions.
+#   * grounding.STOPWORDS (102) — the grounding check's evidence FLOOR (born 2026-08-11,
+#     M1 Phase 2), a superset of this set by construction; legibility over coverage.
+# tests/test_stopword_sets_are_deliberate.py pins the exact contents of all three so that
+# any change is a visible decision, not drift.
 # Only filtered in BLEND/STRANGER mode (d > 2). In WARM mode (d <= 2),
 # high-frequency words ARE the signal — don't touch them.
 # ---------------------------------------------------------------------------
