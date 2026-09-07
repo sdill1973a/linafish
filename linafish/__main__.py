@@ -2910,6 +2910,7 @@ def cmd_capabilities(args):
             ("feedback", "Usage-weighted learning (formations earn weight when used)"),
             ("emergence", "Semantic Novelty Threshold (nu, mu, rho, Psi, phase classification)"),
             ("glyph_evolution", "Private language growth beyond the 48 bootstrap glyphs"),
+            ("seed_formations", "5 universal superglyph attractors for cold fish bootstrap"),
         ]),
         ("Feeding", [
             ("ingest", "File readers — 39 extensions, falls through for unknown suffixes"),
