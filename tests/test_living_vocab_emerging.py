@@ -140,3 +140,55 @@ def test_living_flag_from_disk_turns_tracking_on():
         assert e2.fish.living_vocab is True
         assert e2.fish.vectorizer.track_emergence is True
         assert e2.fish.vectorizer.emerge_df, "emergence record did not survive the reload"
+
+
+def test_emergence_clock_survives_an_off_period():
+    """Review P1 (2026-09-07): emerge_df used to decay against token_last_doc, which
+    advances on every feed whether tracking is on or not. After an off period the decay
+    saw a recent `last`, so a burst that had gone quiet read as still rising — measured
+    2.2x overstated against an always-on control. With its own clock the off->on ratio
+    must land within a small factor of the control. Both ways: the control itself must
+    show the burst has faded (ratio < 1.5), or this test proves nothing."""
+    def history(v, off_period):
+        for i in range(400):
+            v.feed(_steady_doc(i))
+        for i in range(12):
+            v.feed(f"the zorbification of the river was noted again in the record {i}")
+        return [(_steady_doc(400 + i) + (" zorbification" if i % 40 == 0 else ""))
+                for i in range(off_period)]
+
+    # subject: tracking OFF during the quiet period, then ON again
+    v = MIVectorizer(); v.track_emergence = True
+    tail = history(v, 800)
+    v.track_emergence = False
+    for d in tail:
+        v.feed(d)
+    v.track_emergence = True
+    _, off_on = v.emergence("zorbification")
+
+    # control: tracking ON throughout the same history
+    w = MIVectorizer(); w.track_emergence = True
+    for d in history(w, 800):
+        w.feed(d)
+    _, control = w.emergence("zorbification")
+
+    assert control < 1.5, f"control did not fade: {control}"
+    assert off_on <= control * 1.25 + 0.1, (
+        f"off->on ratio {off_on:.2f} overstates the always-on control {control:.2f}")
+
+
+def test_revectorize_keeps_the_emerging_door(tmp_path):
+    """Review P1: revectorize_all built a fresh vectorizer with tracking off, so a living
+    fish lost its whole emergence record on every revectorize. The re-feed must rebuild it."""
+    eng = FishEngine(state_dir=tmp_path, name="revec", living_vocab=True)
+    for i in range(60):
+        eng.eat(_steady_doc(i), source="t")
+    for i in range(12):
+        eng.eat(f"the zorbification of the river was noted again {i}", source="t")
+    assert eng.fish.vectorizer.track_emergence
+    before = eng.fish.vectorizer.emerge_recent("zorbification")
+    assert before > 0
+    eng.revectorize_all(vocab_size=50)
+    vec = eng.fish.vectorizer
+    assert vec.track_emergence, "revectorize turned the door off"
+    assert vec.emerge_recent("zorbification") > 0, "emergence history was wiped by revectorize"

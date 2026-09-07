@@ -10,6 +10,44 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **`FishEngine` no longer commits to git on every eat by default.** `git_autocommit`
+  now defaults to `False`. Durability never depended on it — every eat already appends
+  to the crystals JSONL — and the per-eat commit was measured twice as the dominant
+  cost: the latency slope on 200-doc batches, and one July feeding session that stored
+  1,734 full copies of a 379 MB file (194.5 GiB of `.git` for ~420 MB of fish). The
+  July fix reached only `linafish listen`; every programmatic caller still inherited
+  per-eat commits. The single-shot CLI `eat` passes `git_autocommit=True` explicitly, so
+  its one-eat-one-commit behaviour is unchanged. Daemons use `commit_every_n_eats`;
+  batch consumers call `flush_commit()` or `session_end()` when the stream closes.
+
+### Fixed
+
+- **The emerging door kept time on a borrowed clock.** `emerge_df` decayed against
+  `token_last_doc`, which advances on every feed whether emergence tracking is on or
+  not. After a period with tracking off, a burst that had gone quiet still read as
+  rising (measured 2.2× overstated against an always-on control). `emerge_df` now has
+  its own `emerge_last_doc`; files written before it exist fall back once at load and
+  self-heal on the next tracked feed. Test: `test_emergence_clock_survives_an_off_period`.
+- **`revectorize_all()` silently wiped a living fish's emergence history.** It built a
+  fresh vectorizer with tracking off. The fresh vectorizer now inherits the door and the
+  re-feed rebuilds the record from the crystal sequence. Test:
+  `test_revectorize_keeps_the_emerging_door`.
+
+### Added (belongs with #72, which shipped without a changelog line)
+
+- **The emerging door** (#71, #72): a living vocabulary has two doors. The traditional
+  door ranks by lifetime standing and is sized for the incumbents; a genuinely new term
+  never out-ranks them. The emerging door admits a term whose recent-window document
+  frequency is out of proportion to its lifetime rate (recent ≥ 5, ratio ≥ 3, at most 5
+  per rebuild). `MIVectorizer.emergence()`, `emerging_terms()`,
+  `extend_vocab(emerging=True)`. Living fish only.
+
+---
+
 ## [2.2.1] - 2026-08-31
 
 ### Added
