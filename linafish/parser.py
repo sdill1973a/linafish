@@ -604,8 +604,19 @@ class CognitiveParser:
         scope += min(comma_count / max(n / 5, 1), 0.5)
 
         # *focus — specificity
-        focus_markers = {"specifically", "exactly", "precisely", "only",
-                        "particular", "certain", "specific", "this", "that"}
+        # `*` in the QUANTUM framework (p.36) is "Emphasis, focus, salience". The set
+        # below carried only the focus/salience half; the emphasis half — intensifiers —
+        # had no seat anywhere and fell into the 'stop' tag as noise, while the
+        # vectorizer kept "just" as a vocabulary axis in 49 live fish (review 2026-09-07).
+        # Intensifiers now feed `*` as the paper says. "just" sits beside "only": focus by
+        # restriction. (The paper's proper seat for limiters is the ghost `-` concision
+        # modifier, which this engine has never implemented — Captain's call to restore.
+        # `!` also lists "intensity", but as criticality/pressure; "very sure" is
+        # salience of a quality, not urgency, so it goes to `*`.)
+        focus_markers = {"specifically", "exactly", "precisely", "only", "just",
+                        "particular", "certain", "specific", "this", "that",
+                        "very", "too", "so", "really", "truly", "extremely",
+                        "deeply", "highly", "absolutely", "utterly"}
         focus = sum(1 for t in tokens if t.lower() in focus_markers) / max(n, 1)
         # Named entities (capitalized mid-sentence) = focus
         caps_mid = sum(1 for i, t in enumerate(tokens)
