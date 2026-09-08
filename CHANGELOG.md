@@ -14,6 +14,20 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ### Changed
 
+- **The listener daemon skips heartbeats, and counts everything it refuses.** Ported from
+  the operator's runtime listener, where the guard has stood since one retained status
+  message became 3,464 crystals: prefixes `T^keeper|` / `T^boot|` and markers `heartbeat` /
+  `reason=session_keeper` are never crystallized, both configurable with
+  `LINAFISH_SKIP_PREFIXES` / `LINAFISH_SKIP_MARKERS`. Every skip (`short`, `heartbeat`,
+  `duplicate`) is counted by reason in the listener sidecar, so a node can see what its fish
+  is refusing. A numeric "telemetry ratio" rule was measured against real noise and real
+  prose first and rejected: it caught 7% of the noise and flagged 7% of the prose.
+- **`FishEngine(max_crystals=N)` — a ceiling the fish refuses at.** Every crystal is resident
+  in RAM (~90 KB each); a federation node's 189-crystal fish had grown to 117,629 crystals of
+  eaten status tables and was being OOM-killed. With a ceiling set, `eat()` returns
+  `reason: "ceiling"` instead of thinning silently or crashing. Default `None` keeps the
+  historical behaviour.
+
 - **`FishEngine` no longer commits to git on every eat by default.** `git_autocommit`
   now defaults to `False`. Durability never depended on it — every eat already appends
   to the crystals JSONL — and the per-eat commit was measured twice as the dominant
