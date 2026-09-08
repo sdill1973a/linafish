@@ -89,6 +89,20 @@ class FeedbackLoop:
         entry = self.usage.get(formation_name, {})
         return entry.get("weight_modifier", 1.0)
 
+    # RESTORED 2026-09-08. Deleted in linafish#79 as unreferenced — true of the callers,
+    # false of the design. This is the FORGETTING half of how a brain handles noise:
+    # what is not used fades. The loop in this module's docstring (eat -> crystallize ->
+    # form -> serve -> use -> feedback -> eat) was never closed by a caller, which is an
+    # UNWIRED organ, not a dead one. The usage-gate on eating (write in proportion to
+    # surprise) is the other half; see linafish/habituation.py.
+    def decay_unused(self, days: float = 7.0):
+        """Decay formations that haven't been used recently."""
+        cutoff = time.time() - (days * 86400)
+        for name, entry in self.usage.items():
+            if entry["last_used"] < cutoff and entry["hits"] > 0:
+                entry["weight_modifier"] = max(0.1, entry["weight_modifier"] * 0.95)
+        self._save()
+
     def report(self) -> str:
         """Show what the fish has learned about what matters."""
         if not self.usage:
