@@ -14,6 +14,17 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ### Changed
 
+- **The listener writes in proportion to surprise — prediction is the gate.** A brain does
+  not inspect a signal's shape at the door; it notices whether the signal was predicted.
+  `linafish/habituation.py`: the vectorizer is the predictor, a per-source running
+  expectation is the prior, and a message whose surprise falls under the floor is
+  habituated — counted in the sidecar, not crystallized. A spike in surprise cuts a new
+  episode, so every stream crystal now carries `episode_id`/`episode_seq`; the quiet run is
+  remembered as a count. Measured before it was written: floor 0.05 refused 89% of a real
+  2,000-message noise stream and 0% of the author's prose (a byte-shape rule had managed
+  7%/7%). What the fish cannot predict — no vocabulary yet, a source's first message — is
+  always written. `LINAFISH_HABITUATION=off` disables; `LINAFISH_HABITUATION_FLOOR` tunes.
+
 - **The listener daemon skips heartbeats, and counts everything it refuses.** Ported from
   the operator's runtime listener, where the guard has stood since one retained status
   message became 3,464 crystals: prefixes `T^keeper|` / `T^boot|` and markers `heartbeat` /
