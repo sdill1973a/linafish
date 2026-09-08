@@ -47,6 +47,8 @@ from datetime import datetime
 
 from .engine import FishEngine
 from ._dedup_helpers import normalize_for_dedup
+from .habituation import Habituation
+import time as _time
 
 
 # HEARTBEAT / STATUS GUARD — ported 2026-09-08 from the operator's runtime listener, where
@@ -147,6 +149,14 @@ class RoomListener:
         # bookkeeping. Keeping it separate means migrating engine state
         # and migrating listener state can be reasoned about independently.
         self.sidecar_path = self.state_dir / f"{fish_name}.listener.json"
+        # PREDICTION IS THE GATE (2026-09-08). The fish writes in proportion to surprise;
+        # a stream it can predict is habituated, and every refusal is counted. Floor 0.05
+        # was measured (89% of real noise refused, 0% of real prose). LINAFISH_HABITUATION=off
+        # disables it; LINAFISH_HABITUATION_FLOOR tunes it. Persisted in the sidecar.
+        _hab_env = _os.environ.get("LINAFISH_HABITUATION", "on").lower()
+        self.habituation = Habituation(
+            floor=float(_os.environ.get("LINAFISH_HABITUATION_FLOOR", "0.05")),
+            enabled=_hab_env not in ("off", "0", "false"))
         self.content_hashes = set()
         self.exchange_count = 0
         self.stats = {
@@ -191,6 +201,10 @@ class RoomListener:
         if isinstance(stored_stats, dict):
             self.stats.update(stored_stats)
         self.exchange_count = self.stats.get("exchanges", 0)
+        try:
+            self.habituation.load(state.get("habituation"))
+        except Exception:
+            pass  # a torn habituation record is not worth refusing to boot over
         if self.exchange_count or self.content_hashes:
             print(
                 f"Resumed: {self.exchange_count} exchanges, "
@@ -207,6 +221,7 @@ class RoomListener:
         payload = {
             "content_hashes": list(self.content_hashes)[-10000:],
             "stats": self.stats,
+            "habituation": self.habituation.to_dict(),
         }
         tmp_path = self.sidecar_path.with_suffix(
             self.sidecar_path.suffix + ".tmp"
@@ -322,6 +337,22 @@ class RoomListener:
         print("\nRoom listener shutting down...")
         self.running = False
 
+    def _admit(self, sender: str, text: str):
+        """Predict this message from the sender's stream; decide whether it is written.
+        Cannot-predict (no vocab yet, first message from a source) always writes."""
+        vec = None; basis = None
+        try:
+            vocab = getattr(self.engine.fish, "vocab", None)
+            if vocab:
+                vec = self.engine.fish.vectorizer.vectorize(text, vocab)
+                # the basis is the vocabulary's IDENTITY, not its epoch: freeze() bumps the
+                # epoch on every re-derive even when the axes come back unchanged, and an
+                # unchanged basis must keep its prior or nothing ever habituates.
+                basis = hashlib.md5("\x1f".join(vocab).encode("utf-8", "replace")).hexdigest()[:12]
+        except Exception:
+            vec = None; basis = None
+        return self.habituation.observe(sender, vec, _time.time(), basis=basis)
+
     def _skip(self, why: str) -> None:
         """Count every message the listener refuses, by reason, into the sidecar stats."""
         skipped = self.stats.setdefault("skipped", {})
@@ -400,6 +431,14 @@ class RoomListener:
                 return
             self.content_hashes.add(content_hash)
 
+            # THE GATE: predict, then write in proportion to surprise. The vectorizer is
+            # the predictor; the source's running expectation is the prior; the episode
+            # is the unit. A habituated message is counted, not crystallized.
+            decision = self._admit(sender, str(text))
+            if not decision.write:
+                self._skip("habituated")
+                return
+
             # Source format uses colon-prefix so downstream /taste filters
             # (e.g. source_prefix="olorin:") pick up cleanly. receiver +
             # timestamp preserved as tail segments for audit.
@@ -407,7 +446,10 @@ class RoomListener:
                 f"{sender}:room->{receiver}@"
                 f"{datetime.now().isoformat()[:16]}"
             )
-            self.engine.eat(str(text), source=source)
+            self.engine.eat(str(text), source=source,
+                            episode_id=decision.episode_id,
+                            episode_seq=decision.episode_seq,
+                            episode_kind="stream")
 
             self.exchange_count += 1
             self.stats["exchanges"] = self.exchange_count
@@ -417,7 +459,8 @@ class RoomListener:
             msg_len = len(str(text))
             tag = "health" if is_health else "broadcast" if msg_len > 500 else ""
             print(
-                f"  [{sender}->{receiver}] {msg_len}ch {tag} "
+                f"  [{sender}->{receiver}] {msg_len}ch {tag} surprise={decision.surprise:.2f} "
+                f"ep={decision.episode_id.rsplit(':', 1)[-1]}#{decision.episode_seq} "
                 f"(total crystals: {len(self.engine.crystals)})"
             )
 
