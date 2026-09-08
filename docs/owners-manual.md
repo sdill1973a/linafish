@@ -254,13 +254,13 @@ Point it at a folder. Walk away. The fish watches for new files and eats them au
 linafish listen mqtt://your-broker:1883/topic
 ```
 
-The listener does what a nervous system does with noise: it refuses what it can predict.
+The fish does what a nervous system does with noise: it refuses what it can predict — on every path that feeds it except deliberate deposits — `eat FILE`, `go`, or `engine.eat(text, admit=False)` from Python — which always write.
 Heartbeats and status pings are never crystallized. A message that its source's stream
 already predicts is counted, not written — the fish learns a repetitive stream in about
 twenty messages and then stops storing it. A spike in surprise starts a new episode, so
 stream crystals carry `episode_id`/`episode_seq`. What the fish cannot predict — the first
 message from a source, a fish with no vocabulary yet — is always written. Every refusal is
-counted and printed when the stream seals. `LINAFISH_HABITUATION=off` turns the gate off;
+counted; `listen` prints the counts when the stream seals, and the engine keeps them beside its state. `LINAFISH_HABITUATION=off` turns the gate off;
 `LINAFISH_HABITUATION_FLOOR` tunes it; `LINAFISH_MAX_CRYSTALS=N` gives the fish a ceiling it
 refuses at. All of them are in [Configuration](configuration.md#environment-variables).
 

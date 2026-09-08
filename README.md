@@ -252,7 +252,7 @@ linafish listen folder:~/journal     # Watch a folder. Eat what changes.
 linafish listen mqtt://host:1883/#   # Sit in a stream. Ambient cognition.
 ```
 
-A listener does what a nervous system does with noise: it refuses what it can predict.
+A fish does what a nervous system does with noise: it refuses what it can predict. This holds on every path that feeds it — `listen`, `room`, the HTTP and converse servers, a school — except deliberate deposits — `eat FILE`, `go`, or `engine.eat(text, admit=False)` from Python — which always write.
 Heartbeats and status pings are never crystallized; a message its source's stream
 already predicts is counted, not written; a spike in surprise starts a new episode.
 Every refusal is counted and printed when the stream seals. `LINAFISH_HABITUATION=off`

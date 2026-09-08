@@ -189,7 +189,7 @@ Every setting the package reads from the environment. Unset means the default.
 
 | variable | default | what it does |
 |---|---|---|
-| `LINAFISH_HABITUATION` | `on` | The listener (`linafish listen`, `linafish room`) writes in proportion to surprise: a message its source's stream predicts is refused and counted, not crystallized. `off` writes everything. |
+| `LINAFISH_HABITUATION` | `on` | The fish writes in proportion to surprise on every ingest path except deliberate deposits (`eat FILE`, `go`, `eat(..., admit=False)` from Python): a message its source's stream predicts is refused with `reason: "habituated"` and counted, not crystallized. `off` writes everything. |
 | `LINAFISH_HABITUATION_FLOOR` | `0.05` | Surprise below this is refused. Measured default: refused 89% of a real repetitive stream and 0% of real prose. Raise to refuse more, lower to refuse less. |
 | `LINAFISH_SKIP_PREFIXES` | `T^keeper\|,T^boot\|` | Comma-separated. A message starting with any of these is a heartbeat and is never crystallized. |
 | `LINAFISH_SKIP_MARKERS` | `heartbeat,reason=session_keeper` | Comma-separated, case-insensitive. A message containing any of these is a heartbeat and is never crystallized. |

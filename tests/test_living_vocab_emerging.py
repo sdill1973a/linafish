@@ -21,24 +21,55 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from linafish.crystallizer_v3 import MIVectorizer
 from linafish.engine import FishEngine
 
+# Forty steady content words. With only twelve, a top-20 vocabulary has room for ANY term
+# with a pulse and the traditional door admits the burst on its own — which is the case
+# these tests are NOT about. A mature fish has a contested top-20.
 STEADY = ["river", "willow", "otter", "water", "boat", "bank", "stone", "morning",
-          "evening", "lantern", "harbor", "meadow"]
+          "evening", "lantern", "harbor", "meadow", "bridge", "orchard", "kettle", "ledger",
+          "window", "garden", "thunder", "saddle", "candle", "market", "anchor", "compass",
+          "hollow", "silver", "copper", "wagon", "barrel", "letter", "mirror", "pasture",
+          "shingle", "tallow", "quarry", "furrow", "hearth", "timber", "gutter", "beacon"]
 
 
 def _steady_doc(i):
     # every doc carries 'river'; the rest rotate so lifetime df is spread evenly
-    a, b, c = STEADY[i % 12], STEADY[(i * 5) % 12], STEADY[(i * 7) % 12]
-    return f"the river runs past the {a} while the {b} waits near the {c} at dusk {i}"
+    n = len(STEADY)
+    a, b, c, d = STEADY[i % n], STEADY[(i * 7) % n], STEADY[(i * 11) % n], STEADY[(i * 13) % n]
+    return f"the river runs past the {a} while the {b} waits near the {c} by the {d} at dusk {i}"
 
 
-def _vectorizer(n_steady=400, burst=12, burst_word="zorbification", track=True):
+# A REAL burst: the same new term recurring across DIFFERENT sentences, built only from the
+# corpus's own common words — so each sentence differs (the engine's gate admits it) while the
+# term's co-occurrence partners are the same everyday words as everything else (the traditional
+# door does not take it on distinctiveness alone). Twelve copies of one sentence is a repeated
+# message, and the engine now refuses those on purpose; a burst of fresh vocabulary around the
+# term is a topic shift, which the traditional door admits by itself.
+# A REAL burst: the same new term recurring across DIFFERENT sentences. Twelve copies of one
+# sentence is a repeated message, and the engine now refuses those on purpose.
+VARIED = ["the harbor keeps a ledger of {w} and the tide does not argue",
+          "she asked about {w} at dusk and the willow had no answer",
+          "a stone remembers every {w} that failed to move it",
+          "morning came late to the meadow and brought {w} with it",
+          "the otter went under the boat and surfaced beside the {w}",
+          "we tested the lantern against {w} until the water went quiet"]
+
+
+def _burst_doc(w, i):
+    # a REAL burst: the same new term recurring across DIFFERENT sentences. Twelve copies of
+    # one sentence is a repeated message, and the engine now refuses those on purpose.
+    return VARIED[i % len(VARIED)].format(w=w) + f" {i}"
+
+
+def _vectorizer(n_steady=1200, burst=12, burst_word="zorbification", track=True):
+    # 1,200 steady docs: with a VARIED burst, 400 was young enough for the new term to enter
+    # the traditional top-20 on co-occurrence alone, which is the case the test is not about.
     v = MIVectorizer()
     v.track_emergence = track
     for i in range(n_steady):
         v.feed(_steady_doc(i))
     v.feed("the river carries a fragment deadbeefcafe once and never again")
     for i in range(burst):
-        v.feed(f"the {burst_word} of the river was noted again in the record {i}")
+        v.feed(_burst_doc(burst_word, i))
     return v
 
 
@@ -114,7 +145,7 @@ def test_living_engine_admits_burst_term_per_text():
         before = list(e.fish.vocab)
         assert "zorbification" not in before
         for i in range(12):
-            e.eat(f"the zorbification of the river was noted again in the record {i}")
+            e.eat(_burst_doc("zorbification", i))
         assert "zorbification" in e.fish.vocab, (
             f"emerging door did not admit; vocab {len(before)} -> {len(e.fish.vocab)}")
         assert e.fish.vocab[:len(before)] == before
@@ -125,7 +156,7 @@ def test_non_living_engine_never_admits_via_emerging_door():
         e = _engine(tmp, living=False)
         assert e.fish.vectorizer.track_emergence is False
         for i in range(12):
-            e.eat(f"the zorbification of the river was noted again in the record {i}")
+            e.eat(_burst_doc("zorbification", i))
         assert e.fish.vectorizer.emerge_df == {}
         # the traditional door may or may not take it on a corpus this small; the
         # emerging door must have contributed nothing
@@ -153,7 +184,7 @@ def test_emergence_clock_survives_an_off_period():
         for i in range(400):
             v.feed(_steady_doc(i))
         for i in range(12):
-            v.feed(f"the zorbification of the river was noted again in the record {i}")
+            v.feed(_burst_doc("zorbification", i))
         return [(_steady_doc(400 + i) + (" zorbification" if i % 40 == 0 else ""))
                 for i in range(off_period)]
 
@@ -184,7 +215,7 @@ def test_revectorize_keeps_the_emerging_door(tmp_path):
     for i in range(60):
         eng.eat(_steady_doc(i), source="t")
     for i in range(12):
-        eng.eat(f"the zorbification of the river was noted again {i}", source="t")
+        eng.eat(_burst_doc("zorbification", i), source="t")
     assert eng.fish.vectorizer.track_emergence
     before = eng.fish.vectorizer.emerge_recent("zorbification")
     assert before > 0

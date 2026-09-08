@@ -57,7 +57,7 @@ def test_default_saves_every_eat(tmp_path):
     """Backward compatibility: with no knob, fish.md reflects each eat
     immediately (legacy behavior)."""
     e = FishEngine(state_dir=tmp_path, name="t", git_autocommit=False)
-    e.eat(SAMPLE.format(1))
+    e.eat(SAMPLE.format(1), admit=False)
     assert _jsonl_count(e) == 1
     assert _fishmd_crystal_count(e) == 1
 
@@ -68,10 +68,10 @@ def test_gated_save_defers_fishmd(tmp_path):
     e = FishEngine(state_dir=tmp_path, name="t", git_autocommit=False,
                    save_state_every_n_eats=5)
     for i in range(4):
-        e.eat(SAMPLE.format(i))
+        e.eat(SAMPLE.format(i), admit=False)
     assert _jsonl_count(e) == 4                 # durable
     assert _fishmd_crystal_count(e) in (None, 0)  # fish.md not yet rewritten
-    e.eat(SAMPLE.format(99))                    # fifth eat triggers the save
+    e.eat(SAMPLE.format(99), admit=False)                    # fifth eat triggers the save
     assert _fishmd_crystal_count(e) == 5
 
 
@@ -81,7 +81,7 @@ def test_durability_without_flush(tmp_path):
     e = FishEngine(state_dir=tmp_path, name="t", git_autocommit=False,
                    save_state_every_n_eats=100)
     for i in range(7):
-        e.eat(SAMPLE.format(i))
+        e.eat(SAMPLE.format(i), admit=False)
     assert _jsonl_count(e) == 7
     # No flush — drop the engine and reopen (cold load).
     e2 = FishEngine(state_dir=tmp_path, name="t", git_autocommit=False)
@@ -93,7 +93,7 @@ def test_flush_forces_save(tmp_path):
     e = FishEngine(state_dir=tmp_path, name="t", git_autocommit=False,
                    save_state_every_n_eats=100)
     for i in range(3):
-        e.eat(SAMPLE.format(i))
+        e.eat(SAMPLE.format(i), admit=False)
     assert _fishmd_crystal_count(e) in (None, 0)
     e.flush()
     assert _fishmd_crystal_count(e) == 3
@@ -104,7 +104,7 @@ def test_flush_noop_when_nothing_pending(tmp_path):
     a previously-written fish.md."""
     e = FishEngine(state_dir=tmp_path, name="t", git_autocommit=False,
                    save_state_every_n_eats=100)
-    e.eat(SAMPLE.format(1))
+    e.eat(SAMPLE.format(1), admit=False)
     e.flush()
     assert _fishmd_crystal_count(e) == 1
     e.flush()  # nothing pending — must be a clean no-op
@@ -120,7 +120,7 @@ def test_concurrent_eats_no_corruption(tmp_path):
 
     def worker(n):
         try:
-            e.eat(SAMPLE.format(n) + " distinct-marker-" + ("z" * (n + 1)))
+            e.eat(SAMPLE.format(n) + " distinct-marker-" + ("z" * (n + 1)), admit=False)  # subject: the lock, not the gate
         except Exception as ex:  # noqa: BLE001 — test captures any failure
             errors.append(ex)
 

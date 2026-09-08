@@ -18,11 +18,13 @@ those first if you upgrade a running install.
 
 ### Changed defaults
 
-- **The listener refuses what it can predict.** `linafish listen` (and `linafish room`)
-  now write in proportion to *surprise*. A message that its source's stream already
+- **The fish refuses what it can predict.** Every path that feeds a fish — `listen`, `room`,
+  the HTTP and converse servers, a school — now writes in proportion to *surprise*.
+  Deliberate deposits — `eat FILE`, `go`, or `engine.eat(text, admit=False)` from Python —
+  always write. A message that its source's stream already
   predicts is counted, not crystallized; heartbeats and status pings are never
-  crystallized; a spike in surprise starts a new episode. Every refusal is counted and
-  printed when the stream seals. Default on. `LINAFISH_HABITUATION=off` turns it off,
+  crystallized; a spike in surprise starts a new episode. Every refusal is counted beside the
+  fish's state; `listen` prints the counts when the stream seals. Default on. `LINAFISH_HABITUATION=off` turns it off,
   `LINAFISH_HABITUATION_FLOOR` tunes it (default `0.05`: on a 2,000-message repetitive
   stream and 298 passages of ordinary prose, that floor refused 89% of the stream and
   none of the prose). What the fish cannot predict —
@@ -72,6 +74,8 @@ those first if you upgrade a running install.
   accordingly; nothing already written is rewritten.
 - Every long-running entry point in the package declares its commit policy explicitly, and a
   test refuses any new one that does not.
+- The heartbeat guard and the surprise gate sit in the engine's `eat()`, not in each transport,
+  so a feed path added later cannot arrive without them.
 
 ### Removed
 
