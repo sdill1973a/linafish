@@ -252,11 +252,10 @@ linafish listen folder:~/journal     # Watch a folder. Eat what changes.
 linafish listen mqtt://host:1883/#   # Sit in a stream. Ambient cognition.
 ```
 
-A fish does what a nervous system does with noise: it refuses what it can predict. This holds on every path that feeds it — `listen`, `room`, the HTTP and converse servers, a school — except deliberate deposits — `eat FILE`, `go`, or `engine.eat(text, admit=False)` from Python — which always write.
+A fish can do what a nervous system does with noise and refuse what it can predict — opt in with `LINAFISH_HABITUATION=on`. It then holds on every path that feeds it — `listen`, `room`, the HTTP and converse servers, a school — except deliberate deposits — `eat FILE`, `go`, or `engine.eat(text, admit=False)` from Python — which always write.
 Heartbeats and status pings are never crystallized; a message its source's stream
 already predicts is counted, not written; a spike in surprise starts a new episode.
-Every refusal is counted and printed when the stream seals. `LINAFISH_HABITUATION=off`
-turns the gate off; `LINAFISH_MAX_CRYSTALS=N` gives a fish a ceiling it refuses at
+Every refusal is counted and printed when the stream seals. It is off by default, because the design's store rule is that everything enters and ache sorts; `LINAFISH_MAX_CRYSTALS=N` gives a fish a ceiling it refuses at
 (see [Configuration](docs/configuration.md#environment-variables)).
 
 ## Your Mind, Versioned

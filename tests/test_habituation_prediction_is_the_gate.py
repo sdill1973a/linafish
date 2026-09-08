@@ -6,11 +6,20 @@ surprise cuts a new episode; what it cannot predict it always writes. Measured f
 streams (89% of noise refused at floor 0.05, 0% of prose). These tests pin the mechanism.
 """
 import json
+import os
 import sys
 import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _gate_on(monkeypatch):
+    # these tests exercise the gate; it is OPT-IN in the package (see habituation_from_env)
+    monkeypatch.setenv("LINAFISH_HABITUATION", "on")
 
 from linafish.habituation import Habituation, cosine
 from linafish.daemon import RoomListener

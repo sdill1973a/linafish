@@ -7,6 +7,7 @@ the node that was being OOM-killed. Guard the resource, or the next transport re
 Proven here at the engine, through the converse server's own feed route, and across a restart.
 """
 import json
+import os
 import sys
 import threading
 import urllib.request
@@ -14,6 +15,14 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _gate_on(monkeypatch):
+    # these tests exercise the gate; it is OPT-IN in the package (see habituation_from_env)
+    monkeypatch.setenv("LINAFISH_HABITUATION", "on")
 
 from linafish.engine import FishEngine
 from linafish.converse import ConverseHandler
@@ -103,3 +112,14 @@ def test_the_converse_feed_route_is_gated_too(tmp_path):
         assert r.get("crystals_added", 0) >= 1, r
     finally:
         srv.shutdown()
+
+
+def test_the_gate_is_opt_in_by_default(tmp_path, monkeypatch):
+    """The 2026-01-17 fork: 'The valve is open. Everything enters. Ache sorts.' Refusing at
+    the door is a departure a node must choose, not a default it inherits."""
+    monkeypatch.delenv("LINAFISH_HABITUATION", raising=False)
+    eng = FishEngine(state_dir=tmp_path, name="dflt", git_autocommit=False)
+    _warm(eng)
+    reasons = [eng.eat(STATUS.format(i=i), source="bot").get("reason") for i in range(25)]
+    assert "habituated" not in reasons
+    assert eng.eat("T^keeper|alive|2026-09-08T00:00:00 all quiet on the wire", source="bot")["reason"] == "heartbeat"  # the pulse guard is not the gate; it stays on

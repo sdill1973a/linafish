@@ -11,6 +11,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _gate_on(monkeypatch):
+    # these tests exercise the gate; it is OPT-IN in the package (see habituation_from_env)
+    monkeypatch.setenv("LINAFISH_HABITUATION", "on")
+
 from linafish.engine import FishEngine
 from linafish.listener import FishListener
 

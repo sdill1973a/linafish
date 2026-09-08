@@ -46,9 +46,18 @@ def is_heartbeat(text: str) -> bool:
 
 
 def habituation_from_env() -> "Habituation":
-    """The gate as the environment configures it: LINAFISH_HABITUATION=off disables,
-    LINAFISH_HABITUATION_FLOOR tunes (measured default 0.05)."""
-    on = _os.environ.get("LINAFISH_HABITUATION", "on").lower() not in ("off", "0", "false")
+    """The gate as the environment configures it. OPT-IN: LINAFISH_HABITUATION=on enables,
+    LINAFISH_HABITUATION_FLOOR tunes (measured default 0.05).
+
+    Off by default (2026-09-08, on reviewing the release against the papers with Q). The
+    2026-01-17 lived fork — the model this build implements — says of the store:
+    "The valve is open. Everything enters. Ache sorts." The canon's evolution engine handles
+    noise AFTER entry (step 5: prune when frequency < minimum_threshold) and the LIFI scar
+    schema carries decay_rate(time, reuse_frequency). Refusing at the door is a departure
+    from both, made because the post-entry organ (usage decay, a safe prune) is not yet
+    wired and a node was being OOM-killed. A departure is not a default: a node opts in,
+    knowing what it is choosing, until the paper's own mechanism exists."""
+    on = _os.environ.get("LINAFISH_HABITUATION", "off").lower() in ("on", "1", "true")
     return Habituation(floor=float(_os.environ.get("LINAFISH_HABITUATION_FLOOR", "0.05")), enabled=on)
 
 

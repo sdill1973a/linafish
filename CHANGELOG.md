@@ -18,14 +18,17 @@ those first if you upgrade a running install.
 
 ### Changed defaults
 
-- **The fish refuses what it can predict.** Every path that feeds a fish — `listen`, `room`,
-  the HTTP and converse servers, a school — now writes in proportion to *surprise*.
+- **The fish can refuse what it can predict — opt in.** With `LINAFISH_HABITUATION=on`, every
+  path that feeds a fish — `listen`, `room`, the HTTP and converse servers, a school — writes in
+  proportion to *surprise*.
   Deliberate deposits — `eat FILE`, `go`, or `engine.eat(text, admit=False)` from Python —
   always write. A message that its source's stream already
   predicts is counted, not crystallized; heartbeats and status pings are never
   crystallized; a spike in surprise starts a new episode. Every refusal is counted beside the
-  fish's state; `listen` prints the counts when the stream seals. Default on. `LINAFISH_HABITUATION=off` turns it off,
-  `LINAFISH_HABITUATION_FLOOR` tunes it (default `0.05`: on a 2,000-message repetitive
+  fish's state; `listen` prints the counts when the stream seals. Off by default: the design's own store rule is "the valve is open, everything enters,
+  ache sorts", and the post-entry organ that rule relies on (usage decay, a safe prune) is
+  not yet wired — so refusing at the door is a choice a node makes, not a default it
+  inherits. `LINAFISH_HABITUATION_FLOOR` tunes it (default `0.05`: on a 2,000-message repetitive
   stream and 298 passages of ordinary prose, that floor refused 89% of the stream and
   none of the prose). What the fish cannot predict —
   its first message from a source, or a fish with no vocabulary yet — is always written.
