@@ -168,7 +168,8 @@ class FishEngine:
                  save_state_every_n_eats: int = 1,
                  living_vocab: bool = False,
                  origin: Optional[Dict[str, str]] = None,
-                 no_heat: bool = False):
+                 no_heat: bool = False,
+                 max_crystals: Optional[int] = None):
         self.name = name
         self.state_dir = state_dir or Path.home() / ".linafish"
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -197,6 +198,14 @@ class FishEngine:
         #   * batch consumers leave both off and call flush_commit()/session_end()
         #     when the stream closes.
         self.git_autocommit = git_autocommit
+        # max_crystals: a CEILING the fish can say no at (2026-09-08). Every crystal is
+        # resident in RAM (~90 KB each as Python lists); a fish that can only grow will
+        # eventually meet the kernel — a federation node's 189-crystal fish had become
+        # 117,629 crystals of eaten status tables, ~10 GB resident, and was being
+        # OOM-killed. None = no ceiling (the historical behaviour). When set, eat()
+        # REFUSES with reason "ceiling" instead of silently thinning or crashing; the
+        # caller decides what to cut. An organ that cannot decline has no will.
+        self.max_crystals = max_crystals
         # commit_every_n_eats: periodic-commit mode for long-running daemons
         # (HTTP / converse servers) that never call session_end. 0 means
         # "use git_autocommit": True commits per eat, False never commits.
@@ -2120,6 +2129,12 @@ class FishEngine:
                     "total_crystals": len(self.fish.crystals),
                     "sealed": True,
                     "reason": "sealed"}
+
+        if self.max_crystals is not None and len(self.fish.crystals) >= self.max_crystals:
+            return {"crystals_added": 0,
+                    "total_crystals": len(self.fish.crystals),
+                    "ceiling": self.max_crystals,
+                    "reason": "ceiling"}
 
         # Writer lock — serialize concurrent eats (ThreadingHTTPServer runs
         # /eat without a lock; the eat-latency fix makes locking cheap by

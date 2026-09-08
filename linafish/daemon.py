@@ -49,6 +49,30 @@ from .engine import FishEngine
 from ._dedup_helpers import normalize_for_dedup
 
 
+# HEARTBEAT / STATUS GUARD — ported 2026-09-08 from the operator's runtime listener, where
+# it has stood since §THE.LISTENER.WAS.ME (June 2026: one retained status message became
+# 3,464 crystals). A pulse is not an utterance. Prefixes and markers are configurable via
+# LINAFISH_SKIP_PREFIXES / LINAFISH_SKIP_MARKERS (comma-separated) so a node can name its
+# own noise without a code change. Every skip is COUNTED in the sidecar stats — a guard
+# nobody can see is a guard nobody can tune. Measured before shipping: a numeric-token
+# "telemetry ratio" rule was tried against 3,000 crystals of real listener noise and 3,000
+# of the author's prose and caught 7% of the noise while flagging 7% of the prose. It does
+# not ship. Repetition is caught by the content-hash dedup below; shape is caught here only
+# where the sender declares it (prefix/marker), never by guessing.
+import os as _os
+SKIP_PREFIXES = tuple(x for x in _os.environ.get("LINAFISH_SKIP_PREFIXES", "T^keeper|,T^boot|").split(",") if x)
+SKIP_MARKERS = tuple(x.lower() for x in _os.environ.get("LINAFISH_SKIP_MARKERS", "heartbeat,reason=session_keeper").split(",") if x)
+
+
+def is_heartbeat(text: str) -> bool:
+    """True for a pulse/status ping the fish must never crystallize."""
+    s = str(text).strip()
+    if s.startswith(SKIP_PREFIXES):
+        return True
+    low = s.lower()
+    return any(m in low for m in SKIP_MARKERS)
+
+
 def _listener_content_hash(text: str) -> str:
     """Compute the listener plate-dedup hash for a given text.
 
@@ -298,6 +322,11 @@ class RoomListener:
         print("\nRoom listener shutting down...")
         self.running = False
 
+    def _skip(self, why: str) -> None:
+        """Count every message the listener refuses, by reason, into the sidecar stats."""
+        skipped = self.stats.setdefault("skipped", {})
+        skipped[why] = skipped.get(why, 0) + 1
+
     def _on_message(self, client, userdata, msg):
         """MQTT message handler. Feed the exchange into FishEngine."""
         try:
@@ -347,6 +376,10 @@ class RoomListener:
                 pass
 
             if len(str(text)) < 30:
+                self._skip("short")
+                return
+            if is_heartbeat(text):
+                self._skip("heartbeat")
                 return
 
             # Listener plate-dedup. The listener's stated intent (per
@@ -363,6 +396,7 @@ class RoomListener:
             # implementation; tests share it to avoid drift.
             content_hash = _listener_content_hash(text)
             if content_hash in self.content_hashes:
+                self._skip("duplicate")
                 return
             self.content_hashes.add(content_hash)
 
