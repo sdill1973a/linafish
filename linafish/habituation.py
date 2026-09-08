@@ -50,9 +50,12 @@ class Decision:
 @dataclass
 class SourceState:
     expected: Optional[List[float]] = None   # EMA of the stream's vectors
+    basis: str = ""                          # identity of the vocabulary `expected` is indexed by
     episode_id: str = ""
     episode_seq: int = 0                     # written crystals in this episode
-    seen: int = 0                            # messages observed in this episode
+    episodes: int = 0                        # episodes cut for this source (monotonic; in the id)
+    episode_reason: str = ""                 # why the current episode was cut
+    seen: int = 0                            # messages observed in this episode (a counter, not a decision)
     habituated: int = 0                      # messages refused in this episode
     last_ts: float = 0.0
 
@@ -78,14 +81,26 @@ class Habituation:
         self.enabled = enabled
         self.sources: Dict[str, SourceState] = {}
 
-    def observe(self, source: str, vec: Optional[List[float]], now: float) -> Decision:
+    def observe(self, source: str, vec: Optional[List[float]], now: float,
+                basis: Optional[str] = None) -> Decision:
+        """`basis` names the vocabulary `vec` is indexed by (the daemon passes a hash of
+        fish.vocab). The expectation is a vector in that basis; when the basis moves — the
+        engine re-derives the vocabulary on re-eat, score-ranked, so positions re-order —
+        the old prior is a confident, meaningless float. (Olorina's review of #84: her live
+        fish had re-based ~19.5K times under one daemon.) A moved basis is the second thing
+        wearing 'cannot predict' clothes: drop the prior, write, start again."""
         st = self.sources.setdefault(source, SourceState())
         st.seen += 1
         def cut(reason: str) -> None:
-            st.episode_id = f"{source}:{int(now)}"
+            st.episodes += 1
+            st.episode_id = f"{source}:{int(now)}:{st.episodes}"   # monotonic — sub-second cuts stay distinct
+            st.episode_reason = reason
             st.episode_seq = 0
             st.habituated = 0
             st.seen = 1
+        if basis is not None and st.basis != basis:
+            st.expected = None            # the prior lived in another basis
+            st.basis = basis
         if not self.enabled:
             if not st.episode_id or (now - st.last_ts) > self.gap_seconds:
                 cut("off")
@@ -113,8 +128,11 @@ class Habituation:
         return Decision(True, surprise, st.episode_id, st.episode_seq, "novel")
 
     def to_dict(self) -> dict:
-        return {"floor": self.floor, "alpha": self.alpha, "boundary": self.boundary,
-                "gap_seconds": self.gap_seconds,
+        # The knobs are INFORMATIONAL here: on restart the environment wins, and load()
+        # deliberately does not read them. Named so nobody answers "what floor is this
+        # daemon at" from the sidecar.
+        return {"config_informational": {"floor": self.floor, "alpha": self.alpha,
+                                         "boundary": self.boundary, "gap_seconds": self.gap_seconds},
                 "sources": {k: v.to_dict() for k, v in self.sources.items()}}
 
     def load(self, d: Optional[dict]) -> None:

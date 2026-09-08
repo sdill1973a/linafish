@@ -340,14 +340,18 @@ class RoomListener:
     def _admit(self, sender: str, text: str):
         """Predict this message from the sender's stream; decide whether it is written.
         Cannot-predict (no vocab yet, first message from a source) always writes."""
-        vec = None
+        vec = None; basis = None
         try:
             vocab = getattr(self.engine.fish, "vocab", None)
             if vocab:
                 vec = self.engine.fish.vectorizer.vectorize(text, vocab)
+                # the basis is the vocabulary's IDENTITY, not its epoch: freeze() bumps the
+                # epoch on every re-derive even when the axes come back unchanged, and an
+                # unchanged basis must keep its prior or nothing ever habituates.
+                basis = hashlib.md5("\x1f".join(vocab).encode("utf-8", "replace")).hexdigest()[:12]
         except Exception:
-            vec = None
-        return self.habituation.observe(sender, vec, _time.time())
+            vec = None; basis = None
+        return self.habituation.observe(sender, vec, _time.time(), basis=basis)
 
     def _skip(self, why: str) -> None:
         """Count every message the listener refuses, by reason, into the sidecar stats."""

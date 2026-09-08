@@ -90,3 +90,29 @@ def test_daemon_refuses_a_repeated_stream_and_stamps_episodes(tmp_path):
     assert added < 46 and added >= len(thoughts), (added, skipped)
     eps = {getattr(c, "episode_id", None) for c in rl.engine.crystals[before:]}
     assert None not in eps and any(e.startswith("captain:") for e in eps), eps
+
+
+# --- Olorina's review of #84, 2026-09-08: two failures the fixed-vector tests could not reach ---
+
+def test_a_rebased_vocabulary_invalidates_the_prior():
+    """The expectation is indexed by vocabulary position. When the fish re-ranks its vocab
+    (freeze() re-derives it; epoch increments), an old prior compared against a new-basis
+    vector is a confident, meaningless float — and that float is the write/refuse decision,
+    silent in both directions. A stale basis must read as 'cannot predict' -> write."""
+    h = Habituation(floor=0.05, alpha=0.2)
+    same = _v(1.0, 0.0, 0.0, 0.0)
+    for i in range(10):
+        h.observe("bot", same, now=100.0 + i, basis="epoch-1")
+    assert not h.observe("bot", same, now=111.0, basis="epoch-1").write      # habituated, same basis
+    d = h.observe("bot", same, now=112.0, basis="epoch-2")                    # basis moved
+    assert d.write and d.reason == "unpredictable", d
+    assert h.sources["bot"].basis == "epoch-2"
+
+
+def test_two_cuts_in_the_same_second_get_distinct_episodes():
+    h = Habituation(floor=0.05, alpha=0.2, boundary=0.5)
+    h.observe("bot", _v(1, 0, 0, 0), now=500.0)
+    a = h.observe("bot", _v(0, 1, 0, 0), now=500.0)   # orthogonal -> cut
+    b = h.observe("bot", _v(0, 0, 1, 0), now=500.0)   # orthogonal again, same second -> cut
+    assert a.write and b.write and a.reason == "novel" and b.reason == "novel"
+    assert a.episode_id != b.episode_id, (a.episode_id, b.episode_id)
