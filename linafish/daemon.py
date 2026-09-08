@@ -40,6 +40,7 @@ import os
 import time
 import signal
 import hashlib
+import os as _os
 import traceback
 from pathlib import Path
 from typing import Optional
@@ -47,32 +48,10 @@ from datetime import datetime
 
 from .engine import FishEngine
 from ._dedup_helpers import normalize_for_dedup
-from .habituation import Habituation
 import time as _time
 
 
-# HEARTBEAT / STATUS GUARD — ported 2026-09-08 from the operator's runtime listener, where
-# it has stood since §THE.LISTENER.WAS.ME (June 2026: one retained status message became
-# 3,464 crystals). A pulse is not an utterance. Prefixes and markers are configurable via
-# LINAFISH_SKIP_PREFIXES / LINAFISH_SKIP_MARKERS (comma-separated) so a node can name its
-# own noise without a code change. Every skip is COUNTED in the sidecar stats — a guard
-# nobody can see is a guard nobody can tune. Measured before shipping: a numeric-token
-# "telemetry ratio" rule was tried against 3,000 crystals of real listener noise and 3,000
-# of the author's prose and caught 7% of the noise while flagging 7% of the prose. It does
-# not ship. Repetition is caught by the content-hash dedup below; shape is caught here only
-# where the sender declares it (prefix/marker), never by guessing.
-import os as _os
-SKIP_PREFIXES = tuple(x for x in _os.environ.get("LINAFISH_SKIP_PREFIXES", "T^keeper|,T^boot|").split(",") if x)
-SKIP_MARKERS = tuple(x.lower() for x in _os.environ.get("LINAFISH_SKIP_MARKERS", "heartbeat,reason=session_keeper").split(",") if x)
-
-
-def is_heartbeat(text: str) -> bool:
-    """True for a pulse/status ping the fish must never crystallize."""
-    s = str(text).strip()
-    if s.startswith(SKIP_PREFIXES):
-        return True
-    low = s.lower()
-    return any(m in low for m in SKIP_MARKERS)
+from .habituation import is_heartbeat, habituation_from_env, vocab_basis  # one source for every listener
 
 
 def _listener_content_hash(text: str) -> str:
@@ -153,10 +132,7 @@ class RoomListener:
         # a stream it can predict is habituated, and every refusal is counted. Floor 0.05
         # was measured (89% of real noise refused, 0% of real prose). LINAFISH_HABITUATION=off
         # disables it; LINAFISH_HABITUATION_FLOOR tunes it. Persisted in the sidecar.
-        _hab_env = _os.environ.get("LINAFISH_HABITUATION", "on").lower()
-        self.habituation = Habituation(
-            floor=float(_os.environ.get("LINAFISH_HABITUATION_FLOOR", "0.05")),
-            enabled=_hab_env not in ("off", "0", "false"))
+        self.habituation = habituation_from_env()
         self.content_hashes = set()
         self.exchange_count = 0
         self.stats = {
@@ -348,7 +324,7 @@ class RoomListener:
                 # the basis is the vocabulary's IDENTITY, not its epoch: freeze() bumps the
                 # epoch on every re-derive even when the axes come back unchanged, and an
                 # unchanged basis must keep its prior or nothing ever habituates.
-                basis = hashlib.md5("\x1f".join(vocab).encode("utf-8", "replace")).hexdigest()[:12]
+                basis = vocab_basis(vocab)
         except Exception:
             vec = None; basis = None
         return self.habituation.observe(sender, vec, _time.time(), basis=basis)

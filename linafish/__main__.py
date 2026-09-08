@@ -1801,6 +1801,10 @@ def cmd_listen(args):
     listener = FishListener(engine, school=school)
 
     def _seal(reason: str = "listen session"):
+        try:
+            print(f"  {listener.refusal_summary()}")
+        except Exception:
+            pass
         """The single commit this stream is allowed. Runs on every exit path
         — clean end, Ctrl-C, or error — because a rollback point that only
         exists when nothing went wrong is not a rollback point."""

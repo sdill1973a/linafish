@@ -205,6 +205,12 @@ class FishEngine:
         # OOM-killed. None = no ceiling (the historical behaviour). When set, eat()
         # REFUSES with reason "ceiling" instead of silently thinning or crashing; the
         # caller decides what to cut. An organ that cannot decline has no will.
+        if max_crystals is None:
+            # reachable from the shell for every entry point (listen, room, converse,
+            # http): a node that is being OOM-killed sets one number and restarts.
+            _env = os.environ.get("LINAFISH_MAX_CRYSTALS", "").strip()
+            if _env.isdigit():
+                max_crystals = int(_env)
         self.max_crystals = max_crystals
         # commit_every_n_eats: periodic-commit mode for long-running daemons
         # (HTTP / converse servers) that never call session_end. 0 means
@@ -1971,6 +1977,8 @@ class FishEngine:
             f"- `linafish meditate \"<theme>\" -n {self.name}` — what it holds on a theme, or an honest nothing.\n"
             f"- `linafish check -n {self.name}` — is the fish healthy, and what to do next.\n"
             "- `linafish capabilities` — every command, read from the dispatch table, never a stale list.\n"
+            f"- on a live converse server, `POST /recall_episodic` walks a moment in TIME — that day, in order, with its neighbours.\n"
+            f"- `linafish live -n {self.name}` — let the vocabulary grow: rising terms join the axes without displacing the old.\n"
             "*A `converse` or `http` server may also be live (default ports 8900-8902); "
             "if so, `POST /taste` with* `{\"format\":\"json\"}` *answers without loading anything.*\n\n"
             "*Before you answer something that sounds like it has history — a decision they've "

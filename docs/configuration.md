@@ -183,6 +183,26 @@ Engine stats.
 
 Returns: crystal count, formation count, docs ingested, state file path, top formation names.
 
+## Environment variables
+
+Every setting the package reads from the environment. Unset means the default.
+
+| variable | default | what it does |
+|---|---|---|
+| `LINAFISH_HABITUATION` | `on` | The listener (`linafish listen`, `linafish room`) writes in proportion to surprise: a message its source's stream predicts is refused and counted, not crystallized. `off` writes everything. |
+| `LINAFISH_HABITUATION_FLOOR` | `0.05` | Surprise below this is refused. Measured default: refused 89% of a real repetitive stream and 0% of real prose. Raise to refuse more, lower to refuse less. |
+| `LINAFISH_SKIP_PREFIXES` | `T^keeper\|,T^boot\|` | Comma-separated. A message starting with any of these is a heartbeat and is never crystallized. |
+| `LINAFISH_SKIP_MARKERS` | `heartbeat,reason=session_keeper` | Comma-separated, case-insensitive. A message containing any of these is a heartbeat and is never crystallized. |
+| `LINAFISH_MAX_CRYSTALS` | unset (no ceiling) | A fish at this many crystals refuses further eats with `reason: "ceiling"` instead of growing. Every crystal is resident in memory (~90 KB each); set this on a machine that has been running out of memory. |
+| `LINAFISH_NO_HEAT` | unset | `1`/`true`: the engine is an ambient reader — it never writes on its own. |
+| `LINAFISH_EXPOSE_FULL_SOURCES` | unset | `1`/`true`: the converse server's `/moment/<episode_id>` returns untruncated episode source. Off by default because it is the highest-fidelity surface the fish has. |
+| `LINAFISH_MAX_PAIR_COUNTS` | engine default | Cap on the co-occurrence pair table. Truncation is reported at save, never silent. |
+| `LINAFISH_MESSAGES_FILE` | per-fish default | Override the HTTP server's messages file path. |
+| `LINAFISH_MQTT_HOST` / `_PORT` / `_USER` / `_PASS` | unset / `1883` / unset / unset | Broker for the guppy's publish and for authenticated `listen mqtt://` / `room`. Credentials come from the environment, never from the command line. |
+| `LINAFISH_HUNT_INTERVAL` | `300` | Seconds between guppy hunts in `linafish guppy --swim`. |
+| `LINAFISH_FAISS_URL` / `_ROOM_URL` / `_BERT_URL` | unset | External endpoints the guppy hunts against. Unset disables that leg. |
+| `LINAFISH_LLM_URL` / `_KEY` / `_MODEL` / `_FORMAT` | unset | The optional model behind `meditate --deep` and the crucible. Unset keeps the fish inference-free. |
+
 ## File Locations
 
 | File | Purpose |

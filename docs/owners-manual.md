@@ -238,7 +238,7 @@ linafish history           # when you learned what
 linafish diff              # what changed since yesterday
 ```
 
-Every feeding is a commit — streaming (`listen`) takes one commit per session instead. Every session is a branch. Your fish's growth history IS your autobiography, versioned.
+`linafish eat` makes one commit per feeding; streaming (`listen`) takes one commit per session; the Python engine commits only when asked (`git_autocommit=True` or `commit_every_n_eats=N`). Every session is a branch. Your fish's growth history IS your autobiography, versioned.
 
 ### Watch Mode (The Fish That Never Sleeps)
 
@@ -253,6 +253,16 @@ Point it at a folder. Walk away. The fish watches for new files and eats them au
 ```
 linafish listen mqtt://your-broker:1883/topic
 ```
+
+The listener does what a nervous system does with noise: it refuses what it can predict.
+Heartbeats and status pings are never crystallized. A message that its source's stream
+already predicts is counted, not written — the fish learns a repetitive stream in about
+twenty messages and then stops storing it. A spike in surprise starts a new episode, so
+stream crystals carry `episode_id`/`episode_seq`. What the fish cannot predict — the first
+message from a source, a fish with no vocabulary yet — is always written. Every refusal is
+counted and printed when the stream seals. `LINAFISH_HABITUATION=off` turns the gate off;
+`LINAFISH_HABITUATION_FLOOR` tunes it; `LINAFISH_MAX_CRYSTALS=N` gives the fish a ceiling it
+refuses at. All of them are in [Configuration](configuration.md#environment-variables).
 
 The fish subscribes to a data stream. It eats everything. What couples with existing formations stays. What doesn't washes past. This is ambient cognition. The fish thinks while you're not looking.
 

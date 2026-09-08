@@ -27,6 +27,38 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional
+import os as _os
+
+# HEARTBEAT / STATUS GUARD — one source for every listener (room daemon AND `linafish listen`).
+# A pulse is not an utterance. Prefixes/markers are configurable via LINAFISH_SKIP_PREFIXES /
+# LINAFISH_SKIP_MARKERS (comma-separated) so a node can name its own noise without a code change.
+SKIP_PREFIXES = tuple(x for x in _os.environ.get("LINAFISH_SKIP_PREFIXES", "T^keeper|,T^boot|").split(",") if x)
+SKIP_MARKERS = tuple(x.lower() for x in _os.environ.get("LINAFISH_SKIP_MARKERS", "heartbeat,reason=session_keeper").split(",") if x)
+
+
+def is_heartbeat(text: str) -> bool:
+    """True for a pulse/status ping the fish must never crystallize."""
+    s = str(text).strip()
+    if s.startswith(SKIP_PREFIXES):
+        return True
+    low = s.lower()
+    return any(m in low for m in SKIP_MARKERS)
+
+
+def habituation_from_env() -> "Habituation":
+    """The gate as the environment configures it: LINAFISH_HABITUATION=off disables,
+    LINAFISH_HABITUATION_FLOOR tunes (measured default 0.05)."""
+    on = _os.environ.get("LINAFISH_HABITUATION", "on").lower() not in ("off", "0", "false")
+    return Habituation(floor=float(_os.environ.get("LINAFISH_HABITUATION_FLOOR", "0.05")), enabled=on)
+
+
+def vocab_basis(vocab) -> Optional[str]:
+    """Identity of the vocabulary a vector is indexed by (not the epoch: freeze() bumps the
+    epoch even when the axes come back unchanged, and an unchanged basis must keep its prior)."""
+    if not vocab:
+        return None
+    import hashlib
+    return hashlib.md5("\x1f".join(vocab).encode("utf-8", "replace")).hexdigest()[:12]
 
 
 def cosine(a: List[float], b: List[float]) -> float:

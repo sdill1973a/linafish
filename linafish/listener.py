@@ -35,6 +35,15 @@ class FishListener:
         self.min_length = min_length
         self.running = False
         self._content_hashes = set()
+        # PREDICTION IS THE GATE (2026-09-08) — on the path `linafish listen` actually runs.
+        # The room daemon got this first and `listen` did not; a guard on the wrong path is
+        # no guard. Heartbeats are refused by prefix/marker; everything else is predicted
+        # from its source's running expectation and written in proportion to surprise.
+        # Every refusal is counted and printed at seal. In-memory for the session (this
+        # listener has no sidecar); a restart re-learns a stream in ~20 messages.
+        from .habituation import habituation_from_env
+        self.habituation = habituation_from_env()
+        self._refused = {"heartbeat": 0, "habituated": 0}
         self._dedup_cap = dedup_cap
         self._prev_formations = set()
         self._exchange_count = 0
@@ -88,6 +97,11 @@ class FishListener:
     def feed(self, text: str, source: str = "listen"):
         """Feed one text through the engine (or school if set)."""
         text = self._extract_text(text)
+        from .habituation import is_heartbeat, vocab_basis
+        if is_heartbeat(text):          # before the length floor: a pulse is refused AS a pulse, visibly
+            self._refused["heartbeat"] += 1
+            print(f"  [{source}] refused — heartbeat/status ping")
+            return
         if len(text) < self.min_length:
             return
         if self._is_duplicate(text):
@@ -97,6 +111,21 @@ class FishListener:
             # session logged nothing at all. Same silence, one layer up.
             self._skipped_count += 1
             print(f"  [{source}] skipped — already eaten this session")
+            return
+
+        # predict, then write in proportion to surprise
+        eng = self.school.central if self.school else self.engine
+        vec = None; basis = None
+        try:
+            vocab = getattr(eng.fish, "vocab", None)
+            if vocab:
+                vec = eng.fish.vectorizer.vectorize(text, vocab); basis = vocab_basis(vocab)
+        except Exception:
+            vec = None; basis = None
+        decision = self.habituation.observe(source, vec, time.time(), basis=basis)
+        if not decision.write:
+            self._refused["habituated"] += 1
+            print(f"  [{source}] habituated — predicted (surprise {decision.surprise:.2f}); counted, not written")
             return
 
         self._exchange_count += 1
@@ -121,7 +150,10 @@ class FishListener:
                                   central.get("total_crystals", 0), 0)
         else:
             # Single engine mode (original behavior)
-            result = self.engine.eat(text, source=source)
+            result = self.engine.eat(text, source=source,
+                                     episode_id=decision.episode_id,
+                                     episode_seq=decision.episode_seq,
+                                     episode_kind="stream")
             added = result.get("crystals_added", 0)
             total = result.get("total_crystals", 0)
             fcount = result.get("formations", 0)
@@ -140,6 +172,11 @@ class FishListener:
 
 
     # -------------------------------------------------------------------
+    def refusal_summary(self) -> str:
+        """What this session refused, by reason — printed at seal so the gate is visible."""
+        r = dict(self._refused); r["duplicate"] = self._skipped_count
+        return "refused this session: " + ", ".join(f"{v} {k}" for k, v in r.items())
+
     def _report_skip(self, source, reason, total, fcount):
         """Say what the ENGINE said, not what we assume it meant.
 
