@@ -43,6 +43,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple
 
+from .crystallizer_v3 import PROTECTED_VOCAB
 from .engine import FishEngine
 from .formations import Formation, formation_rank_key
 from .ingest import ingest_directory, ingest_file
@@ -687,6 +688,7 @@ class FusionEngine:
             d=d,
             seed_terms=resolved_seeds,
             seed_weight=resolved_weight,
+            protect=PROTECTED_VOCAB,
         )
         engine.fish.frozen = True
         engine.fish.epoch += 1
@@ -728,6 +730,7 @@ class FusionEngine:
                 d=d,
                 seed_terms=resolved_seeds,
                 seed_weight=resolved_weight,
+                protect=PROTECTED_VOCAB,
             )
             new_top = list(new_vocab[:self.VOCAB_STABILITY_N])
 
@@ -833,6 +836,7 @@ class FusionEngine:
             d=d,
             seed_terms=resolved_seeds,
             seed_weight=seed_weight,
+            protect=PROTECTED_VOCAB,
         )
         if d <= 2.0:
             vocab_kwargs['max_doc_pct'] = 0.8
@@ -882,6 +886,7 @@ class FusionEngine:
             new_vocab = engine.fish.vectorizer.get_vocab(
                 size=self.vocab_size, d=d,
                 seed_terms=resolved_seeds, seed_weight=seed_weight,
+                protect=PROTECTED_VOCAB,
             )
             new_top = list(new_vocab[:self.VOCAB_STABILITY_N])
             if new_top == vocab_snapshot:
