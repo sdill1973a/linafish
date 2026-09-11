@@ -35,6 +35,12 @@ class FishListener:
         self.min_length = min_length
         self.running = False
         self._content_hashes = set()
+        # The surprise gate lives in FishEngine.eat() (the resource, not this door), and the
+        # engine's heartbeat guard runs there too. feed() ALSO runs is_heartbeat on purpose,
+        # BEFORE its own length floor, so a pulse is refused visibly AS a pulse rather than
+        # as "too short" — that double-check is deliberate; do not delete either half
+        # (review #85, finding 5). This counter tallies refusals by reason.
+        self._refused = {"heartbeat": 0, "habituated": 0}
         self._dedup_cap = dedup_cap
         self._prev_formations = set()
         self._exchange_count = 0
@@ -88,6 +94,11 @@ class FishListener:
     def feed(self, text: str, source: str = "listen"):
         """Feed one text through the engine (or school if set)."""
         text = self._extract_text(text)
+        from .habituation import is_heartbeat
+        if is_heartbeat(text):          # before the length floor: a pulse is refused AS a pulse, visibly
+            self._refused["heartbeat"] += 1
+            print(f"  [{source}] refused — heartbeat/status ping")
+            return
         if len(text) < self.min_length:
             return
         if self._is_duplicate(text):
@@ -140,6 +151,11 @@ class FishListener:
 
 
     # -------------------------------------------------------------------
+    def refusal_summary(self) -> str:
+        """What this session refused, by reason — printed at seal so the gate is visible."""
+        r = dict(self._refused); r["duplicate"] = self._skipped_count
+        return "refused this session: " + ", ".join(f"{v} {k}" for k, v in r.items())
+
     def _report_skip(self, source, reason, total, fcount):
         """Say what the ENGINE said, not what we assume it meant.
 
@@ -147,7 +163,12 @@ class FishListener:
         dedupe was on. Three different causes wore one sentence, and the
         dangerous one (a sealed fish) wore the reassuring one.
         """
+        if reason in ("habituated", "heartbeat"):
+            self._refused[reason] = self._refused.get(reason, 0) + 1
         wording = {
+            "habituated": "habituated — predicted from this source's stream; counted, not written",
+            "heartbeat": "refused — heartbeat/status ping",
+            "ceiling": "REFUSED — fish is at its ceiling (LINAFISH_MAX_CRYSTALS)",
             "duplicate": "skipped — already eaten",
             "sealed": "NOT EATEN — fish is sealed (nothing will be ingested)",
             "too_short": "skipped — below the minimum length",

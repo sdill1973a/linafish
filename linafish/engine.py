@@ -205,7 +205,31 @@ class FishEngine:
         # OOM-killed. None = no ceiling (the historical behaviour). When set, eat()
         # REFUSES with reason "ceiling" instead of silently thinning or crashing; the
         # caller decides what to cut. An organ that cannot decline has no will.
+        if max_crystals is None:
+            # reachable from the shell for every entry point (listen, room, converse,
+            # http): a node that is being OOM-killed sets one number and restarts.
+            _env = os.environ.get("LINAFISH_MAX_CRYSTALS", "").strip()
+            if _env.isdigit():
+                max_crystals = int(_env)
         self.max_crystals = max_crystals
+
+        # THE GATE, AT THE RESOURCE (Olorina's review of #85, 2026-09-08): habituation had
+        # been wired per transport — room daemon, then `listen` — and every other feed path
+        # (http `/eat`, converse `/eat`, school, absorb, guppy) was still open. Guard the
+        # resource, not each door, or the next transport re-opens it. Every eat() passes
+        # through here; deliberate deposits (eat_path / eat_many, i.e. `eat FILE` and `go`)
+        # never call eat() and always write. State persists beside the fish's own.
+        from .habituation import habituation_from_env
+        self.habituation = habituation_from_env()
+        self.refusals: Dict[str, int] = {}
+        self._habituation_path = self.state_dir / f"{name}_habituation.json"
+        try:
+            if self._habituation_path.exists():
+                _h = json.loads(self._habituation_path.read_text(encoding="utf-8"))
+                self.habituation.load(_h.get("habituation"))
+                self.refusals = dict(_h.get("refusals") or {})
+        except Exception:
+            pass   # a torn record is not worth refusing to boot over; it re-learns in ~20 messages
         # commit_every_n_eats: periodic-commit mode for long-running daemons
         # (HTTP / converse servers) that never call session_end. 0 means
         # "use git_autocommit": True commits per eat, False never commits.
@@ -1851,6 +1875,16 @@ class FishEngine:
                     )
                     sys.exit(1)
 
+    def _save_habituation(self) -> None:
+        """The stream expectations and refusal counts, beside the fish's own state."""
+        try:
+            payload = {"habituation": self.habituation.to_dict(), "refusals": self.refusals}
+            tmp = self._habituation_path.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(payload), encoding="utf-8")
+            tmp.replace(self._habituation_path)
+        except Exception as exc:
+            print(f"habituation save failed: {exc}", file=sys.stderr)
+
     def _save_state_impl(self, commit: Optional[bool] = None):
         """Save state as fish.md — formations on top, crystal JSON at bottom.
 
@@ -1861,6 +1895,7 @@ class FishEngine:
             per-checkpoint commits independent of how the engine was
             constructed.
         """
+        self._save_habituation()
         # Top: human-readable formations
         if self.formations:
             top = formations_to_codebook_text(
@@ -1971,6 +2006,8 @@ class FishEngine:
             f"- `linafish meditate \"<theme>\" -n {self.name}` — what it holds on a theme, or an honest nothing.\n"
             f"- `linafish check -n {self.name}` — is the fish healthy, and what to do next.\n"
             "- `linafish capabilities` — every command, read from the dispatch table, never a stale list.\n"
+            f"- on a live converse server, `POST /recall_episodic` walks a moment in TIME — that day, in order, with its neighbours.\n"
+            f"- `linafish live -n {self.name}` — let the vocabulary grow: rising terms join the axes without displacing the old.\n"
             "*A `converse` or `http` server may also be live (default ports 8900-8902); "
             "if so, `POST /taste` with* `{\"format\":\"json\"}` *answers without loading anything.*\n\n"
             "*Before you answer something that sounds like it has history — a decision they've "
@@ -2105,7 +2142,8 @@ class FishEngine:
             episode_id: Optional[str] = None,
             episode_seq: Optional[int] = None,
             episode_kind: Optional[str] = None,
-            source_mind: Optional[str] = None) -> dict:
+            source_mind: Optional[str] = None,
+            admit: bool = True) -> dict:
         """Feed text to the fish. Two-phase: learn then crystallize.
 
         If this is the first eat and assessment is available, runs
@@ -2129,6 +2167,32 @@ class FishEngine:
                     "total_crystals": len(self.fish.crystals),
                     "sealed": True,
                     "reason": "sealed"}
+
+        # A pulse is not an utterance; a predicted message is counted, not crystallized.
+        # admit=False is the explicit opt-out for a caller depositing on purpose (the CLI's
+        # `eat FILE` and `go` never reach here at all — they go straight to crystallize).
+        from .habituation import is_heartbeat, vocab_basis
+        if admit and is_heartbeat(text):
+            self.refusals["heartbeat"] = self.refusals.get("heartbeat", 0) + 1
+            return {"crystals_added": 0, "total_crystals": len(self.fish.crystals),
+                    "reason": "heartbeat"}
+        if admit:
+            vec = None; basis = None
+            try:
+                if self.fish.vocab:
+                    vec = self.fish.vectorizer.vectorize(text, self.fish.vocab)
+                    basis = vocab_basis(self.fish.vocab)
+            except Exception:
+                vec = None; basis = None
+            decision = self.habituation.observe(source, vec, time.time(), basis=basis)
+            if not decision.write:
+                self.refusals["habituated"] = self.refusals.get("habituated", 0) + 1
+                return {"crystals_added": 0, "total_crystals": len(self.fish.crystals),
+                        "reason": "habituated", "surprise": round(decision.surprise, 4),
+                        "episode_id": decision.episode_id}
+            if episode_id is None:
+                episode_id, episode_seq = decision.episode_id, decision.episode_seq
+                episode_kind = episode_kind or "stream"
 
         if self.max_crystals is not None and len(self.fish.crystals) >= self.max_crystals:
             return {"crystals_added": 0,

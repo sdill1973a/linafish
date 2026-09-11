@@ -40,6 +40,7 @@ import os
 import time
 import signal
 import hashlib
+import os as _os
 import traceback
 from pathlib import Path
 from typing import Optional
@@ -47,32 +48,10 @@ from datetime import datetime
 
 from .engine import FishEngine
 from ._dedup_helpers import normalize_for_dedup
-from .habituation import Habituation
 import time as _time
 
 
-# HEARTBEAT / STATUS GUARD — ported 2026-09-08 from the operator's runtime listener, where
-# it has stood since §THE.LISTENER.WAS.ME (June 2026: one retained status message became
-# 3,464 crystals). A pulse is not an utterance. Prefixes and markers are configurable via
-# LINAFISH_SKIP_PREFIXES / LINAFISH_SKIP_MARKERS (comma-separated) so a node can name its
-# own noise without a code change. Every skip is COUNTED in the sidecar stats — a guard
-# nobody can see is a guard nobody can tune. Measured before shipping: a numeric-token
-# "telemetry ratio" rule was tried against 3,000 crystals of real listener noise and 3,000
-# of the author's prose and caught 7% of the noise while flagging 7% of the prose. It does
-# not ship. Repetition is caught by the content-hash dedup below; shape is caught here only
-# where the sender declares it (prefix/marker), never by guessing.
-import os as _os
-SKIP_PREFIXES = tuple(x for x in _os.environ.get("LINAFISH_SKIP_PREFIXES", "T^keeper|,T^boot|").split(",") if x)
-SKIP_MARKERS = tuple(x.lower() for x in _os.environ.get("LINAFISH_SKIP_MARKERS", "heartbeat,reason=session_keeper").split(",") if x)
-
-
-def is_heartbeat(text: str) -> bool:
-    """True for a pulse/status ping the fish must never crystallize."""
-    s = str(text).strip()
-    if s.startswith(SKIP_PREFIXES):
-        return True
-    low = s.lower()
-    return any(m in low for m in SKIP_MARKERS)
+from .habituation import is_heartbeat  # the gate itself lives in FishEngine.eat()
 
 
 def _listener_content_hash(text: str) -> str:
@@ -153,10 +132,6 @@ class RoomListener:
         # a stream it can predict is habituated, and every refusal is counted. Floor 0.05
         # was measured (89% of real noise refused, 0% of real prose). LINAFISH_HABITUATION=off
         # disables it; LINAFISH_HABITUATION_FLOOR tunes it. Persisted in the sidecar.
-        _hab_env = _os.environ.get("LINAFISH_HABITUATION", "on").lower()
-        self.habituation = Habituation(
-            floor=float(_os.environ.get("LINAFISH_HABITUATION_FLOOR", "0.05")),
-            enabled=_hab_env not in ("off", "0", "false"))
         self.content_hashes = set()
         self.exchange_count = 0
         self.stats = {
@@ -201,10 +176,6 @@ class RoomListener:
         if isinstance(stored_stats, dict):
             self.stats.update(stored_stats)
         self.exchange_count = self.stats.get("exchanges", 0)
-        try:
-            self.habituation.load(state.get("habituation"))
-        except Exception:
-            pass  # a torn habituation record is not worth refusing to boot over
         if self.exchange_count or self.content_hashes:
             print(
                 f"Resumed: {self.exchange_count} exchanges, "
@@ -221,7 +192,6 @@ class RoomListener:
         payload = {
             "content_hashes": list(self.content_hashes)[-10000:],
             "stats": self.stats,
-            "habituation": self.habituation.to_dict(),
         }
         tmp_path = self.sidecar_path.with_suffix(
             self.sidecar_path.suffix + ".tmp"
@@ -337,22 +307,6 @@ class RoomListener:
         print("\nRoom listener shutting down...")
         self.running = False
 
-    def _admit(self, sender: str, text: str):
-        """Predict this message from the sender's stream; decide whether it is written.
-        Cannot-predict (no vocab yet, first message from a source) always writes."""
-        vec = None; basis = None
-        try:
-            vocab = getattr(self.engine.fish, "vocab", None)
-            if vocab:
-                vec = self.engine.fish.vectorizer.vectorize(text, vocab)
-                # the basis is the vocabulary's IDENTITY, not its epoch: freeze() bumps the
-                # epoch on every re-derive even when the axes come back unchanged, and an
-                # unchanged basis must keep its prior or nothing ever habituates.
-                basis = hashlib.md5("\x1f".join(vocab).encode("utf-8", "replace")).hexdigest()[:12]
-        except Exception:
-            vec = None; basis = None
-        return self.habituation.observe(sender, vec, _time.time(), basis=basis)
-
     def _skip(self, why: str) -> None:
         """Count every message the listener refuses, by reason, into the sidecar stats."""
         skipped = self.stats.setdefault("skipped", {})
@@ -409,9 +363,6 @@ class RoomListener:
             if len(str(text)) < 30:
                 self._skip("short")
                 return
-            if is_heartbeat(text):
-                self._skip("heartbeat")
-                return
 
             # Listener plate-dedup. The listener's stated intent (per
             # `dedupe=True` on the FishEngine init at line 99 and the
@@ -429,16 +380,14 @@ class RoomListener:
             if content_hash in self.content_hashes:
                 self._skip("duplicate")
                 return
-            self.content_hashes.add(content_hash)
+            # The hash is retained only AFTER the engine accepts (below). Review #85, finding 3:
+            # hashing before the refusal meant a pulse's twin was counted "duplicate", not
+            # "heartbeat" — undercounting every repeat, which is all of them — and pulses
+            # competed with real content for the 10 000 persisted slots.
 
             # THE GATE: predict, then write in proportion to surprise. The vectorizer is
             # the predictor; the source's running expectation is the prior; the episode
             # is the unit. A habituated message is counted, not crystallized.
-            decision = self._admit(sender, str(text))
-            if not decision.write:
-                self._skip("habituated")
-                return
-
             # Source format uses colon-prefix so downstream /taste filters
             # (e.g. source_prefix="olorin:") pick up cleanly. receiver +
             # timestamp preserved as tail segments for audit.
@@ -446,10 +395,10 @@ class RoomListener:
                 f"{sender}:room->{receiver}@"
                 f"{datetime.now().isoformat()[:16]}"
             )
-            self.engine.eat(str(text), source=source,
-                            episode_id=decision.episode_id,
-                            episode_seq=decision.episode_seq,
-                            episode_kind="stream")
+            result = self.engine.eat(str(text), source=source)
+            if result.get("reason") in ("heartbeat", "habituated", "ceiling"):
+                self._skip(result["reason"]); return
+            self.content_hashes.add(content_hash)
 
             self.exchange_count += 1
             self.stats["exchanges"] = self.exchange_count
@@ -459,8 +408,7 @@ class RoomListener:
             msg_len = len(str(text))
             tag = "health" if is_health else "broadcast" if msg_len > 500 else ""
             print(
-                f"  [{sender}->{receiver}] {msg_len}ch {tag} surprise={decision.surprise:.2f} "
-                f"ep={decision.episode_id.rsplit(':', 1)[-1]}#{decision.episode_seq} "
+                f"  [{sender}->{receiver}] {msg_len}ch {tag} "
                 f"(total crystals: {len(self.engine.crystals)})"
             )
 

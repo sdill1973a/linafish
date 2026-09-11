@@ -10,73 +10,91 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
-## [Unreleased]
+## [2.3.0] - 2026-09-08
 
-### Changed
+A fish is a directory of your writing's cognitive record — crystals, their vectors, and a
+readable `fish.md` — not a running process. Two defaults changed in this release. Read
+those first if you upgrade a running install.
 
-- **The listener writes in proportion to surprise — prediction is the gate.** A brain does
-  not inspect a signal's shape at the door; it notices whether the signal was predicted.
-  `linafish/habituation.py`: the vectorizer is the predictor, a per-source running
-  expectation is the prior, and a message whose surprise falls under the floor is
-  habituated — counted in the sidecar, not crystallized. A spike in surprise cuts a new
-  episode, so every stream crystal now carries `episode_id`/`episode_seq`; the quiet run is
-  remembered as a count. Measured before it was written: floor 0.05 refused 89% of a real
-  2,000-message noise stream and 0% of the author's prose (a byte-shape rule had managed
-  7%/7%). What the fish cannot predict — no vocabulary yet, a source's first message — is
-  always written. `LINAFISH_HABITUATION=off` disables; `LINAFISH_HABITUATION_FLOOR` tunes.
+### Changed defaults
 
-- **The listener daemon skips heartbeats, and counts everything it refuses.** Ported from
-  the operator's runtime listener, where the guard has stood since one retained status
-  message became 3,464 crystals: prefixes `T^keeper|` / `T^boot|` and markers `heartbeat` /
-  `reason=session_keeper` are never crystallized, both configurable with
-  `LINAFISH_SKIP_PREFIXES` / `LINAFISH_SKIP_MARKERS`. Every skip (`short`, `heartbeat`,
-  `duplicate`) is counted by reason in the listener sidecar, so a node can see what its fish
-  is refusing. A numeric "telemetry ratio" rule was measured against real noise and real
-  prose first and rejected: it caught 7% of the noise and flagged 7% of the prose.
-- **`FishEngine(max_crystals=N)` — a ceiling the fish refuses at.** Every crystal is resident
-  in RAM (~90 KB each); a federation node's 189-crystal fish had grown to 117,629 crystals of
-  eaten status tables and was being OOM-killed. With a ceiling set, `eat()` returns
-  `reason: "ceiling"` instead of thinning silently or crashing. Default `None` keeps the
-  historical behaviour.
+- **The fish can refuse what it can predict — opt in.** With `LINAFISH_HABITUATION=on`, every
+  path that feeds a fish — `listen`, `room`, the HTTP and converse servers, a school — writes in
+  proportion to *surprise*.
+  Deliberate deposits — `eat FILE`, `go`, or `engine.eat(text, admit=False)` from Python —
+  always write. A message that its source's stream already
+  predicts is counted, not crystallized; heartbeats and status pings are never
+  crystallized; a spike in surprise starts a new episode. Every refusal is counted beside the
+  fish's state; `listen` prints the counts when the stream seals. Off by default: the design's own store rule is "the valve is open, everything enters,
+  ache sorts", and the post-entry organ that rule relies on (usage decay, a safe prune) is
+  not yet wired — so refusing at the door is a choice a node makes, not a default it
+  inherits. `LINAFISH_HABITUATION_FLOOR` tunes it (default `0.05`: on a 2,000-message repetitive
+  stream and 298 passages of ordinary prose, that floor refused 89% of the stream and
+  none of the prose). What the fish cannot predict —
+  its first message from a source, or a fish with no vocabulary yet — is always written.
+- **The Python engine no longer commits to git on every eat.** `FishEngine(git_autocommit=…)`
+  defaults to `False`. The crystal log is the durable record; a commit is a rollback point,
+  and one per stream is what a rollback point is for. `linafish eat` from the shell still
+  makes one commit per eat, `listen` one per stream, and long-running servers commit every
+  N eats. If your own code relied on the old default, pass `git_autocommit=True` or
+  `commit_every_n_eats=N`.
 
-- **`FishEngine` no longer commits to git on every eat by default.** `git_autocommit`
-  now defaults to `False`. Durability never depended on it — every eat already appends
-  to the crystals JSONL — and the per-eat commit was measured twice as the dominant
-  cost: the latency slope on 200-doc batches, and one July feeding session that stored
-  1,734 full copies of a 379 MB file (194.5 GiB of `.git` for ~420 MB of fish). The
-  July fix reached only `linafish listen`; every programmatic caller still inherited
-  per-eat commits. The single-shot CLI `eat` passes `git_autocommit=True` explicitly, so
-  its one-eat-one-commit behaviour is unchanged. Daemons use `commit_every_n_eats`;
-  batch consumers call `flush_commit()` or `session_end()` when the stream closes.
-  Every in-package daemon and seeder now declares its policy explicitly — `School`
-  defaults to `commit_every_n_eats=100` for the central fish and every member, the
-  guppy swims periodic and flushes after a one-shot hunt, and the keeper/daily seeders
-  flush once as their seed stream closes. Guarded by
-  `tests/test_daemons_declare_commit_policy.py`, which fails on any `FishEngine(` in a
-  daemon module with no policy (review by Olorina: a daemon never closes its stream, so
-  with the new default an undeclared one would go to ZERO commits, forever, silently).
+### Changed behaviour (not a default)
+
+- **`linafish eat FILE --state-dir DIR` no longer also writes `NAME.fish.md` into the
+  current directory.** Before, it wrote two copies: one in the state directory and one where
+  you ran the command. Now, with an explicit `--state-dir`, the copy in the state directory
+  is the output. To get the extra copy back, pass `-o ./NAME.fish.md`. A bare `eat` with no
+  `--state-dir` is unchanged.
+
+### Added
+
+- **A ceiling the fish can refuse at.** `FishEngine(max_crystals=N)` or
+  `LINAFISH_MAX_CRYSTALS=N`: at N crystals, `eat()` returns `reason: "ceiling"` instead of
+  growing. Every crystal is resident in memory at roughly 90 KB; set this on a machine that
+  has been running out of memory. Unset means no ceiling, as before.
+- **Episodes on streams.** Crystals written by a listener carry `episode_id` and
+  `episode_seq`, so `recall_episodic` can walk a stream in time. Older stream crystals stay
+  as they are and still answer.
+- **A living vocabulary has two doors.** `linafish live -n <fish>` lets the axis set grow.
+  The traditional door admits a term that out-ranks an incumbent. The emerging door admits
+  a term that is rising in the recent window even when it never out-ranks the old guard.
+  Existing axes never move.
+- **Every environment variable is documented** in `docs/configuration.md`, in one table.
 
 ### Fixed
 
-- **The emerging door kept time on a borrowed clock.** `emerge_df` decayed against
-  `token_last_doc`, which advances on every feed whether emergence tracking is on or
-  not. After a period with tracking off, a burst that had gone quiet still read as
-  rising (measured 2.2× overstated against an always-on control). `emerge_df` now has
-  its own `emerge_last_doc`; files written before it exist fall back once at load and
-  self-heal on the next tracked feed. Test: `test_emergence_clock_survives_an_off_period`.
-- **`revectorize_all()` silently wiped a living fish's emergence history.** It built a
-  fresh vectorizer with tracking off. The fresh vectorizer now inherits the door and the
-  re-feed rebuilds the record from the crystal sequence. Test:
-  `test_revectorize_keeps_the_emerging_door`.
+- The emerging door kept time on a borrowed clock: after a stretch with tracking off, a
+  term that had gone quiet still read as rising. It has its own clock now; files written
+  before it self-heal on the next feed. Rebuilding a living fish's vectors no longer wipes
+  its emergence record.
+- The listener's expectation is tied to the vocabulary it was built against. When the
+  vocabulary is re-derived, the old expectation is dropped and the next message is written
+  as unpredictable, instead of being compared against the wrong axes.
+- Two episodes cut inside the same second for one source no longer share an id.
+- Intensifiers (`very`, `really`, `extremely`, …) now count toward the `*` (emphasis) modifier
+  instead of being discarded as stopwords. Modifier scores for text with intensifiers shift
+  accordingly; nothing already written is rewritten.
+- Every long-running entry point in the package declares its commit policy explicitly, and a
+  test refuses any new one that does not.
+- The heartbeat guard and the surprise gate sit in the engine's `eat()`, not in each transport,
+  so a feed path added later cannot arrive without them.
 
-### Added (belongs with #72, which shipped without a changelog line)
+### Removed
 
-- **The emerging door** (#71, #72): a living vocabulary has two doors. The traditional
-  door ranks by lifetime standing and is sized for the incumbents; a genuinely new term
-  never out-ranks them. The emerging door admits a term whose recent-window document
-  frequency is out of proportion to its lifetime rate (recent ≥ 5, ratio ≥ 3, at most 5
-  per rebuild). `MIVectorizer.emergence()`, `emerging_terms()`,
-  `extend_vocab(emerging=True)`. Living fish only.
+Public functions with no callers inside the package, its tests, or its docs:
+`crystallize_v3`, `possible_mappings`, `topological_ache`, `pca_reduce`,
+`assessment_summary`, `coupling_curve`, `stability_curve`, `drift_curve`, and the
+`_mind_integration` module. If you imported any of these, pin `linafish<2.3`.
+`seed_formations` and `feedback.decay_unused` were removed and restored in the same cycle;
+they are unchanged.
+
+### Upgrading an existing fish
+
+Nothing to migrate. A fish written by 2.2.x loads unchanged. New behaviour appears on the
+next feed: episodes on stream crystals from then on, refusal counts on the next `listen`
+session. To keep 2.2.x behaviour on a node: `LINAFISH_HABITUATION=off`, and pass
+`git_autocommit=True` in any Python code that relied on per-eat commits.
 
 ---
 
