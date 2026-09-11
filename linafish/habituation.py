@@ -36,13 +36,28 @@ SKIP_PREFIXES = tuple(x for x in _os.environ.get("LINAFISH_SKIP_PREFIXES", "T^ke
 SKIP_MARKERS = tuple(x.lower() for x in _os.environ.get("LINAFISH_SKIP_MARKERS", "heartbeat,reason=session_keeper").split(",") if x)
 
 
+# Markers are matched only where a sender can DECLARE shape: the first line, at most this
+# many characters. Review #85 (Olorina, 2026-09-09): a whole-document substring scan refused
+# 5.8% of real prose files / 0.67% of paragraphs once the guard moved to the resource —
+# "a bare substring hit anywhere inside a 4 KB document IS guessing." Prefixes were always
+# anchored (startswith); this anchors the markers too. The default is MEASURED (2026-09-11,
+# 2,299 real paragraphs — Anchor's scars + Captain's prompts): whole-text 0.30% refused,
+# 120 chars 0.04%, 64 chars 0.00%; every real pulse fixture carries its marker within the
+# first ~10 chars. 64 is the widest window with zero false refusals on that corpus.
+MARKER_WINDOW = int(_os.environ.get("LINAFISH_SKIP_MARKER_WINDOW", "64"))
+
+
 def is_heartbeat(text: str) -> bool:
-    """True for a pulse/status ping the fish must never crystallize."""
+    """True for a pulse/status ping the fish must never crystallize.
+
+    Shape is caught only where the sender declares it: an anchored prefix, or a marker
+    inside the first line (first ``MARKER_WINDOW`` chars). Never by a substring found
+    anywhere in a document."""
     s = str(text).strip()
     if s.startswith(SKIP_PREFIXES):
         return True
-    low = s.lower()
-    return any(m in low for m in SKIP_MARKERS)
+    head = s.splitlines()[0][:MARKER_WINDOW].lower() if s else ""
+    return any(m in head for m in SKIP_MARKERS)
 
 
 def habituation_from_env() -> "Habituation":

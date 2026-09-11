@@ -380,7 +380,10 @@ class RoomListener:
             if content_hash in self.content_hashes:
                 self._skip("duplicate")
                 return
-            self.content_hashes.add(content_hash)
+            # The hash is retained only AFTER the engine accepts (below). Review #85, finding 3:
+            # hashing before the refusal meant a pulse's twin was counted "duplicate", not
+            # "heartbeat" — undercounting every repeat, which is all of them — and pulses
+            # competed with real content for the 10 000 persisted slots.
 
             # THE GATE: predict, then write in proportion to surprise. The vectorizer is
             # the predictor; the source's running expectation is the prior; the episode
@@ -395,6 +398,7 @@ class RoomListener:
             result = self.engine.eat(str(text), source=source)
             if result.get("reason") in ("heartbeat", "habituated", "ceiling"):
                 self._skip(result["reason"]); return
+            self.content_hashes.add(content_hash)
 
             self.exchange_count += 1
             self.stats["exchanges"] = self.exchange_count

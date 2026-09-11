@@ -35,8 +35,11 @@ class FishListener:
         self.min_length = min_length
         self.running = False
         self._content_hashes = set()
-        # The heartbeat guard and the surprise gate live in FishEngine.eat() (the resource,
-        # not this door). This listener only counts what the engine refused, by reason.
+        # The surprise gate lives in FishEngine.eat() (the resource, not this door), and the
+        # engine's heartbeat guard runs there too. feed() ALSO runs is_heartbeat on purpose,
+        # BEFORE its own length floor, so a pulse is refused visibly AS a pulse rather than
+        # as "too short" — that double-check is deliberate; do not delete either half
+        # (review #85, finding 5). This counter tallies refusals by reason.
         self._refused = {"heartbeat": 0, "habituated": 0}
         self._dedup_cap = dedup_cap
         self._prev_formations = set()

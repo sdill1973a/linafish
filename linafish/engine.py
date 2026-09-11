@@ -1886,7 +1886,6 @@ class FishEngine:
             print(f"habituation save failed: {exc}", file=sys.stderr)
 
     def _save_state_impl(self, commit: Optional[bool] = None):
-        self._save_habituation()
         """Save state as fish.md — formations on top, crystal JSON at bottom.
 
         commit: override the instance-level ``git_autocommit`` flag for
@@ -1896,6 +1895,7 @@ class FishEngine:
             per-checkpoint commits independent of how the engine was
             constructed.
         """
+        self._save_habituation()
         # Top: human-readable formations
         if self.formations:
             top = formations_to_codebook_text(
