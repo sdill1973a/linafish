@@ -97,7 +97,7 @@ class FishListener:
         A retained payload is the broker replaying the last value of a topic to a NEW
         subscription — state, not a thought. This listener subscribes on every (re)connect,
         so every reconnect re-receives every retained topic it feeds on; eaten naively, each
-        replay lands as a distinct crystal. That loop took .147 down repeatedly (THX, 2026-09-10:
+        replay lands as a distinct crystal. That loop took a peer node down repeatedly (THX, 2026-09-10:
         OOM -> restart -> resubscribe -> retained replay -> more crystals -> OOM; 80,673 ->
         130,757 crystals in 20 days). clean_session alone does not close it — a client that
         re-subscribes gets the retained set regardless. The retain flag is the honest signal.

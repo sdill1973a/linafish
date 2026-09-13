@@ -257,10 +257,10 @@ linafish listen mqtt://your-broker:1883/topic
 With `LINAFISH_HABITUATION=on` the fish does what a nervous system does with noise: it refuses what it can predict — on every path that feeds it except deliberate deposits — `eat FILE`, `go`, or `engine.eat(text, admit=False)` from Python — which always write.
 Heartbeats and status pings are never crystallized. A message that its source's stream
 already predicts is counted, not written — the fish learns a repetitive stream in about
-twenty messages and then stops storing it. A spike in surprise starts a new episode, so
+twenty messages of an identical stream and then stops storing it. A spike in surprise starts a new episode, so
 stream crystals carry `episode_id`/`episode_seq`. What the fish cannot predict — the first
 message from a source, a fish with no vocabulary yet — is always written. Every refusal is
-counted; `listen` prints the counts when the stream seals, and the engine keeps them beside its state. It is off by default (the design's store rule is that everything enters and ache sorts);
+counted; `listen` prints the counts when the stream seals, and the engine keeps them beside its state. Whether or not the gate is on, a *retained* MQTT delivery — the broker replaying a topic's last value to a fresh subscription — is refused as state, not eaten as a message; it shows as `retained` in the same summary. It is off by default (the design's store rule is that everything enters and ache sorts);
 `LINAFISH_HABITUATION_FLOOR` tunes it; `LINAFISH_MAX_CRYSTALS=N` gives the fish a ceiling it
 refuses at. All of them are in [Configuration](configuration.md#environment-variables).
 

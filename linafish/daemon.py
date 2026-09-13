@@ -318,7 +318,7 @@ class RoomListener:
             if getattr(msg, "retain", False):
                 # Retained = the broker replaying a topic's last value to a new subscription.
                 # State, not a message; every reconnect would eat it again (see
-                # listener._mqtt_message for the .147 OOM loop this closes).
+                # listener._mqtt_message for the peer-node OOM loop this closes).
                 self._skip("retained")
                 return
             topic = msg.topic

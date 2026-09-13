@@ -1,6 +1,6 @@
 """A RETAINED MQTT delivery is state replay, not a message. Neither transport entry point eats it.
 
-THX, 2026-09-10 (.147 OOM, recurring): the listener subscribes on every (re)connect; the broker
+THX, 2026-09-10 (a peer node, OOM recurring): the listener subscribes on every (re)connect; the broker
 answers every new subscription with the retained value of each topic; eaten naively each replay is
 a distinct crystal. OOM -> restart -> resubscribe -> replay -> OOM. 80,673 -> 130,757 crystals in
 20 days. His candidate fix was clean_session=False; that only helps a client that does not

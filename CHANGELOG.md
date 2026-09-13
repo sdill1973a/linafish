@@ -16,12 +16,21 @@ A fish is a directory of your writing's cognitive record — crystals, their vec
 readable `fish.md` — not a running process. Two defaults changed in this release. Read
 those first if you upgrade a running install.
 
+**Known gap, stated up front.** This release gives a fish two ways to say no at the door —
+a heartbeat guard, and an opt-in surprise gate — and a ceiling it stops at. It does not yet
+carry the design's post-entry noise organ: usage decay and a safe prune (Canonical Grammar
+step 5, *"prune unused glyphs when frequency < minimum_threshold"*; LIFI's
+`decay_rate(time, reuse_frequency)`). Until that ships, the ceiling is a stop, not a cleaner:
+a fish that reaches `LINAFISH_MAX_CRYSTALS` refuses and holds, it does not tidy itself. The
+store rule the design promises — *everything enters, ache sorts* — is why the gate is off by
+default and why the organ is the next build.
+
 ### Fixed (2026-09-13)
 - **Retained MQTT deliveries are refused as state, not eaten as messages** — `linafish listen`
   and `linafish room` both subscribe on every (re)connect, and a broker answers each new
   subscription with the retained value of every topic; eaten naively, each replay was a new
-  crystal. On a node that restarts on OOM this is a loop (THX, .147: 80,673 → 130,757 crystals
-  in 20 days). The listener now reports `retained` in its refusal summary; the room daemon
+  crystal. On a node that restarts on OOM this is a loop (reported by THX on a peer node:
+  80,673 → 130,757 crystals in 20 days). The listener now reports `retained` in its refusal summary; the room daemon
   counts it as a skip. `clean_session` is unchanged — a re-subscribing client gets the retained
   set regardless, so the retain flag is the guard.
 - **A reachability test per guard** (`tests/test_guards_are_reached.py`): every live entry
@@ -48,8 +57,8 @@ those first if you upgrade a running install.
 - **The Python engine no longer commits to git on every eat.** `FishEngine(git_autocommit=…)`
   defaults to `False`. The crystal log is the durable record; a commit is a rollback point,
   and one per stream is what a rollback point is for. `linafish eat` from the shell still
-  makes one commit per eat, `listen` one per stream, and long-running servers commit every
-  N eats. If your own code relied on the old default, pass `git_autocommit=True` or
+  makes one commit per eat, `listen` one per stream, and the long-running servers (`serve`,
+  `converse`, a school) commit every 100 eats. If your own code relied on the old default, pass `git_autocommit=True` or
   `commit_every_n_eats=N`.
 
 ### Changed behaviour (not a default)
@@ -65,7 +74,8 @@ those first if you upgrade a running install.
 - **A ceiling the fish can refuse at.** `FishEngine(max_crystals=N)` or
   `LINAFISH_MAX_CRYSTALS=N`: at N crystals, `eat()` returns `reason: "ceiling"` instead of
   growing. Every crystal is resident in memory at roughly 90 KB; set this on a machine that
-  has been running out of memory. Unset means no ceiling, as before.
+  has been running out of memory. Unset means no ceiling, as before. A ceiling is a stop,
+  not a cleaner — see the known gap at the top of this release.
 - **Episodes on streams.** Crystals written by a listener carry `episode_id` and
   `episode_seq`, so `recall_episodic` can walk a stream in time. Older stream crystals stay
   as they are and still answer.
@@ -99,8 +109,9 @@ Public functions with no callers inside the package, its tests, or its docs:
 `crystallize_v3`, `possible_mappings`, `topological_ache`, `pca_reduce`,
 `assessment_summary`, `coupling_curve`, `stability_curve`, `drift_curve`, and the
 `_mind_integration` module. If you imported any of these, pin `linafish<2.3`.
-`seed_formations` and `feedback.decay_unused` were removed and restored in the same cycle;
-they are unchanged.
+`seed_formations` and `feedback.decay_unused` were candidates for removal and are kept,
+unchanged — the first is the negotiation surface, the second is the post-entry decay the
+known gap above is waiting on.
 
 ### Upgrading an existing fish
 
