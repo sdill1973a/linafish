@@ -40,7 +40,7 @@ class FishListener:
         # BEFORE its own length floor, so a pulse is refused visibly AS a pulse rather than
         # as "too short" — that double-check is deliberate; do not delete either half
         # (review #85, finding 5). This counter tallies refusals by reason.
-        self._refused = {"heartbeat": 0, "habituated": 0}
+        self._refused = {"heartbeat": 0, "habituated": 0, "retained": 0}
         self._dedup_cap = dedup_cap
         self._prev_formations = set()
         self._exchange_count = 0
@@ -90,6 +90,26 @@ class FishListener:
         for name in lost:
             print(f"  - Formation dissolved: {name}")
         self._prev_formations = current
+
+    def _mqtt_message(self, topic: str, payload: str, retain: bool = False):
+        """One MQTT delivery -> feed(), unless it is RETAINED state.
+
+        A retained payload is the broker replaying the last value of a topic to a NEW
+        subscription — state, not a thought. This listener subscribes on every (re)connect,
+        so every reconnect re-receives every retained topic it feeds on; eaten naively, each
+        replay lands as a distinct crystal. That loop took .147 down repeatedly (THX, 2026-09-10:
+        OOM -> restart -> resubscribe -> retained replay -> more crystals -> OOM; 80,673 ->
+        130,757 crystals in 20 days). clean_session alone does not close it — a client that
+        re-subscribes gets the retained set regardless. The retain flag is the honest signal.
+        """
+        if retain:
+            self._refused["retained"] = self._refused.get("retained", 0) + 1
+            print(f"  [mqtt {topic}] refused — retained state replay, not a message")
+            return
+        parts = topic.split("/")
+        sender = parts[0] if len(parts) >= 1 else "unknown"
+        channel = parts[1] if len(parts) >= 2 else "unknown"
+        self.feed(payload, source=f"mqtt://{sender}/{channel}")
 
     def feed(self, text: str, source: str = "listen"):
         """Feed one text through the engine (or school if set)."""
@@ -213,14 +233,9 @@ class FishListener:
                 print(f"  MQTT connect failed: rc={rc}")
 
         def on_message(client, userdata, msg):
-            topic = msg.topic
-            payload = msg.payload.decode("utf-8", errors="replace")
-            # Extract sender from topic
-            parts = topic.split("/")
-            sender = parts[0] if len(parts) >= 1 else "unknown"
-            channel = parts[1] if len(parts) >= 2 else "unknown"
-            source = f"mqtt://{sender}/{channel}"
-            self.feed(payload, source=source)
+            self._mqtt_message(msg.topic,
+                               msg.payload.decode("utf-8", errors="replace"),
+                               retain=bool(getattr(msg, "retain", False)))
 
         client = mqtt.Client(
             client_id=f"linafish-{self.engine.name}",

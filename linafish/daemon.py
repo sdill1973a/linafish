@@ -315,6 +315,12 @@ class RoomListener:
     def _on_message(self, client, userdata, msg):
         """MQTT message handler. Feed the exchange into FishEngine."""
         try:
+            if getattr(msg, "retain", False):
+                # Retained = the broker replaying a topic's last value to a new subscription.
+                # State, not a message; every reconnect would eat it again (see
+                # listener._mqtt_message for the .147 OOM loop this closes).
+                self._skip("retained")
+                return
             topic = msg.topic
             payload = msg.payload.decode("utf-8", errors="replace")
 

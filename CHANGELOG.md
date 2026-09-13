@@ -16,6 +16,19 @@ A fish is a directory of your writing's cognitive record — crystals, their vec
 readable `fish.md` — not a running process. Two defaults changed in this release. Read
 those first if you upgrade a running install.
 
+### Fixed (2026-09-13)
+- **Retained MQTT deliveries are refused as state, not eaten as messages** — `linafish listen`
+  and `linafish room` both subscribe on every (re)connect, and a broker answers each new
+  subscription with the retained value of every topic; eaten naively, each replay was a new
+  crystal. On a node that restarts on OOM this is a loop (THX, .147: 80,673 → 130,757 crystals
+  in 20 days). The listener now reports `retained` in its refusal summary; the room daemon
+  counts it as a skip. `clean_session` is unchanged — a re-subscribing client gets the retained
+  set regardless, so the retain flag is the guard.
+- **A reachability test per guard** (`tests/test_guards_are_reached.py`): every live entry
+  point must reach `FishEngine.eat()`, the engine must carry heartbeat/habituation/ceiling,
+  both MQTT transports must check `retain` before feeding, and `admit=False` is allowed only in
+  the declared deposit verb. A guard built on the wrong path now fails the day it is written.
+
 ### Changed defaults
 
 - **The fish can refuse what it can predict — opt in.** With `LINAFISH_HABITUATION=on`, every
