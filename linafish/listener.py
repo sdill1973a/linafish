@@ -35,6 +35,12 @@ class FishListener:
         self.min_length = min_length
         self.running = False
         self._content_hashes = set()
+        # The surprise gate lives in FishEngine.eat() (the resource, not this door), and the
+        # engine's heartbeat guard runs there too. feed() ALSO runs is_heartbeat on purpose,
+        # BEFORE its own length floor, so a pulse is refused visibly AS a pulse rather than
+        # as "too short" — that double-check is deliberate; do not delete either half
+        # (review #85, finding 5). This counter tallies refusals by reason.
+        self._refused = {"heartbeat": 0, "habituated": 0, "retained": 0}
         self._dedup_cap = dedup_cap
         self._prev_formations = set()
         self._exchange_count = 0
@@ -85,9 +91,34 @@ class FishListener:
             print(f"  - Formation dissolved: {name}")
         self._prev_formations = current
 
+    def _mqtt_message(self, topic: str, payload: str, retain: bool = False):
+        """One MQTT delivery -> feed(), unless it is RETAINED state.
+
+        A retained payload is the broker replaying the last value of a topic to a NEW
+        subscription — state, not a thought. This listener subscribes on every (re)connect,
+        so every reconnect re-receives every retained topic it feeds on; eaten naively, each
+        replay lands as a distinct crystal. That loop took a peer node down repeatedly (THX, 2026-09-10:
+        OOM -> restart -> resubscribe -> retained replay -> more crystals -> OOM; 80,673 ->
+        130,757 crystals in 20 days). clean_session alone does not close it — a client that
+        re-subscribes gets the retained set regardless. The retain flag is the honest signal.
+        """
+        if retain:
+            self._refused["retained"] = self._refused.get("retained", 0) + 1
+            print(f"  [mqtt {topic}] refused — retained state replay, not a message")
+            return
+        parts = topic.split("/")
+        sender = parts[0] if len(parts) >= 1 else "unknown"
+        channel = parts[1] if len(parts) >= 2 else "unknown"
+        self.feed(payload, source=f"mqtt://{sender}/{channel}")
+
     def feed(self, text: str, source: str = "listen"):
         """Feed one text through the engine (or school if set)."""
         text = self._extract_text(text)
+        from .habituation import is_heartbeat
+        if is_heartbeat(text):          # before the length floor: a pulse is refused AS a pulse, visibly
+            self._refused["heartbeat"] += 1
+            print(f"  [{source}] refused — heartbeat/status ping")
+            return
         if len(text) < self.min_length:
             return
         if self._is_duplicate(text):
@@ -140,6 +171,11 @@ class FishListener:
 
 
     # -------------------------------------------------------------------
+    def refusal_summary(self) -> str:
+        """What this session refused, by reason — printed at seal so the gate is visible."""
+        r = dict(self._refused); r["duplicate"] = self._skipped_count
+        return "refused this session: " + ", ".join(f"{v} {k}" for k, v in r.items())
+
     def _report_skip(self, source, reason, total, fcount):
         """Say what the ENGINE said, not what we assume it meant.
 
@@ -147,7 +183,12 @@ class FishListener:
         dedupe was on. Three different causes wore one sentence, and the
         dangerous one (a sealed fish) wore the reassuring one.
         """
+        if reason in ("habituated", "heartbeat"):
+            self._refused[reason] = self._refused.get(reason, 0) + 1
         wording = {
+            "habituated": "habituated — predicted from this source's stream; counted, not written",
+            "heartbeat": "refused — heartbeat/status ping",
+            "ceiling": "REFUSED — fish is at its ceiling (LINAFISH_MAX_CRYSTALS)",
             "duplicate": "skipped — already eaten",
             "sealed": "NOT EATEN — fish is sealed (nothing will be ingested)",
             "too_short": "skipped — below the minimum length",
@@ -192,14 +233,9 @@ class FishListener:
                 print(f"  MQTT connect failed: rc={rc}")
 
         def on_message(client, userdata, msg):
-            topic = msg.topic
-            payload = msg.payload.decode("utf-8", errors="replace")
-            # Extract sender from topic
-            parts = topic.split("/")
-            sender = parts[0] if len(parts) >= 1 else "unknown"
-            channel = parts[1] if len(parts) >= 2 else "unknown"
-            source = f"mqtt://{sender}/{channel}"
-            self.feed(payload, source=source)
+            self._mqtt_message(msg.topic,
+                               msg.payload.decode("utf-8", errors="replace"),
+                               retain=bool(getattr(msg, "retain", False)))
 
         client = mqtt.Client(
             client_id=f"linafish-{self.engine.name}",

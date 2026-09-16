@@ -165,8 +165,8 @@ def test_recall_episodic_orphan_on_legacy_fish(tmp_path):
     """A fish with no episode metadata still answers — orphan moments, no
     crash (backward compatibility, spec §10)."""
     e = _engine(tmp_path)
-    e.eat(DOCS["harness"])   # no episode_id
-    e.eat(DOCS["corndog"])
+    e.eat(DOCS["harness"], admit=False)   # no episode_id
+    e.eat(DOCS["corndog"], admit=False)
     moments = e.recall_episodic("playtest harness registry seam", k=3)
     assert moments
     assert all(m.episode_id == episodic.ORPHAN for m in moments)

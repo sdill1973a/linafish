@@ -238,6 +238,11 @@ The fish isn't static. It learns with every conversation.
 
 The loop: talk → notice → feed → grow → talk better.
 
+A fish's vocabulary can grow too. `linafish live -n <fish>` makes it *living*: new terms
+that keep recurring join the axis set — through the traditional door (they out-rank an
+incumbent) or the emerging door (they are rising in the recent window, whether or not
+they ever out-rank the old guard). Existing axes never move.
+
 A bare `linafish eat` feeds your existing fish and tells you which one it fed; if you have several fish, it asks you to pick one with `-n`.
 
 ```bash
@@ -247,11 +252,20 @@ linafish listen folder:~/journal     # Watch a folder. Eat what changes.
 linafish listen mqtt://host:1883/#   # Sit in a stream. Ambient cognition.
 ```
 
+A fish can do what a nervous system does with noise and refuse what it can predict — opt in with `LINAFISH_HABITUATION=on`. It then holds on every path that feeds it — `listen`, `room`, the HTTP and converse servers, a school — except deliberate deposits — `eat FILE`, `go`, or `engine.eat(text, admit=False)` from Python — which always write.
+Heartbeats and status pings are never crystallized; a message its source's stream
+already predicts is counted, not written; a spike in surprise starts a new episode.
+Every refusal is counted and printed when the stream seals. It is off by default, because the design's store rule is that everything enters and ache sorts; `LINAFISH_MAX_CRYSTALS=N` gives a fish a ceiling it refuses at
+(see [Configuration](docs/configuration.md#environment-variables)).
+
 ## Your Mind, Versioned
 
-Every eat is a git commit — except streaming: `listen` takes one commit when the
-stream ends, so a long feed does not write a copy of the fish per message. Every
-session is a branch. The fish has rollback.
+`linafish eat` makes one commit per eat. `listen` takes one commit when the stream
+ends, so a long feed does not write a copy of the fish per message. If you use the
+engine from Python, it does not commit on its own unless you ask (`git_autocommit=True`,
+or `commit_every_n_eats=N` for a long-running process) — the crystal log is the durable
+record either way; the commit is a rollback point. Every session is a branch. The fish
+has rollback.
 
 ```bash
 linafish session start           # Branch the mind. Start a session.
@@ -371,7 +385,7 @@ from linafish import FishEngine, go
 # One-liner — same as the CLI
 go("~/my-writing")
 
-# Full control
+# Full control (commits are opt-in from Python; max_crystals is an optional ceiling)
 engine = FishEngine(name="my-fish")
 engine.eat("Today I realized I always start projects by talking to someone first.")
 engine.eat("The API docs are done. I rewrote them three times until a junior dev said they made sense.")

@@ -27,6 +27,62 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional
+import os as _os
+
+# HEARTBEAT / STATUS GUARD — one source for every listener (room daemon AND `linafish listen`).
+# A pulse is not an utterance. Prefixes/markers are configurable via LINAFISH_SKIP_PREFIXES /
+# LINAFISH_SKIP_MARKERS (comma-separated) so a node can name its own noise without a code change.
+SKIP_PREFIXES = tuple(x for x in _os.environ.get("LINAFISH_SKIP_PREFIXES", "T^keeper|,T^boot|").split(",") if x)
+SKIP_MARKERS = tuple(x.lower() for x in _os.environ.get("LINAFISH_SKIP_MARKERS", "heartbeat,reason=session_keeper").split(",") if x)
+
+
+# Markers are matched only where a sender can DECLARE shape: the first line, at most this
+# many characters. Review #85 (Olorina, 2026-09-09): a whole-document substring scan refused
+# 5.8% of real prose files / 0.67% of paragraphs once the guard moved to the resource —
+# "a bare substring hit anywhere inside a 4 KB document IS guessing." Prefixes were always
+# anchored (startswith); this anchors the markers too. The default is MEASURED (2026-09-11,
+# 2,299 real paragraphs — Anchor's scars + Captain's prompts): whole-text 0.30% refused,
+# 120 chars 0.04%, 64 chars 0.00%; every real pulse fixture carries its marker within the
+# first ~10 chars. 64 is the widest window with zero false refusals on that corpus.
+MARKER_WINDOW = int(_os.environ.get("LINAFISH_SKIP_MARKER_WINDOW", "64"))
+
+
+def is_heartbeat(text: str) -> bool:
+    """True for a pulse/status ping the fish must never crystallize.
+
+    Shape is caught only where the sender declares it: an anchored prefix, or a marker
+    inside the first line (first ``MARKER_WINDOW`` chars). Never by a substring found
+    anywhere in a document."""
+    s = str(text).strip()
+    if s.startswith(SKIP_PREFIXES):
+        return True
+    head = s.splitlines()[0][:MARKER_WINDOW].lower() if s else ""
+    return any(m in head for m in SKIP_MARKERS)
+
+
+def habituation_from_env() -> "Habituation":
+    """The gate as the environment configures it. OPT-IN: LINAFISH_HABITUATION=on enables,
+    LINAFISH_HABITUATION_FLOOR tunes (measured default 0.05).
+
+    Off by default (2026-09-08, on reviewing the release against the papers with Q). The
+    2026-01-17 lived fork — the model this build implements — says of the store:
+    "The valve is open. Everything enters. Ache sorts." The canon's evolution engine handles
+    noise AFTER entry (step 5: prune when frequency < minimum_threshold) and the LIFI scar
+    schema carries decay_rate(time, reuse_frequency). Refusing at the door is a departure
+    from both, made because the post-entry organ (usage decay, a safe prune) is not yet
+    wired and a node was being OOM-killed. A departure is not a default: a node opts in,
+    knowing what it is choosing, until the paper's own mechanism exists."""
+    on = _os.environ.get("LINAFISH_HABITUATION", "off").lower() in ("on", "1", "true")
+    return Habituation(floor=float(_os.environ.get("LINAFISH_HABITUATION_FLOOR", "0.05")), enabled=on)
+
+
+def vocab_basis(vocab) -> Optional[str]:
+    """Identity of the vocabulary a vector is indexed by (not the epoch: freeze() bumps the
+    epoch even when the axes come back unchanged, and an unchanged basis must keep its prior)."""
+    if not vocab:
+        return None
+    import hashlib
+    return hashlib.md5("\x1f".join(vocab).encode("utf-8", "replace")).hexdigest()[:12]
 
 
 def cosine(a: List[float], b: List[float]) -> float:

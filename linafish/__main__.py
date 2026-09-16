@@ -1804,6 +1804,10 @@ def cmd_listen(args):
         """The single commit this stream is allowed. Runs on every exit path
         — clean end, Ctrl-C, or error — because a rollback point that only
         exists when nothing went wrong is not a rollback point."""
+        try:
+            print(f"  {listener.refusal_summary()}")
+        except Exception:
+            pass
         targets = [engine]
         if school is not None:
             # Seal every fish the stream actually fed, not just the one the

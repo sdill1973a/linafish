@@ -127,7 +127,7 @@ def _feed_rerank_corpus(engine):
             mark = "freshword freshword"
         else:
             mark = "middle middle"
-        engine.eat(f"{mark} matter signal pattern", source="t")
+        engine.eat(f"{mark} matter signal pattern", source="t", admit=False)
 
 
 def _feed_shrink_corpus(engine):
@@ -139,7 +139,7 @@ def _feed_shrink_corpus(engine):
     compaction must shrink it — and recency decides which terms survive."""
     for i, word in enumerate(_STALE_WORDS):
         reps = " ".join([word] * (i + 3))
-        engine.eat(f"{reps} matter signal pattern", source="t")
+        engine.eat(f"{reps} matter signal pattern", source="t", admit=False)
     for _ in range(6):
         engine.eat("freshword freshword freshword freshword freshword "
                    "matter signal pattern", source="t")

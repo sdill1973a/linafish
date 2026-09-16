@@ -39,6 +39,8 @@ def absorb_jsonl(engine: FishEngine, path: Path) -> dict:
 
     count = 0
     eaten = 0
+    refused = 0
+    errors = 0
     with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:
             count += 1
@@ -48,10 +50,16 @@ def absorb_jsonl(engine: FishEngine, path: Path) -> dict:
                 if not text or len(text.strip()) < 10:
                     continue
                 source = d.get("source", f"absorb:{path.name}")
-                engine.eat(text, source=source)
-                eaten += 1
+                # absorb is a DELIBERATE deposit (review #85, finding 2): admit=False is the
+                # opt-out for exactly this path. The result is read — a refusal (too_short,
+                # sealed) is counted as refused, never as eaten (finding 3).
+                result = engine.eat(text, source=source, admit=False)
+                if result.get("reason"):
+                    refused += 1
+                else:
+                    eaten += 1
             except Exception:
-                pass
+                errors += 1
 
             if count % 100 == 0:
                 print(f"  [{count}] {eaten} absorbed, "
@@ -64,6 +72,8 @@ def absorb_jsonl(engine: FishEngine, path: Path) -> dict:
         "type": "jsonl",
         "lines_read": count,
         "absorbed": eaten,
+        "refused": refused,
+        "errors": errors,
         "total_crystals": len(engine.crystals),
         "formations": len(engine.formations),
     }
@@ -110,17 +120,22 @@ def absorb_faiss(engine: FishEngine, path: Path) -> dict:
                         return {"error": f"Unknown JSON format in {dp}"}
 
                     eaten = 0
+                    refused = 0
                     for item in texts:
                         text = item if isinstance(item, str) else item.get("text", item.get("page_content", str(item)))
                         if text and len(str(text).strip()) > 10:
-                            engine.eat(str(text), source=f"absorb:{dp.name}")
-                            eaten += 1
+                            result = engine.eat(str(text), source=f"absorb:{dp.name}", admit=False)
+                            if result.get("reason"):
+                                refused += 1
+                            else:
+                                eaten += 1
 
                     return {
                         "source": str(dp),
                         "type": "faiss_docstore",
                         "documents": len(texts),
                         "absorbed": eaten,
+                        "refused": refused,
                         "total_crystals": len(engine.crystals),
                         "formations": len(engine.formations),
                     }
@@ -141,6 +156,7 @@ def absorb_http(engine: FishEngine, url: str, max_pages: int = 50) -> dict:
     import urllib.request
 
     eaten = 0
+    refused = 0
     page = 0
 
     while page < max_pages:
@@ -172,8 +188,11 @@ def absorb_http(engine: FishEngine, url: str, max_pages: int = 50) -> dict:
 
                 if text and len(str(text).strip()) > 10:
                     source = f"absorb:{url.split('/')[-1]}"
-                    engine.eat(str(text), source=source)
-                    eaten += 1
+                    result = engine.eat(str(text), source=source, admit=False)
+                    if result.get("reason"):
+                        refused += 1
+                    else:
+                        eaten += 1
 
             print(f"  Page {page}: {len(items)} items, {eaten} absorbed total",
                   file=sys.stderr)
@@ -193,6 +212,7 @@ def absorb_http(engine: FishEngine, url: str, max_pages: int = 50) -> dict:
         "type": "http",
         "pages": page + 1,
         "absorbed": eaten,
+        "refused": refused,
         "total_crystals": len(engine.crystals),
         "formations": len(engine.formations),
     }
