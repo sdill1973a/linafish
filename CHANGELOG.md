@@ -10,7 +10,7 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
-## [2.3.0] - 2026-09-08
+## [2.3.0] - 2026-09-15
 
 A fish is a directory of your writing's cognitive record — crystals, their vectors, and a
 readable `fish.md` — not a running process. Two defaults changed in this release. Read
