@@ -91,3 +91,43 @@ def test_floor_keeps_terms_that_name_a_region():
 def test_protected_set_is_identity_bearing_and_lowercase():
     assert {"caroline", "lina", "ache", "love", "presence", "captain", "fish"} <= PROTECTED_VOCAB
     assert all(t == t.lower() and t.strip() == t for t in PROTECTED_VOCAB)
+
+
+# --- the TRADITIONAL door on a living fish (PR #88, Olorina's review 2026-09-18) ---
+# Append-only can never DROP a protected term; without a protected election it could
+# never ELECT one either. Both directions, same corpus as above.
+
+def test_traditional_door_elects_a_present_identity_term_on_a_living_fish():
+    v = _fish()
+    base = [t for t in v.get_vocab(size=12) if t != "caroline"]   # a base vocab that lacks her
+    unguarded = v.extend_vocab(base, size=12)
+    guarded = v.extend_vocab(base, size=12, protect=frozenset({"caroline"}))
+    assert "caroline" not in unguarded, "fixture: the bare door must lose her, or the test proves nothing"
+    assert "caroline" in guarded, "the traditional door must be able to elect a present identity term"
+    assert guarded[:len(base)] == base, "append-only: existing positions never move"
+
+
+def test_traditional_door_protection_cannot_invent_an_absent_term():
+    v = _fish()
+    base = v.get_vocab(size=12)
+    guarded = v.extend_vocab(base, size=12, protect=frozenset({"zzzznotinthecorpus"}))
+    assert "zzzznotinthecorpus" not in guarded
+
+
+def test_every_persisted_election_passes_protect():
+    """Olorina's enumeration, kept as a test so the title can't drift from the code:
+    every persisted get_vocab/extend_vocab election in the package names `protect=`.
+    The one transient local in vectorize() is exempt (never persisted)."""
+    import re
+    root = Path(__file__).resolve().parents[1] / "linafish"
+    unprotected = []
+    for p in ("engine.py", "fusion.py", "quickstart.py", "crystallizer_v3.py"):
+        src = (root / p).read_text().splitlines()
+        for i, line in enumerate(src):
+            if re.search(r"\.get_vocab\(|self\.get_vocab\(", line) and "def " not in line and '"""' not in line:
+                window = "\n".join(src[i:i + 8])
+                if "vocab = self.get_vocab()" in line:      # vectorize(): transient local
+                    continue
+                if "protect=" not in window and "**vocab_kwargs" not in window:
+                    unprotected.append(f"{p}:{i + 1}")
+    assert not unprotected, f"persisted elections without protect=: {unprotected}"

@@ -789,11 +789,13 @@ class FishEngine:
                 emerge_min_recent=self.emerge_min_recent,
                 emerge_min_ratio=self.emerge_min_ratio,
                 emerge_limit=self.emerge_limit,
+                protect=PROTECTED_VOCAB,
             )
         else:
             self.fish.vocab = self.fish.vectorizer.get_vocab(
                 size=self.vocab_size, d=self.d,
                 seed_terms=seed_terms, seed_weight=seed_weight,
+                protect=PROTECTED_VOCAB,
             )
 
     # §TRADITIONAL.VS.EMERGING — the emerging door's three numbers. A term must have
@@ -2742,6 +2744,7 @@ class FishEngine:
             size=self.vocab_size, d=self.d,
             seed_terms=seed_terms,
             seed_weight=seed_weight,
+            protect=PROTECTED_VOCAB,
         )
         self.fish.frozen = True
         self.fish.epoch += 1
