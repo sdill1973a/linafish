@@ -123,11 +123,17 @@ def test_every_persisted_election_passes_protect():
     unprotected = []
     for p in ("engine.py", "fusion.py", "quickstart.py", "crystallizer_v3.py"):
         src = (root / p).read_text().splitlines()
+        in_vectorize = False
         for i, line in enumerate(src):
-            if re.search(r"\.get_vocab\(|self\.get_vocab\(", line) and "def " not in line and '"""' not in line:
-                window = "\n".join(src[i:i + 8])
-                if "vocab = self.get_vocab()" in line:      # vectorize(): transient local
+            if re.match(r"\s*def \w+\(", line):                # track the enclosing function
+                in_vectorize = bool(re.match(r"\s*def vectorize\(", line))
+            # Olorina's mutation test (review 2026-09-18): the pattern never matched
+            # `extend_vocab(` callers, so `_rebuild_vocab`'s living branch — the hot
+            # path — could drop `protect=` and this test stayed green. Both doors now.
+            if re.search(r"\.get_vocab\(|self\.get_vocab\(|\.extend_vocab\(", line) and "def " not in line and '"""' not in line:
+                if in_vectorize:                                 # transient local, never persisted
                     continue
+                window = "\n".join(src[i:i + 12])              # a long kwarg list spans ~10 lines
                 if "protect=" not in window and "**vocab_kwargs" not in window:
                     unprotected.append(f"{p}:{i + 1}")
     assert not unprotected, f"persisted elections without protect=: {unprotected}"
