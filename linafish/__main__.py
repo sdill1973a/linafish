@@ -941,6 +941,7 @@ def cmd_converse(args):
         bind=args.bind,
         mind=args.mind,
         token=args.token,
+        dedupe=args.dedupe,
     )
 
 
@@ -3152,6 +3153,9 @@ def main():
                         help="Access level: local (default), lan, or wan")
     conv_p.add_argument("--token", help="Auth token for lan/wan access")
     conv_p.add_argument("--mind", help="This mind's name (default: hostname)")
+    conv_p.add_argument("--dedupe", action="store_true",
+                        help="/eat refuses a byte-exact repeat of a text the fish already holds "
+                             "(reply: crystals_added 0, reason duplicate). Off by default.")
 
     # whisper — one insight
     meditate_p = sub.add_parser(

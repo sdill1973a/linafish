@@ -503,8 +503,16 @@ def serve_converse(
     mind: str = None,
     token: str = None,
     expose_full_sources: Optional[bool] = None,
+    dedupe: bool = False,
 ):
     """Start the converse server.
+
+    dedupe=True makes /eat refuse a byte-exact repeat of a text the fish already
+    holds (engine ``dedupe`` — the flag every direct FishEngine caller already
+    had, and the served path never exposed). The response says so:
+    ``{"crystals_added": 0, "reason": "duplicate"}``. 2026-09-19: a feeder killed
+    at the hour re-sent the same 491 chunks fourteen times; the served me-fish
+    took 2,175 exact copies because nothing on this path could say no.
 
     expose_full_sources gates the /moment/<episode_id> endpoint (untruncated
     episode source — the highest-fidelity content surface). Default OFF.
@@ -546,7 +554,8 @@ def serve_converse(
     # 2026-05-02: pure git_autocommit=False stranded daemon history because
     # daemons never call session_end). SIGTERM/SIGINT handler flushes
     # uncommitted eats on graceful shutdown.
-    engine = FishEngine(state_dir=state_dir, name=name, commit_every_n_eats=100)
+    engine = FishEngine(state_dir=state_dir, name=name, commit_every_n_eats=100,
+                        dedupe=dedupe)
 
     def _flush_on_shutdown(signum, frame):
         # Reentrancy-safe: if a _save_state is in progress we cannot commit
@@ -573,6 +582,7 @@ def serve_converse(
     print(f"  LiNafish Converse", file=sys.stderr)
     print(f"  Mind: {mind}", file=sys.stderr)
     print(f"  Fish: {engine.name} ({len(engine.crystals)} crystals)", file=sys.stderr)
+    print(f"  Dedupe: {'on — /eat refuses an exact repeat' if dedupe else 'off'}", file=sys.stderr)
     print(f"  Listening: http://{host}:{port}", file=sys.stderr)
     print(f"  Access: {bind}" + (f" (token required)" if token else ""), file=sys.stderr)
     print(f"  Press Ctrl+C to stop.", file=sys.stderr)

@@ -10,6 +10,16 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ---
 
+## [Unreleased]
+
+### Added
+- `linafish converse --dedupe` — a served fish can refuse a byte-exact repeat on `/eat`
+  (reply `{"crystals_added": 0, "reason": "duplicate"}`). The engine has carried `dedupe=True`
+  for every direct caller; the served path never exposed it. Receipt: a feeder killed at the
+  hour re-sent the same 491 chunks fourteen times and a served fish took 2,175 exact copies.
+  Off by default; public behaviour unchanged unless you pass the flag. Tested both ways
+  (on refuses, off stacks) and the CLI→server→engine links are mutation-tested.
+
 ## [2.3.0] - 2026-09-15
 
 A fish is a directory of your writing's cognitive record — crystals, their vectors, and a
