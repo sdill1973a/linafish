@@ -957,6 +957,7 @@ def cmd_school(args):
         state_dir=state_dir,
         manifest_path=manifest,
         central_state_dir=central_dir,
+        dedupe=getattr(args, "dedupe", False),
     )
 
     action = args.action
@@ -3573,6 +3574,10 @@ def main():
     school_p.add_argument("-d", type=float, default=4.0, help="d value for add (default: 4.0)")
     school_p.add_argument("--centroid", action="store_true", help="Enable centroid subtraction for add")
     school_p.add_argument("--min-gamma", type=float, default=None, help="Min gamma override for add")
+    school_p.add_argument("--dedupe", action="store_true",
+                          help="eat: every member refuses a byte-exact repeat of a text it already holds "
+                               "(the engine flag `listen` and `converse --dedupe` already carry; the school "
+                               "verb never exposed it). Off by default.")
 
     # afferent — the school router organ (cheap per-turn member routing)
     afferent_p = sub.add_parser("afferent",
