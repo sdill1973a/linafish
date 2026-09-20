@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Optional, List, Dict
 
 from .formations import formation_rank_key
+from .crystallizer_v3 import PROTECTED_VOCAB
 
 
 # ---------------------------------------------------------------------------
@@ -1652,6 +1653,7 @@ def go(
                 size=engine.vocab_size, d=engine.d,
                 seed_terms=seed_terms,
                 seed_weight=seed_weight,
+                protect=PROTECTED_VOCAB,
             )
             engine.fish.frozen = True
             engine.fish.epoch += 1

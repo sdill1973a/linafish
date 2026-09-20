@@ -895,8 +895,16 @@ class MIVectorizer:
                      d: float = None, seed_terms: frozenset = None,
                      seed_weight: float = 2.0, emerging: bool = False,
                      emerge_min_recent: float = 5.0, emerge_min_ratio: float = 3.0,
-                     emerge_limit: int = 5) -> List[str]:
+                     emerge_limit: int = 5,
+                     protect: frozenset = None,
+                     protect_max_frac: float = 0.5) -> List[str]:
         """Append-only vocab growth — the living-vocabulary path.
+
+        ``protect`` (PR #88, Olorina's review 2026-09-18): append-only can never
+        DROP a protected term, but without this it could never ELECT one either —
+        ``fresh`` came from a bare ``get_vocab`` and only what is in ``fresh`` is
+        appended. A living fish whose base vocab lacked ``caroline`` stayed that way
+        forever. The traditional door now runs the same protected election.
 
         Existing terms keep their EXACT positions; newly-qualifying terms
         are appended at the end. Positions never move, so crystal vectors
@@ -907,7 +915,8 @@ class MIVectorizer:
         """
         fresh = self.get_vocab(size=size, min_idf=min_idf,
                                max_doc_pct=max_doc_pct, d=d,
-                               seed_terms=seed_terms, seed_weight=seed_weight)
+                               seed_terms=seed_terms, seed_weight=seed_weight,
+                               protect=protect, protect_max_frac=protect_max_frac)
         present = set(current_vocab)
         additions = [t for t in fresh if t not in present]   # the TRADITIONAL door
         if emerging:
@@ -1770,7 +1779,8 @@ class UniversalFish:
                2 < d <= 5: blend mode (frequency + distinctiveness)
                d > 5 or None: stranger mode (IDF, distinctive = signal)
         """
-        self.vocab = self.vectorizer.get_vocab(size=size, d=d)
+        self.vocab = self.vectorizer.get_vocab(size=size, d=d,
+                                               protect=PROTECTED_VOCAB)
         self.frozen = True
         self.epoch += 1
 
