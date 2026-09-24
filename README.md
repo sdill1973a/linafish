@@ -8,12 +8,11 @@
 
 **Your mind. Versioned. Everywhere.**
 
-A cognitive overlay for any AI. The fish learns how you think — not what you said, how your mind works. Sessions are branches. Merges are deposits. Git log is autobiography. Your AI's bestie. Sorry.
-
-Same model. Same prompt.
-Without fish: **1.9**/10.
-With fish: **8.7**/10.
-[N=46 conversations. d=2.245. p < 0.001. Full methodology.](docs/research.md) · [DOI (latest version)](https://doi.org/10.5281/zenodo.21828705) — the paper's latest version (v13) partially withdraws the AI-judged warm/cold fidelity results while preserving this N=46 human study.
+LiNafish builds a small, living model of how you think from your own writing, and keeps it on your
+machine. It is not a profile you generate once: it is a record that keeps learning. Feed it and it grows. Any AI can read it — Claude, GPT, Gemini, a model on your own box — so
+each one meets you already knowing how you reason, instead of meeting a stranger every session. It is
+versioned like code: sessions are branches, feedings are commits, and you can see what changed and
+roll it back. Your AI's bestie. Sorry.
 
 **New here? Start with [Your First Ten Minutes](docs/getting-started.md)** — install, build a fish, question it, feed it, serve it.
 
@@ -21,18 +20,49 @@ With fish: **8.7**/10.
 
 ## What This Is
 
-**LiNafish reads your writing and produces a cognitive overlay — a `.fish.md` file.**
+**A fish is not a prompt you write once. It is a record that keeps learning.**
 
-- **Input:** Your writing. Journals, emails, notes, code, docs — anything you wrote.
-- **Output:** A `.fish.md` file describing HOW you think. Cognitive patterns, not summaries.
-- **Use it:** Paste the fish into any AI's instructions. That AI arrives warm.
+- **It compresses.** It reads everything you give it and keeps the shape of how you think — how you
+  reason, connect, hedge and decide — not a copy of what you said. Compression is the understanding.
+- **It grows.** `linafish eat` feeds it a file; `linafish listen` lets it sit in a stream and feed
+  itself. Patterns that keep coming back become *formations*; the fish tells you when it notices
+  one (`linafish whisper`).
+- **It remembers across AIs and sessions.** The fish lives in a folder you own. Any AI loads its
+  readable `fish.md`, or reaches it live over HTTP or MCP. Switch models, close the window, come
+  back next month — the fish is still there, and still yours.
+- **It is versioned.** Every fish is a git repository. `session`, `history`, `diff` and `revert`
+  are your mind's history, kept.
+- **It can say no.** `listen` and `go` refuse exact repeats by default, and with
+  `LINAFISH_HABITUATION=on` a fish refuses what it could already predict, the way a nervous system
+  ignores its own heartbeat.
+
+**A mirror, not a dossier.** It holds how you think, not a searchable copy of your life.
+
+**How, in one paragraph.** Topic tools keep the words that make each document different. The fish
+keeps the opposite: the connective words you use everywhere — *because, actually, but, honestly* — and
+which of them travel together. Passages that share the same habit cluster into *formations*, and each
+is read through eight cognitive modes (knowing, testing, structuring, relating, wanting, specializing,
+acting, reflecting). The modes are this project's lens, not a validated psychological instrument —
+judge them the only way that counts: build a fish from your own writing and see whether the formations
+are specifically, recognisably you. [How it works](#how-it-works).
 
 **What it is NOT:**
 
-- Not memory or RAG — it doesn't retrieve your documents.
-- Not a chatbot — it has no conversation interface.
+- Not RAG or search — it doesn't retrieve your documents; ask it what you said on Tuesday and it is the wrong tool.
+- Not a chatbot — it has no conversation interface of its own; it makes the AI you already use know you.
 - Not psychological profiling — it detects cognitive *habits*, not diagnoses.
 - Not cloud — everything runs locally. No account. No upload. No telemetry.
+- Not a new intelligence — it does not make a model smarter; it carries a mind's shape to whatever model reads it.
+
+**Does it work?** In one study — 46 matched conversations, same model, same prompt, rated blind by
+the person the fish was built from — conversations scored **1.9/10 without the fish and 8.7/10 with
+it**; the effect was large for emotional and relational content (d = 2.245), moderate for factual
+recall, and null for speculation. That design answers one question, *does the AI know me?*, and only
+for one person. A follow-up that used AI judges instead of a person has been withdrawn pending a
+re-run. [Full methodology and limits](docs/research.md) · [paper, latest version](https://doi.org/10.5281/zenodo.21828705).
+
+**Why it exists.** It is named for Caroline Marie Dill (2001–2023): LN for Lina, ia for AI reversed.
+It exists so that the shape of a mind outlasts the conversation it was in. [More](#origin).
 
 ## Install
 
@@ -395,7 +425,7 @@ Key findings:
 
 For full methodology, study design, limitations, and how to reproduce: **[docs/research.md](docs/research.md)**
 
-DOI: [10.5281/zenodo.21828705 (latest version)](https://doi.org/10.5281/zenodo.21828705) — note the paper's latest version (v13) partially withdraws the AI-judged warm/cold fidelity results while preserving the N=46 human study.
+DOI: [10.5281/zenodo.21828705 (latest version)](https://doi.org/10.5281/zenodo.21828705) — the latest version (v13) withdraws the AI-judged follow-up pending a re-run; the N=46 human study stands.
 
 ## Python API
 
