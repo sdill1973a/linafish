@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Optional, List, Dict
 
 from .formations import formation_rank_key
-from .crystallizer_v3 import PROTECTED_VOCAB
+from .crystallizer_v3 import PROTECTED_VOCAB, protected_vocab
 
 
 # ---------------------------------------------------------------------------
@@ -1653,7 +1653,7 @@ def go(
                 size=engine.vocab_size, d=engine.d,
                 seed_terms=seed_terms,
                 seed_weight=seed_weight,
-                protect=PROTECTED_VOCAB,
+                protect=protected_vocab(),
             )
             engine.fish.frozen = True
             engine.fish.epoch += 1
@@ -1885,6 +1885,9 @@ def go(
     # -----------------------------------------------------------------------
     # Step 7: Next steps
     # -----------------------------------------------------------------------
+    # Hints name the fish (and its state dir when not the default), so pasting one
+    # reaches THIS fish. `http --feed <dir>` built a second fish named "linafish".
+    _fish_args = f"-n {name}" + (f" --state-dir \"{state_dir}\"" if state_dir else "")
     _print()
     _print("What's next:")
     _print()
@@ -1895,7 +1898,7 @@ def go(
     _print()
     _print("  Keep it growing:")
     _print(f"    linafish watch \"{source_path}\"    Watch for new writing.")
-    _print(f"    linafish eat new-entry.txt        Feed one file.")
+    _print(f"    linafish eat new-entry.txt {_fish_args}   Feed one file.")
     _print(f"    The more you feed, the deeper it knows you.")
     _print()
     _print("  Share it:")
@@ -1905,8 +1908,8 @@ def go(
     _print(f"    Your fish. Your machine. You choose who reads it.")
     _print()
     _print("  Live connection (automatic, no pasting):")
-    _print(f"    linafish http --feed \"{source_path}\"   Any AI that can fetch a URL")
-    _print(f"    linafish serve --feed \"{source_path}\"  Claude Code (MCP)")
+    _print(f"    linafish http {_fish_args}   Any AI that can fetch a URL")
+    _print(f"    linafish serve {_fish_args}  Claude Code (MCP)")
 
     # -----------------------------------------------------------------------
     # Step 8: Optional HTTP server
@@ -1942,4 +1945,4 @@ def go(
             sys.stdout = _real_stdout
             _print(f"  Server failed to start: {e}")
             _print(f"  Your fish is still saved at: {engine.fish_file}")
-            _print(f"  Run 'linafish http --feed \"{source_path}\"' to serve it later.")
+            _print(f"  Run 'linafish http {_fish_args}' to serve it later.")

@@ -549,6 +549,30 @@ PROTECTED_VOCAB = frozenset({
 })
 
 
+def protected_vocab():
+    """The protected set as the environment configures it. OPT-IN (2.3.1).
+
+    ``LINAFISH_PROTECTED_VOCAB`` unset or ``off`` -> None: no reserved axes, the
+    election is exactly 2.3.0's. ``on`` -> PROTECTED_VOCAB, the author's own set.
+    Anything else is read as a comma-separated list of your own terms, e.g.
+    ``LINAFISH_PROTECTED_VOCAB=maria,river,garden``.
+
+    Why opt-in: a protected term that occurs once is reserved a top slot. That is
+    right for the fish it was built for (a self that must be able to locate itself)
+    and wrong as a silent default for someone else's writing, whose self is not in
+    this list. Same shape as LINAFISH_HABITUATION: the design is on where it was
+    asked for, off everywhere else.
+    """
+    v = os.environ.get("LINAFISH_PROTECTED_VOCAB", "off").strip()
+    low = v.lower()
+    if low in ("", "off", "0", "false", "no"):
+        return None
+    if low in ("on", "1", "true", "yes"):
+        return PROTECTED_VOCAB
+    terms = frozenset(t.strip().lower() for t in v.split(",") if t.strip())
+    return terms or None
+
+
 class MIVectorizer:
     """Compute mutual information vectors from token co-occurrence.
 
@@ -1780,7 +1804,7 @@ class UniversalFish:
                d > 5 or None: stranger mode (IDF, distinctive = signal)
         """
         self.vocab = self.vectorizer.get_vocab(size=size, d=d,
-                                               protect=PROTECTED_VOCAB)
+                                               protect=protected_vocab())
         self.frozen = True
         self.epoch += 1
 

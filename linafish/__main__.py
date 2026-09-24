@@ -3324,8 +3324,8 @@ def main():
     eat_p.add_argument("-n", "--name", help="Fish name")
     eat_p.add_argument("-d", "--description", help="Fish description")
     eat_p.add_argument("-o", "--output", type=_user_path, help="Output path")
-    eat_p.add_argument("--hint", help="Context hint for better vectorization")
-    eat_p.add_argument("--vocab", type=_user_path, help="Path to domain vocabulary JSON")
+    eat_p.add_argument("--hint", help="Context hint (no-op since v3 MIVectorizer; accepted so old scripts do not break)")
+    eat_p.add_argument("--vocab", type=_user_path, help="Path to domain vocabulary JSON (no-op since v3 MIVectorizer; accepted so old scripts do not break)")
     eat_p.add_argument("--state-dir", help="Fish state directory (default ~/.linafish)")
 
     # taste
@@ -3395,7 +3395,7 @@ def main():
     serve_p.add_argument("--feed", type=_user_path, help="Directory or file to ingest on startup")
     serve_p.add_argument("--state-dir", type=_user_path, help="Where to store fish state (default: ~/.linafish/)")
     serve_p.add_argument("-n", "--name", default="linafish", help="Fish name")
-    serve_p.add_argument("--vocab", type=_user_path, help="Path to domain vocabulary JSON")
+    serve_p.add_argument("--vocab", type=_user_path, help="Path to domain vocabulary JSON (no-op since v3 MIVectorizer; accepted so old scripts do not break)")
 
     # http
     http_p = sub.add_parser("http", help="Serve fish over HTTP (any AI)")
@@ -3403,7 +3403,7 @@ def main():
     http_p.add_argument("--state-dir", type=_user_path, help="Where to store fish state (default: ~/.linafish/)")
     http_p.add_argument("-n", "--name", default="linafish", help="Fish name")
     http_p.add_argument("-p", "--port", type=int, default=8900, help="Port (default: 8900)")
-    http_p.add_argument("--vocab", type=_user_path, help="Path to domain vocabulary JSON")
+    http_p.add_argument("--vocab", type=_user_path, help="Path to domain vocabulary JSON (no-op since v3 MIVectorizer; accepted so old scripts do not break)")
     http_p.add_argument("--bind", default="local", choices=["local", "lan", "wan"],
                         help="Bind scope (default: local = loopback; lan/wan bind 0.0.0.0)")
 
@@ -3412,7 +3412,7 @@ def main():
     demo_p.add_argument("source", type=_user_path, help="File or directory to ingest")
     demo_p.add_argument("-q", "--question", help="Question to test with Gemini")
     demo_p.add_argument("-n", "--name", help="Fish name")
-    demo_p.add_argument("--hint", help="Context hint")
+    demo_p.add_argument("--hint", help="Context hint (no-op since v3 MIVectorizer; accepted so old scripts do not break)")
     demo_p.add_argument("--api-key", help="Gemini API key")
     demo_p.add_argument("--model", default="gemini-2.5-flash", help="Gemini model")
 

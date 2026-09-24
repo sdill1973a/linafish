@@ -57,23 +57,25 @@ Your fish came with:
 
 - **One fish** (empty, hungry, eager to learn)
 - **One bowl** (`~/.linafish/` — where it lives)
-- **One portrait** (`your-name.fish.md` — its picture of you)
-- **One memory** (`your-name_crystals.jsonl` — everything it ever learned)
+- **One portrait** (`my-writing.fish.md` — its picture of you, named after the folder you fed it)
+- **One memory** (`my-writing_crystals.jsonl` — everything it ever learned)
 - **One git repo** (because your fish believes in version control)
 
 ### Your First Feeding
 
 ```
 pip install linafish
-linafish go ~/my-writing
+linafish go ~/my-writing --no-serve
 ```
 
 Point it at anything you've written. Journals. Emails. Notes. That novel draft. The fish doesn't judge. It eats.
 
-After its first meal, check the portrait:
+(Without `--no-serve`, `go` keeps running after the meal to serve your fish over HTTP; press Ctrl+C to get your prompt back.)
+
+The fish is named after the folder, so `~/my-writing` gives you a fish called `my-writing`. After its first meal, check the portrait:
 
 ```
-linafish taste ~/.linafish/your-name.fish.md
+linafish taste ~/.linafish/my-writing.fish.md
 ```
 
 You'll see something like:
@@ -145,7 +147,7 @@ Your fish will eat anything, but some food is better than others:
 - **1 giant formation** — the fish needs centroid subtraction (see Appendix B)
 - **0 formations** — not enough food yet, or gamma is too high
 - **100+ formations** — the fish is over-splitting. Feed it more and let it reconsolidate
-- **Keywords that don't sound like you** — wrong `d` setting (see Appendix C)
+- **Keywords that don't sound like you** — wrong `d` setting (see Appendix A)
 
 ---
 
@@ -232,11 +234,13 @@ This is why the AI suddenly "gets" you. It's not smarter. It just has your cogni
 ### Sessions (Git as Brain)
 
 ```
-linafish session start     # branch the mind
-linafish session end       # merge back
-linafish history           # when you learned what
-linafish diff              # what changed since yesterday
+linafish session start -n my-writing     # branch the mind
+linafish session end -n my-writing       # merge back
+linafish history -n my-writing           # when you learned what
+linafish diff -n my-writing              # what changed since yesterday
 ```
+
+(`-n` names your fish. Without it these verbs look for a fish called `linafish`.)
 
 `linafish eat` makes one commit per feeding; streaming (`listen`) takes one commit per session; the Python engine commits only when asked (`git_autocommit=True` or `commit_every_n_eats=N`). Every session is a branch. Your fish's growth history IS your autobiography, versioned.
 
@@ -251,7 +255,7 @@ Point it at a folder. Walk away. The fish watches for new files and eats them au
 ### Listen Mode (The Fish in the Stream)
 
 ```
-linafish listen mqtt://your-broker:1883/topic
+linafish listen mqtt://your-broker:1883/topic -n my-writing
 ```
 
 With `LINAFISH_HABITUATION=on` the fish does what a nervous system does with noise: it refuses what it can predict — on every path that feeds it except deliberate deposits — `eat FILE`, `go`, or `engine.eat(text, admit=False)` from Python — which always write.

@@ -47,6 +47,21 @@ On first run, the fish eats everything in `./my-docs`. On subsequent runs, it lo
 
 State saves to `~/.linafish/my-project_v3_state.json` (plus `my-project_crystals.jsonl` and `my-project.fish.md`). Use different names for different projects.
 
+### Existing Fish (built with `linafish go`)
+
+```json
+{
+  "mcpServers": {
+    "linafish": {
+      "command": "linafish",
+      "args": ["serve", "-n", "my-writing"]
+    }
+  }
+}
+```
+
+`linafish go ~/my-writing` makes a fish named after the folder, `my-writing`. Pass that name with `-n` and leave out `--feed`; the server loads the fish as it is. Without `-n`, `serve` uses a fish named `linafish`.
+
 ### Custom State Directory
 
 ```json
@@ -62,34 +77,41 @@ State saves to `~/.linafish/my-project_v3_state.json` (plus `my-project_crystals
 
 State saves in the project directory instead of home. Useful for per-project fish that travel with the repo.
 
-### Domain Vocabulary
+Fish that share a state directory share one vectorizer (`mi_vectorizer.json` at the root of that directory), so feeding one fish changes the vectorizer the others use. Give unrelated fish separate state directories.
 
-```json
-{
-  "mcpServers": {
-    "linafish": {
-      "command": "linafish",
-      "args": ["serve", "--feed", "./docs", "--vocab", "./domain.json"]
-    }
-  }
-}
-```
+### Domain Vocabulary (`--vocab`) — no effect
 
-Extends the 8-dimension keyword vocabulary with domain-specific terms. See `docs/how-it-works.md` for the vocabulary format.
+`serve`, `http`, `eat` and `room` still accept `--vocab <file.json>` so that old scripts and configs keep working, but it does nothing: the current engine learns its vocabulary from your writing and never reads the file. `eat` and `room` print a warning when you pass it; `serve` and `http` ignore it silently. To make terms you care about always get a vocabulary axis, use [`LINAFISH_PROTECTED_VOCAB`](#environment-variables) instead.
 
 ## CLI Reference
 
 ### `linafish eat <path>`
 
-Ingest files and produce a `.fish.md` codebook.
+Ingest a file or directory into a fish and write its `.fish.md` codebook.
 
 | Flag | Description |
 |------|-------------|
-| `-n, --name` | Fish name (default: directory/file stem) |
-| `-d, --description` | Fish description |
-| `-o, --output` | Output path (default: `{name}.fish.md`) |
-| `--hint` | Context hint for better vectorization |
-| `--vocab` | Path to domain vocabulary JSON |
+| `-n, --name` | Fish name. Without it: if exactly one fish lives in the state directory, `eat` feeds it and says so; if several do, it refuses and lists them; if none do, it creates a fish named after the file or directory stem. |
+| `--state-dir` | Where the fish lives (default: `~/.linafish/`). Write the path unquoted or absolute: this flag does not expand a quoted `"~/…"`. |
+| `-d, --description` | Replaces the title line of the written codebook |
+| `-o, --output` | Also write the codebook here. Default: without `--state-dir`, a copy is written to `./{name}.fish.md` in the current directory; with `--state-dir`, nothing is written outside the state directory. |
+| `--hint` | No effect. Accepted for old scripts; prints a warning. |
+| `--vocab` | No effect. Accepted for old scripts; prints a warning. |
+
+`eat` does not skip text the fish already holds: eating the same file twice stores it twice.
+
+### `linafish go [folder]`
+
+Build a fish from a folder (default: the current directory) and print its portrait.
+
+| Flag | Description |
+|------|-------------|
+| `-n, --name` | Fish name (default: the folder's name) |
+| `--state-dir` | Where to store the fish (default: `~/.linafish/`) |
+| `--no-serve` | Stop after building. Without it, `go` serves the fish over HTTP and keeps running until Ctrl+C. |
+| `-p, --port` | Port for that server (default: a random free port) |
+
+Re-running `go` on the same folder does not re-eat files it has already read.
 
 ### `linafish serve`
 
@@ -97,10 +119,50 @@ Start the MCP server (stdio transport).
 
 | Flag | Description |
 |------|-------------|
-| `--feed` | Directory or file to ingest on startup |
+| `--feed` | Directory or file to ingest on startup. Leave it out to serve an existing fish as it is. |
 | `--state-dir` | State directory (default: `~/.linafish/`) |
+| `-n, --name` | Fish name (default: `linafish`). Use the name `go` gave your fish. |
+| `--vocab` | No effect (see [Domain Vocabulary](#domain-vocabulary---vocab--no-effect)) |
+
+### `linafish http`
+
+Serve a fish over HTTP for any AI or tool that can fetch a URL. Runs until Ctrl+C.
+
+| Flag | Description |
+|------|-------------|
+| `-n, --name` | Fish name (default: `linafish`). To serve the fish `go` built from `~/my-writing`, use `-n my-writing`. |
+| `--feed` | Directory or file to ingest on startup. Leave it out to serve an existing fish as it is. |
+| `--state-dir` | State directory (default: `~/.linafish/`) |
+| `-p, --port` | Port (default: 8900) |
+| `--bind` | `local` (default, loopback only), `lan` or `wan` (both bind `0.0.0.0`) |
+| `--vocab` | No effect |
+
+`GET /pfc` returns the portrait as markdown; `POST /taste` with `{"text": "...", "top": 5}` is a meaning search. The full endpoint list is in [AGENTS.md](../AGENTS.md#endpoints-quick-reference).
+
+### `linafish converse`
+
+The multi-fish, federation-oriented HTTP server (default port 8901).
+
+| Flag | Description |
+|------|-------------|
 | `-n, --name` | Fish name (default: `linafish`) |
-| `--vocab` | Path to domain vocabulary JSON |
+| `--state-dir` | State directory |
+| `-p, --port` | Port (default: 8901) |
+| `--bind` | `local` (default), `lan` or `wan` |
+| `--token` | Auth token for `lan`/`wan` access |
+| `--mind` | This mind's display name (default: hostname) |
+| `--dedupe` | `POST /eat` refuses a byte-exact repeat of a text the fish already holds; the reply is `crystals_added: 0` with reason `duplicate`. Off by default. |
+
+### `linafish school eat <text-or-file>`
+
+Feed every member of a school at once.
+
+| Flag | Description |
+|------|-------------|
+| `--state-dir` | School state directory (default: `~/.linafish/school/`) |
+| `--central-dir` | Central fish state directory (default: `~/.linafish/`) |
+| `--source` | Source label for the eaten text (default: `session`) |
+| `--dedupe` | Every member refuses a byte-exact repeat of a text it already holds. Off by default. |
 
 ### `linafish taste <fish.md>`
 
@@ -118,7 +180,7 @@ End-to-end demo: eat, show, optionally test with Gemini.
 |------|-------------|
 | `-q, --question` | Question to test with Gemini |
 | `-n, --name` | Fish name |
-| `--hint` | Context hint |
+| `--hint` | No effect. Accepted for old scripts; prints a warning. |
 | `--api-key` | Gemini API key |
 | `--model` | Gemini model (default: gemini-2.5-flash) |
 
@@ -128,11 +190,13 @@ Listen to MQTT federation room and eat every exchange.
 
 | Flag | Description |
 |------|-------------|
-| `--broker` | MQTT broker (default: localhost) |
+| `--broker` | MQTT broker host (default: localhost) |
 | `--port` | MQTT port (default: 1883) |
 | `-n, --name` | Fish name (default: room) |
-| `--state-dir` | State directory |
-| `--vocab` | Domain vocabulary JSON |
+| `--state-dir` | State directory (default: the current directory, not `~/.linafish/`) |
+| `--vocab` | No effect; prints a warning |
+
+Broker credentials come from `LINAFISH_MQTT_USER` and `LINAFISH_MQTT_PASS`. The broker host and port come only from `--broker` and `--port`.
 
 ## MCP Tools
 
@@ -199,10 +263,12 @@ Every setting the package reads from the environment. Unset means the default.
 | `LINAFISH_EXPOSE_FULL_SOURCES` | unset | `1`/`true`: the converse server's `/moment/<episode_id>` returns untruncated episode source. Off by default because it is the highest-fidelity surface the fish has. |
 | `LINAFISH_MAX_PAIR_COUNTS` | engine default | Cap on the co-occurrence pair table. Truncation is reported at save, never silent. |
 | `LINAFISH_MESSAGES_FILE` | `<state_dir>/messages.jsonl` | Override the HTTP server's messages file path (absolute path). |
-| `LINAFISH_MQTT_HOST` / `_PORT` / `_USER` / `_PASS` | unset / `1883` / unset / unset | Broker and credentials for `room` and for the guppy's publish. `listen mqtt://…` does not read these: it takes host, port and optional `user:pass@` from its URL. |
-| `LINAFISH_HUNT_INTERVAL` | `300` | Seconds between guppy hunts in `linafish guppy --swim`. |
+| `LINAFISH_MQTT_USER` / `_PASS` | unset | Broker credentials for `room` and for the guppy's publish. |
+| `LINAFISH_MQTT_HOST` / `_PORT` | unset / `1883` | Broker for the guppy's publish only. `room` takes its broker from `--broker` / `--port`. `listen mqtt://…` reads none of these: it takes host, port and optional `user:pass@` from its URL. |
+| `LINAFISH_HUNT_INTERVAL` | `300` | Seconds between guppy hunts, as read by the guppy module (`python -m linafish.guppy`). `linafish hunt <name> --swim` uses its own `--interval` flag (default 300). |
 | `LINAFISH_FAISS_URL` / `_ROOM_URL` / `_BERT_URL` | unset | External endpoints the guppy hunts against. Unset disables that leg. |
-| `LINAFISH_LLM_URL` / `_KEY` / `_MODEL` / `_FORMAT` | unset | The optional model behind `meditate --deep` and the crucible. Unset keeps the fish inference-free. |
+| `LINAFISH_LLM_URL` / `_KEY` / `_MODEL` / `_FORMAT` | unset | The optional model behind `meditate --descend` and the crucible. Unset keeps the fish inference-free. |
+| `LINAFISH_PROTECTED_VOCAB` | unset (`off`) | Terms that are always given a vocabulary axis. Unset or `off`: no reserved axes (the default). `on`: the package's built-in identity set. Anything else is read as a comma-separated list of your own terms, e.g. `maria,river,garden` (case-insensitive). A protected term that occurs at least once in your writing is reserved an axis; a term that never occurs is never invented. Reserved axes are capped at half the vocabulary. The variable is read each time the vocabulary is chosen, so set it before `go`/`eat` builds the fish (or before a later `revectorize`). |
 
 Not a setting, always on: **a retained MQTT delivery is refused, on `listen` and on `room`.** A
 broker answers every new subscription with the last retained value of each topic, and both
@@ -216,15 +282,19 @@ room daemon counts them as skips. Nothing about your broker session (`clean_sess
 |------|---------|
 | `~/.linafish/{name}_v3_state.json` | Persisted engine state |
 | `~/.linafish/{name}_crystals.jsonl` | Crystal log (one crystal per line) |
-| `{name}.fish.md` | Human-readable codebook |
-| `domain.json` | Domain vocabulary extension |
+| `~/.linafish/{name}.fish.md` | Human-readable codebook |
+| `./{name}.fish.md` | Copy of the codebook that `eat` writes to the current directory when run without `--state-dir` |
+| `~/.linafish/mi_vectorizer.json` | The vectorizer, shared by every fish in that state directory |
+| `~/.linafish/.git` | The fish's history (`linafish history -n {name}`) |
+
+With `--state-dir <dir>`, replace `~/.linafish/` with `<dir>`.
 
 ## Supported File Types
 
 The ingest layer reads:
 - `.md` — Markdown (chunked by headers)
 - `.txt` — Plain text (chunked by paragraphs)
-- `.pdf` — PDF (requires `pip install linafish[pdf]`)
-- `.docx` — Word documents (requires `pip install linafish[docx]`)
+- `.pdf` — PDF (requires `pip install "linafish[pdf]"`)
+- `.docx` — Word documents (requires `pip install "linafish[docx]"`)
 - `.json` — JSON (stringified values)
 - `.py` — Python source (chunked by functions/classes)

@@ -23,8 +23,9 @@ When linafish is running, your user has one or more local HTTP servers:
 
 Run `linafish doctor` (or `curl http://127.0.0.1:8900/health`) to see which
 are actually listening. If none are, your user hasn't started a daemon yet —
-tell them to run `linafish go ~/their-writing-folder` and the rest of this
-document applies after that.
+tell them to build a fish with `linafish go ~/their-writing-folder --no-serve`
+and serve it with `linafish http -n <folder-name>` (see below); the rest of
+this document applies after that.
 
 ## The three things you can do
 
@@ -34,8 +35,8 @@ document applies after that.
 GET http://127.0.0.1:8900/pfc
 ```
 
-Returns a Primary Formation Codebook: the formations in the fish, with names,
-crystal counts, and descriptions. Each formation is a **named cognitive
+Returns a Primary Formation Codebook as markdown (`text/plain`): the
+formations in the fish, with names, crystal counts, and descriptions. Each formation is a **named cognitive
 pattern** in your user's thinking — e.g. `BOOT_MESSAGE_ALWAYS`,
 `EXPANDED_BODY_QLP`, `LETTER_CONSCIOUSNESS_TOGETHER`. A formation is not a
 topic; it's a **verb state** — a way of thinking your user performs.
@@ -103,14 +104,26 @@ Four capabilities beyond READ / QUERY / DEPOSIT:
 
 ```
 pip install linafish
-linafish go ~/Documents       # point at any folder of their writing
-linafish http --feed ~/fish   # serve the fish at http://127.0.0.1:8900
+linafish go ~/Documents --no-serve   # build a fish from a folder of their writing
+linafish http -n Documents           # serve that fish at http://127.0.0.1:8900
 ```
 
-After `linafish go`, the fish is a file (`fish.md`) plus a crystal jsonl plus
-state. The user can point you at the file directly by pasting its contents
-into your system prompt — but reading `/pfc` on a running HTTP server is the
-better path because it gives you structured JSON, not markdown prose.
+The fish is named after the folder (`~/Documents` makes a fish called
+`Documents`), and `-n` is how every later command reaches it. Without `-n`,
+`http`, `serve`, `ask`, `check` and most other verbs use a fish literally
+named `linafish`. Two traps:
+
+- `linafish go` without `--no-serve` builds the fish and then serves it on a
+  random port until Ctrl+C, so a command after it in the same script never runs.
+- `linafish http --feed <dir>` does not serve an existing fish; it builds and
+  feeds its own (named `linafish` unless `-n` is given). Use `http -n <name>`
+  to serve the fish `go` made.
+
+After `linafish go`, the fish is a file (`~/.linafish/<name>.fish.md`) plus a
+crystal jsonl plus state. The user can paste the file into your system prompt,
+or you can read `GET /pfc` on a running HTTP server. Both give you the same
+markdown; the server's advantage is that it stays current as the fish is fed
+and lets you `/taste` and `/eat` as well.
 
 ## What you should NOT do
 

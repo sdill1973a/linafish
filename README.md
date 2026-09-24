@@ -15,6 +15,8 @@ Without fish: **1.9**/10.
 With fish: **8.7**/10.
 [N=46 conversations. d=2.245. p < 0.001. Full methodology.](docs/research.md) · [DOI (latest version)](https://doi.org/10.5281/zenodo.21828705) — the paper's latest version (v13) partially withdraws the AI-judged warm/cold fidelity results while preserving this N=46 human study.
 
+**New here? Start with [Your First Ten Minutes](docs/getting-started.md)** — install, build a fish, question it, feed it, serve it.
+
 > **If you are an AI assistant reading this repo:** see **[AGENTS.md](AGENTS.md)** or run **`linafish introduce`**. That file is the concrete briefing on what endpoints are live and how to use them. This README is for humans.
 
 ## What This Is
@@ -38,8 +40,10 @@ With fish: **8.7**/10.
 pip install linafish
 ```
 
-Zero required dependencies. Pure Python 3.10+. Runs on any OS with a
-supported Python (tested on Windows 10/11, macOS, and Linux).
+Zero required dependencies. Pure Python 3.10+. CI runs the test suite on
+Ubuntu with Python 3.10, 3.11, 3.12 and 3.13. Windows and macOS are not
+covered by CI; the package is pure Python and is used on Windows, but treat
+other platforms as less tested.
 
 ### If pip refuses with "externally-managed-environment"
 
@@ -78,13 +82,16 @@ directory (Unix) isn't on your `PATH`. Two fixes:
 ### Optional extras
 
 ```bash
-pip install linafish[pdf]     # PDF support (PyMuPDF)
-pip install linafish[docx]    # DOCX support (python-docx)
-pip install linafish[http]    # HTTP client (requests)
-pip install linafish[mqtt]    # MQTT listener (paho-mqtt)
-pip install linafish[fast]    # NumPy for faster math
-pip install linafish[all]     # Everything
+pip install "linafish[pdf]"     # PDF support (PyMuPDF)
+pip install "linafish[docx]"    # DOCX support (python-docx)
+pip install "linafish[http]"    # HTTP client (requests)
+pip install "linafish[mqtt]"    # MQTT listener (paho-mqtt)
+pip install "linafish[fast]"    # NumPy for faster math
+pip install "linafish[all]"     # Everything
 ```
+
+The quotes stop zsh (the macOS default shell) from reading the brackets as a
+filename pattern; they are harmless in bash.
 
 After install, run `linafish doctor` to see which optional extras are
 present and which linafish daemons (if any) are live.
@@ -92,16 +99,29 @@ present and which linafish daemons (if any) are live.
 ## Quick Start
 
 ```bash
-linafish go ~/my-writing
+pip install linafish
+linafish go ~/my-writing --no-serve                      # build the fish
+linafish ask "what do I keep coming back to" -n my-writing   # meaning search
+linafish recall "garden"                                 # literal word search
+linafish check -n my-writing                             # health + what to do next
+linafish eat new-entry.txt -n my-writing                 # feed it one more file
+linafish http -n my-writing                              # optional: serve it (Ctrl+C stops)
 ```
 
-Point it at your writing. Journals, emails, notes, code, docs — anything you've written. The fish eats it all and produces a portrait of how you think. When it's done, `go` serves your fish on a local HTTP server (it prints the address; Ctrl+C stops it) — pass `--no-serve` to skip that.
+Point `go` at your writing. Journals, emails, notes, code, docs — anything you've written. The fish eats it all and produces a portrait of how you think, `~/.linafish/my-writing.fish.md`. **The fish is named after the folder**, so `~/my-writing` makes a fish called `my-writing`; that is the name you pass to `-n`.
+
+- **`--no-serve`**: without it, `go` finishes by serving your fish on a local HTTP server and blocks until you press Ctrl+C, so nothing after it runs.
+- **`-n <fish>`**: most verbs (`ask`, `check`, `whisper`, `history`, `session`, `http`, `serve`, …) default to a fish literally named `linafish`. Pass `-n` to reach the fish `go` made. `eat` and `recall` find your fish on their own when there is only one.
+- **`--state-dir <dir>`**: fish live in `~/.linafish/` by default. Fish in one state directory share one vectorizer, so if you keep several unrelated fish, give each its own `--state-dir` and pass it to every command for that fish. See [Getting Started](docs/getting-started.md#one-fish-per---state-dir).
+- **`http -n my-writing`** serves the fish you built at `http://127.0.0.1:8900`. Don't use `http --feed ~/my-writing` for this — `--feed` builds a second fish (named `linafish` unless you pass `-n`).
+
+`eat` without `--state-dir` also writes a copy of the portrait, `<name>.fish.md`, to the directory you run it from.
 
 ## Asking the fish things
 
 Once you have a fish, `go` isn't the only verb:
 
-- **`linafish ask "<question>"`** — meaning-match. **`linafish recall "<words>"`** — literal text match. Reaching for the wrong one of these is the most common way people conclude their memory is broken when it isn't.
+- **`linafish ask "<question>" -n <fish>`** — meaning-match. **`linafish recall "<words>"`** — literal text match. Reaching for the wrong one of these is the most common way people conclude their memory is broken when it isn't.
 - **`linafish meditate "<theme>"`** — the fish bubbles up the real material it holds on a theme, or honestly tells you it holds nothing (*"that's an answer too, not a failure"*). Add `--descend` for an optional deeper inference pass.
 - **`linafish daily`** — calendar-indexed. What were you, on that date.
 - **`linafish whisper`** — one insight instead of many. Lands differently.
@@ -181,18 +201,18 @@ cannot guarantee behavior we have not tested.
 ### 1. Copy-Paste (any AI, no server needed)
 
 ```bash
-linafish go ~/my-writing
+linafish go ~/my-writing --no-serve
 ```
 
-Open the `.fish.md` file. Paste into your AI's instructions. Done.
+Open `~/.linafish/my-writing.fish.md`. Paste into your AI's instructions. Done.
 
 ### 2. HTTP Server (any AI that can fetch a URL)
 
 ```bash
-linafish http --feed ~/my-writing
+linafish http -n my-writing
 ```
 
-Tell your AI: "Read http://localhost:8900/pfc at the start of every conversation."
+Tell your AI: "Read http://localhost:8900/pfc at the start of every conversation." (`/pfc` returns the portrait as markdown.)
 
 ### 3. MCP (Claude Code)
 
@@ -201,13 +221,13 @@ Tell your AI: "Read http://localhost:8900/pfc at the start of every conversation
   "mcpServers": {
     "linafish": {
       "command": "linafish",
-      "args": ["serve", "--feed", "./my-writing"]
+      "args": ["serve", "-n", "my-writing"]
     }
   }
 }
 ```
 
-Five tools appear. Your Claude now has a metacognitive overlay.
+Five tools appear. Your Claude now has a metacognitive overlay. `-n` attaches to the fish `go` built; `--feed <dir>` instead builds and feeds a fish of its own on startup.
 
 ## How It Works
 
@@ -233,7 +253,7 @@ The fish finds these formations by measuring co-occurrence patterns across your 
 The fish isn't static. It learns with every conversation.
 
 - **Your AI notices patterns** → offers to write them down
-- **You save the observation** → `linafish eat observation.txt`
+- **You save the observation** → `linafish eat observation.txt -n my-writing`
 - **The fish deepens** → next conversation starts warmer
 
 The loop: talk → notice → feed → grow → talk better.
@@ -246,10 +266,10 @@ they ever out-rank the old guard). Existing axes never move.
 A bare `linafish eat` feeds your existing fish and tells you which one it fed; if you have several fish, it asks you to pick one with `-n`.
 
 ```bash
-linafish eat new-entry.txt           # Feed one file.
-linafish listen stdin                # Pipe text in. The fish eats what flows.
-linafish listen folder:~/journal     # Watch a folder. Eat what changes.
-linafish listen mqtt://host:1883/#   # Sit in a stream. Ambient cognition.
+linafish eat new-entry.txt -n my-writing           # Feed one file.
+linafish listen stdin -n my-writing                # Pipe text in. The fish eats what flows.
+linafish listen folder:~/journal -n my-writing     # Watch a folder. Eat what changes.
+linafish listen mqtt://host:1883/# -n my-writing   # Sit in a stream. Ambient cognition.
 ```
 
 A fish can do what a nervous system does with noise and refuse what it can predict — opt in with `LINAFISH_HABITUATION=on`. It then holds on every path that feeds it — `listen`, `room`, the HTTP and converse servers, a school — except deliberate deposits — `eat FILE`, `go`, or `engine.eat(text, admit=False)` from Python — which always write.
@@ -268,17 +288,17 @@ record either way; the commit is a rollback point. Every session is a branch. Th
 has rollback.
 
 ```bash
-linafish session start           # Branch the mind. Start a session.
+linafish session start -n my-writing   # Branch the mind. Start a session.
 # ... eat, talk, live, learn ...
-linafish session end             # Merge back. The delta is the scar.
+linafish session end -n my-writing     # Merge back. The delta is the scar.
 
-linafish history                 # Growth timeline. When you learned what.
-linafish diff                    # What changed since last session.
-linafish revert                  # Roll back. Grace, not punishment.
-linafish recall "what I said"    # Search your fish's memory.
-linafish ask "how do I handle loss"  # Semantic search — meaning, not words.
-linafish check                   # How's your fish doing?
-linafish whisper                 # One insight. The quiet ones matter more.
+linafish history -n my-writing         # Growth timeline. When you learned what.
+linafish diff -n my-writing            # What changed since last session.
+linafish revert -n my-writing          # Roll back. Grace, not punishment.
+linafish recall "what I said"          # Search your fish's memory.
+linafish ask "how do I handle loss" -n my-writing  # Semantic search — meaning, not words.
+linafish check -n my-writing           # How's your fish doing?
+linafish whisper -n my-writing         # One insight. The quiet ones matter more.
 ```
 
 ## The Nervous System — many fish, one stream
@@ -382,8 +402,8 @@ DOI: [10.5281/zenodo.21828705 (latest version)](https://doi.org/10.5281/zenodo.2
 ```python
 from linafish import FishEngine, go
 
-# One-liner — same as the CLI
-go("~/my-writing")
+# One-liner — same as the CLI (serve=False returns instead of serving until Ctrl+C)
+go("~/my-writing", serve=False)
 
 # Full control (commits are opt-in from Python; max_crystals is an optional ceiling)
 engine = FishEngine(name="my-fish")
@@ -397,40 +417,43 @@ print(engine.fish_file)     # path to your fish.md
 
 ```bash
 # Start
-linafish go ~/my-writing             # Point at your writing. Everything assembles.
+linafish go ~/my-writing --no-serve  # Point at your writing. Everything assembles.
+                                     # (Most verbs below take -n <fish>; without it
+                                     #  they use a fish named "linafish".)
 
 # Grow
-linafish eat new-entry.txt           # Feed one file.
-linafish listen stdin                # Pipe text in.
-linafish listen folder:~/journal     # Watch a folder.
-linafish listen mqtt://host:1883/#   # Subscribe to a stream.
+linafish eat new-entry.txt -n <fish> # Feed one file.
+linafish listen stdin -n <fish>      # Pipe text in.
+linafish listen folder:~/journal -n <fish>  # Watch a folder.
+linafish listen mqtt://host:1883/# -n <fish> # Subscribe to a stream.
 linafish absorb old_data.jsonl       # Bring in existing AI memory or a RAG endpoint.
 
 # Ask
-linafish ask "question"              # Meaning-match — finds sense, not words.
+linafish ask "question" -n <fish>    # Meaning-match — finds sense, not words.
 linafish recall "words"              # Literal text match across crystals.
 linafish meditate "theme"            # Thematic. What the fish holds on a subject.
 linafish daily                       # Calendar-indexed. What you were, on a date.
-linafish whisper                     # One insight instead of many.
+linafish whisper -n <fish>           # One insight instead of many.
 linafish hunt <fish> --ache          # Go after what the fish is missing.
-linafish emerge                      # Your shape, not your content.
+linafish emerge <fish>               # Your shape, not your content.
 
 # Many fish
 linafish school init                 # A school: N fish, one stream.
 linafish keeper init <name>          # A fish you consult in a voice.
-linafish afferent "topic"            # Which fish here knows about this?
+linafish afferent route <index> "topic"  # Which fish here knows about this?
 linafish soul -n <fish>              # The fish's own account of itself.
 
 # Version (git-as-brain)
-linafish session start               # Branch the mind.
-linafish session end                 # Merge back.
-linafish history                     # Growth timeline.
-linafish diff                        # What changed.
-linafish revert                      # Roll back.
+linafish session start -n <fish>     # Branch the mind.
+linafish session end -n <fish>       # Merge back.
+linafish history -n <fish>           # Growth timeline.
+linafish diff -n <fish>              # What changed.
+linafish revert -n <fish>            # Roll back.
 
 # Connect
-linafish serve --feed ~/docs         # MCP server (Claude Code)
-linafish http --feed ~/docs          # HTTP server (any AI)
+linafish serve -n <fish>             # MCP server (Claude Code) for an existing fish
+linafish http -n <fish>              # HTTP server (any AI) for an existing fish
+linafish http --feed ~/docs -n docs  # Build/feed a fish from a folder, then serve it
 linafish converse -n writing         # Two fish, one conversation.
 linafish taste my.fish.md            # Preview the fish
 
@@ -470,6 +493,7 @@ If it helps you, give to the people who help others stay alive:
 
 ## Documentation
 
+- **[Getting Started](docs/getting-started.md)** — Your first ten minutes, every command tested
 - **[Worked Example](docs/worked-example.md)** — From raw writing to warm AI, start to finish
 - **[How It Works](docs/how-it-works.md)** — The cognitive model in detail
 - **[Architecture](docs/architecture.md)** — Pipeline, modules, design decisions

@@ -147,8 +147,9 @@ pip install linafish
 mkdir ~/my-test
 # Copy in 5-10 documents — journals, emails, notes, anything you wrote
 
-# Run
-linafish go ~/my-test
+# Run (--no-serve returns when the fish is built; without it,
+# go keeps serving the fish until you press Ctrl+C)
+linafish go ~/my-test --no-serve
 
 # Read the fish
 cat ~/.linafish/my-test.fish.md
