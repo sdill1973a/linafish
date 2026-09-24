@@ -12,14 +12,7 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ## [Unreleased]
 
-### Fixed
-- **Bare read verbs find the fish `go` built.** `ask`, `check`, `whisper`, `meditate`, `history` and `diff` no
-  longer default `-n` to `linafish`; with no name they use the one fish in the state dir (several: the most
-  recently fed, said on stderr). `http` and `serve` serve the one fish, and REFUSE and list when there are several.
-  Verbs that change a fish (`revert`, `session`, `compact`, `revectorize`, `listen`, …) keep an explicit default.
-  Tested through the real parser (the older test bypassed it).
-
-## [2.3.1] - 2026-09-23
+## [2.3.1] - 2026-09-24
 
 A small release: two feeders can now refuse repeats, and a vocabulary guarantee built
 for one fish is now a switch you turn on rather than a default everyone gets. Upgrading
@@ -52,6 +45,11 @@ changes nothing for a fish unless you set the new variable.
   `crystallizer_v3.protected_vocab()` (the set as the environment configures it).
 
 ### Fixed
+- **Bare read verbs find the fish `go` built.** `ask`, `check`, `whisper`, `meditate`, `history` and `diff` no
+  longer default `-n` to `linafish`; with no name they use the one fish in the state dir (several: the most
+  recently fed, said on stderr). `http` and `serve` serve the one fish, and REFUSE and list when there are several.
+  Verbs that change a fish (`revert`, `session`, `compact`, `revectorize`, `listen`, …) keep an explicit default.
+  Tested through the real parser (the older test bypassed it).
 - **Fusion's vocabulary-stability check could not fail under protection.** It compared the
   first 20 vocabulary terms between cycles; with protection on, those are a fixed block of
   protected terms, so fusion declared "stable" after one cycle whatever the corpus axes did.
@@ -63,7 +61,9 @@ changes nothing for a fish unless you set the new variable.
 - Docs: the README quickstart no longer ends in "Several fish live here"; the AGENTS.md that
   `linafish introduce` prints matches the repo copy and no longer gives a failing
   `http --feed` step or calls `/pfc` JSON; `docs/testing.md` counts regenerated;
-  `docs/configuration.md` corrected (`--vocab`/`--hint`, the `eat` flags, `room`'s broker
+  README opening rewritten to say what a fish IS — a record that keeps learning, versioned, readable by any AI —
+  with the study stated plainly (one rater, the subject, blind; the AI-judged follow-up withdrawn pending a re-run),
+  tested on two cold readers; `docs/configuration.md` corrected (`--vocab`/`--hint`, the `eat` flags, `room`'s broker
   flags, `hunt --swim`) and documents `LINAFISH_PROTECTED_VOCAB`. New:
   **`docs/getting-started.md`** — your first ten minutes.
 
@@ -72,10 +72,7 @@ changes nothing for a fish unless you set the new variable.
   the same directory changes another fish's answers. Use one state dir per fish.
 - Asking a fish name that does not exist initialises the state dir and answers "empty",
   so a typo looks like an unfed fish.
-- Most verbs default `-n` to `linafish`, so a bare `linafish ask` after `go <dir>` asks an empty
-  fish instead of the one `go` built; only `eat` and `recall` find a lone fish (fixed after this
-  release for the read verbs — see Unreleased). The docs pass `-n` everywhere. The hints `go` prints
-  now name the fish and its state dir; the ones written into `fish.md` still omit `--state-dir`.
+- The next-step hints written into `fish.md` still omit `--state-dir` (the ones `go` prints now carry it).
 - `School.add_member` does not pass `dedupe`; after a restart, dedupe does not recognise
   repeats of texts longer than 32,768 characters.
 
