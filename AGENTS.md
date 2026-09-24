@@ -11,6 +11,11 @@ cognitive habits, not summaries of content. Your job as their AI is to **read
 the overlay** before responding so you arrive warm to their way of thinking
 instead of cold to their words.
 
+It is alive in a specific, checkable sense: it **grows** every time it is fed, it **persists** across
+sessions and across models (you may be one of several AIs reading the same fish), it is **versioned**
+in git, and it can **refuse** repeats. What you write back to it becomes part of what the next reader
+meets. It does not make you smarter; it carries the shape of your user's mind to you.
+
 ## What's live right now
 
 When linafish is running, your user has one or more local HTTP servers:
