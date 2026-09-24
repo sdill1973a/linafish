@@ -47,7 +47,7 @@ from .crystallizer_v3 import (
     Crystal, MIVectorizer, UniversalFish,
     crystallize as v3_crystallize,
     gamma,
-    CANONICAL_SEED_SET, MAX_CRYSTAL_TEXT, PROTECTED_VOCAB)
+    CANONICAL_SEED_SET, MAX_CRYSTAL_TEXT, PROTECTED_VOCAB, protected_vocab)
 from .formations import (
     detect_formations, hierarchical_merge, formations_to_codebook_text,
     Formation, interpret_formation, formation_rank_key,
@@ -789,13 +789,13 @@ class FishEngine:
                 emerge_min_recent=self.emerge_min_recent,
                 emerge_min_ratio=self.emerge_min_ratio,
                 emerge_limit=self.emerge_limit,
-                protect=PROTECTED_VOCAB,
+                protect=protected_vocab(),
             )
         else:
             self.fish.vocab = self.fish.vectorizer.get_vocab(
                 size=self.vocab_size, d=self.d,
                 seed_terms=seed_terms, seed_weight=seed_weight,
-                protect=PROTECTED_VOCAB,
+                protect=protected_vocab(),
             )
 
     # §TRADITIONAL.VS.EMERGING — the emerging door's three numbers. A term must have
@@ -2744,7 +2744,7 @@ class FishEngine:
             size=self.vocab_size, d=self.d,
             seed_terms=seed_terms,
             seed_weight=seed_weight,
-            protect=PROTECTED_VOCAB,
+            protect=protected_vocab(),
         )
         self.fish.frozen = True
         self.fish.epoch += 1
@@ -2965,7 +2965,7 @@ class FishEngine:
             size=size, d=d_val,
             seed_terms=seed_terms, seed_weight=seed_weight,
             recency_half_life=recency_half_life,
-            protect=PROTECTED_VOCAB,
+            protect=protected_vocab(),
         )
         self.fish.vocab = new_vocab
         self.fish.frozen = True

@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple
 
-from .crystallizer_v3 import PROTECTED_VOCAB
+from .crystallizer_v3 import PROTECTED_VOCAB, protected_vocab
 from .engine import FishEngine
 from .formations import Formation, formation_rank_key
 from .ingest import ingest_directory, ingest_file
@@ -688,11 +688,11 @@ class FusionEngine:
             d=d,
             seed_terms=resolved_seeds,
             seed_weight=resolved_weight,
-            protect=PROTECTED_VOCAB,
+            protect=protected_vocab(),
         )
         engine.fish.frozen = True
         engine.fish.epoch += 1
-        vocab_snapshot = list(engine.fish.vocab[:self.VOCAB_STABILITY_N])
+        vocab_snapshot = self._stability_head(engine.fish.vocab)
 
         _log(f"  Vocab frozen: {engine.fish.vocab[:8]}... "
              f"({len(engine.fish.vocab)} terms)")
@@ -730,9 +730,9 @@ class FusionEngine:
                 d=d,
                 seed_terms=resolved_seeds,
                 seed_weight=resolved_weight,
-                protect=PROTECTED_VOCAB,
+                protect=protected_vocab(),
             )
-            new_top = list(new_vocab[:self.VOCAB_STABILITY_N])
+            new_top = self._stability_head(new_vocab)
 
             # Check vocab stability.
             if new_top == vocab_snapshot:
@@ -836,7 +836,7 @@ class FusionEngine:
             d=d,
             seed_terms=resolved_seeds,
             seed_weight=seed_weight,
-            protect=PROTECTED_VOCAB,
+            protect=protected_vocab(),
         )
         if d <= 2.0:
             vocab_kwargs['max_doc_pct'] = 0.8
@@ -879,16 +879,16 @@ class FusionEngine:
         _log(f"  Formations: {len(engine.formations)}")
 
         # Vocab stability check (re-eat until stable)
-        vocab_snapshot = list(engine.fish.vocab[:self.VOCAB_STABILITY_N])
+        vocab_snapshot = self._stability_head(engine.fish.vocab)
         epochs = 1
         for cycle in range(1, self.MAX_EPOCHS_PER_LEVEL):
             engine.fish.learn(texts)
             new_vocab = engine.fish.vectorizer.get_vocab(
                 size=self.vocab_size, d=d,
                 seed_terms=resolved_seeds, seed_weight=seed_weight,
-                protect=PROTECTED_VOCAB,
+                protect=protected_vocab(),
             )
-            new_top = list(new_vocab[:self.VOCAB_STABILITY_N])
+            new_top = self._stability_head(new_vocab)
             if new_top == vocab_snapshot:
                 _log(f"  Vocab stable after {cycle + 1} epochs.")
                 epochs = cycle + 1
@@ -933,6 +933,16 @@ class FusionEngine:
             text_partition=text_partition,
             _engine=engine,
         )
+
+    def _stability_head(self, vocab: List[str]) -> List[str]:
+        """The top-N terms the stability check compares, protected terms excluded.
+
+        Protected terms are reserved slots at the FRONT of the vocab, in a fixed
+        order, every cycle. Comparing a head made of them compares a constant, and
+        fusion would declare "stable" after one cycle whatever the corpus axes did.
+        """
+        prot = protected_vocab() or frozenset()
+        return [t for t in vocab if t not in prot][:self.VOCAB_STABILITY_N]
 
     def _formations_stable(
         self,

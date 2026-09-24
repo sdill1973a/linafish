@@ -1,11 +1,16 @@
 # Testing
 
-478 tests. All passing. Run time: a few seconds.
+617 tests at 2.3.1. A full run takes about 40 seconds on a desktop machine.
+Counts change as tests are added; regenerate them instead of trusting this page:
 
 ```bash
-pip install pytest
-python -m pytest tests/ -v
+pip install -e ".[all,dev]"
+python -m pytest --collect-only -q | tail -1   # how many tests
+python -m pytest -q | tail -1                  # run them; prints pass/fail and time
 ```
+
+CI (`.github/workflows/test.yml`) runs the suite on Ubuntu with Python 3.10,
+3.11, 3.12 and 3.13.
 
 ## Test Coverage
 
@@ -17,13 +22,13 @@ larger groups (run `ls tests/` for the complete list):
 Chain metadata on crystals: chain ids, ordinal proximity, parent-child links,
 and the temporal coupling bonus they enable.
 
-### Grounding Tests (`test_grounding.py`) — 15 tests
+### Grounding Tests (`test_grounding.py`) — 18 tests
 The graded verdict on `taste_dict`: informative-token selection, pair evidence
 and specificity weighting, the band edges, the recency lift, and the composition
 floor (a `grounded` band demoted to `thin` when whole-query gamma falls below the
 floor; non-grounded bands never demoted).
 
-### Dedup Tests (`test_dedup_helpers.py`) — 39 tests
+### Dedup Tests (`test_dedup_helpers.py`) — 45 tests
 The `normalize_for_dedup` rule: how incoming text is normalized before
 content-hash deduplication decides whether the fish has already eaten it.
 
@@ -45,8 +50,11 @@ bounds.
 chunking produces passages, and formations actually form.
 
 ### Bare-Verb Tests (`test_bare_verbs_feed_the_fish.py`) — 6 tests
-Bare `eat` / `ask` / `check` / `whisper` auto-discover the existing fish
-instead of silently creating a new one.
+Bare `eat` auto-discovers the existing fish instead of silently creating a
+new one, and the shared resolver `_resolve_engine` discovers the fish when it is
+given no name. The resolver tests build their arguments directly
+(`Namespace(name=None)`), so they do not go through the CLI parser; on the
+command line, `ask`, `check` and `whisper` still default `-n` to `linafish`.
 
 ### Server Tests (`test_http_threaded.py`, `test_http_boot_503.py`, `test_http_bind_before_engine.py`, `test_msg_endpoints.py`) — 25 tests
 The HTTP server: threading, boot-time 503s, bind-before-engine ordering, and
@@ -64,7 +72,7 @@ These areas have manual verification but no automated tests yet:
 - **Shuffle invariance** — Same formations regardless of document order. Verified in the research study (7 trials) but not as an automated test.
 - **Formation stability** — Formations don't change when new documents are added that don't introduce new patterns. Verified manually.
 - **CLI smoke tests for `watch`, `serve`, and `listen`** — `linafish go` and the bare verbs are covered (`test_go_idempotent.py`, `test_go_is_idempotent.py`, `test_go_chunks_and_forms.py`, `test_bare_verbs_feed_the_fish.py`); the long-running daemon verbs are still tested manually.
-- **Cross-platform** — Tested on Windows and Linux. Not tested on macOS.
+- **Cross-platform** — CI runs on Ubuntu only. Windows has been checked by hand, not in CI. macOS is not tested.
 
 ## Running Specific Test Groups
 

@@ -12,13 +12,65 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-09-23
+
+A small release: two feeders can now refuse repeats, and a vocabulary guarantee built
+for one fish is now a switch you turn on rather than a default everyone gets. Upgrading
+changes nothing for a fish unless you set the new variable.
+
+### Changed
+- **Protected vocabulary is opt-in: `LINAFISH_PROTECTED_VOCAB`.** A protected term that
+  occurs in your corpus at least once is reserved an axis before scoring, so a rare but
+  identity-bearing word can never be squeezed out of a fish's coordinate system. It never
+  invents a term the corpus has not said, and it reserves at most half the vocabulary.
+  Unset or `off` (the default): no reserved axes, the same election as 2.3.0. `on`: the
+  package's built-in identity set (`PROTECTED_VOCAB` in `crystallizer_v3.py`, written for
+  the author's own fish). A comma list names your own terms:
+  `LINAFISH_PROTECTED_VOCAB=maria,river,garden`. The protection is wired into every
+  vocabulary election — freeze, rebuild, re-eat, fusion, quickstart, and the append-only
+  `extend_vocab`. On master between 2.3.0 and this release it was on for everyone with no
+  switch; a pre-release review caught that one mention of a common word like "home" took
+  a front slot in a stranger's fish. Tested both ways, including a default-off freeze that
+  must not reserve a present term.
+
 ### Added
 - `linafish converse --dedupe` — a served fish can refuse a byte-exact repeat on `/eat`
-  (reply `{"crystals_added": 0, "reason": "duplicate"}`). The engine has carried `dedupe=True`
-  for every direct caller; the served path never exposed it. Receipt: a feeder killed at the
-  hour re-sent the same 491 chunks fourteen times and a served fish took 2,175 exact copies.
-  Off by default; public behaviour unchanged unless you pass the flag. Tested both ways
-  (on refuses, off stacks) and the CLI→server→engine links are mutation-tested.
+  (reply `{"crystals_added": 0, "reason": "duplicate"}`). The engine has carried
+  `dedupe=True` for every direct caller; the served path never exposed it. Receipt: a
+  feeder killed at the hour re-sent the same 491 chunks fourteen times and a served fish
+  took 2,175 exact copies. Off by default.
+- `linafish school eat --dedupe` — the same refusal for every fish in a school (central
+  and members). Off by default; `listen` already dedupes by default.
+- `MIVectorizer.extend_vocab(..., protect=, protect_max_frac=)` and
+  `crystallizer_v3.protected_vocab()` (the set as the environment configures it).
+
+### Fixed
+- **Fusion's vocabulary-stability check could not fail under protection.** It compared the
+  first 20 vocabulary terms between cycles; with protection on, those are a fixed block of
+  protected terms, so fusion declared "stable" after one cycle whatever the corpus axes did.
+  It now compares the head with protected terms removed.
+- The "What's next" hints `go` prints name the fish (`-n`, and `--state-dir` when not the
+  default) and no longer suggest `http --feed <dir>`, which built a second fish.
+- `--vocab` and `--hint` say in `--help` that they are no-ops (they have been since the v3
+  vectorizer; they only warned at runtime).
+- Docs: the README quickstart no longer ends in "Several fish live here"; the AGENTS.md that
+  `linafish introduce` prints matches the repo copy and no longer gives a failing
+  `http --feed` step or calls `/pfc` JSON; `docs/testing.md` counts regenerated;
+  `docs/configuration.md` corrected (`--vocab`/`--hint`, the `eat` flags, `room`'s broker
+  flags, `hunt --swim`) and documents `LINAFISH_PROTECTED_VOCAB`. New:
+  **`docs/getting-started.md`** — your first ten minutes.
+
+### Known limitations (found in the same review, not fixed here)
+- Fish that share one `--state-dir` share one vectorizer, so eating an unrelated fish into
+  the same directory changes another fish's answers. Use one state dir per fish.
+- Asking a fish name that does not exist initialises the state dir and answers "empty",
+  so a typo looks like an unfed fish.
+- Most verbs default `-n` to `linafish`, so a bare `linafish ask` after `go <dir>` asks an empty
+  fish instead of the one `go` built; only `eat` and `recall` find a lone fish. The docs pass
+  `-n` everywhere. The hints `go` prints now name the fish and its state dir; the ones
+  written into `fish.md` still omit `--state-dir`.
+- `School.add_member` does not pass `dedupe`; after a restart, dedupe does not recognise
+  repeats of texts longer than 32,768 characters.
 
 ## [2.3.0] - 2026-09-15
 
