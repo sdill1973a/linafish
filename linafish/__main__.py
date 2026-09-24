@@ -422,6 +422,29 @@ def cmd_status(args):
     print(f"Formations: ~{formations}")
 
 
+def _serve_name(args):
+    """The fish a server should serve when -n is omitted (2.3.2).
+
+    Before: the parser defaulted -n to "linafish", so `linafish http` after `go ~/my-writing` served an empty
+    fish of that name. Now: --feed keeps the historical name; otherwise ONE fish in the state dir is served, named
+    out loud; SEVERAL is a refusal that lists them (a server runs for hours — never guess); none is "linafish".
+    """
+    if args.name:
+        return args.name
+    if getattr(args, "feed", None):
+        return "linafish"
+    root = Path(args.state_dir) if getattr(args, "state_dir", None) else Path.home() / ".linafish"
+    found = _discover_fish_names(root)
+    if len(found) == 1:
+        print(f"  Serving fish '{found[0]}'", file=sys.stderr)
+        return found[0]
+    if len(found) > 1:
+        print(f"Several fish live here: {', '.join(found)}")
+        print("Say which one to serve:  -n <name>")
+        sys.exit(1)
+    return "linafish"
+
+
 def cmd_serve(args):
     """Serve a fish as an MCP server (Claude Code)."""
     from .server import serve_fish
@@ -437,7 +460,7 @@ def cmd_serve(args):
     serve_fish(
         feed_path=feed_path,
         state_dir=state_dir,
-        name=args.name or "linafish",
+        name=_serve_name(args),
         vocab_path=vocab_path,
     )
 
@@ -457,7 +480,7 @@ def cmd_http(args):
     serve_http(
         feed_path=feed_path,
         state_dir=state_dir,
-        name=args.name or "linafish",
+        name=_serve_name(args),
         port=args.port,
         vocab_path=vocab_path,
         bind=args.bind,
@@ -3163,7 +3186,7 @@ def main():
         "meditate",
         help="Bubble up real material from your fish on a theme — the superthink verb")
     meditate_p.add_argument("theme", help="What to meditate on (free text)")
-    meditate_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    meditate_p.add_argument("-n", "--name", help="Fish name (default: the one fish in the state dir)")
     meditate_p.add_argument("--state-dir", type=_user_path, help="State directory")
     meditate_p.add_argument(
         "--depth", default="balanced", choices=["fast", "balanced", "deep"],
@@ -3195,12 +3218,12 @@ def main():
                             help="With --remember: diamond-fish name (default: diamante-pisco)")
 
     whisper_p = sub.add_parser("whisper", help="One insight from your fish. The quiet ones matter more.")
-    whisper_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    whisper_p.add_argument("-n", "--name", help="Fish name (default: the one fish in the state dir)")
     whisper_p.add_argument("--state-dir", type=_user_path, help="State directory")
 
     # check — how's your fish?
     check_p = sub.add_parser("check", help="How's your fish? Quick health check + what to do next.")
-    check_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    check_p.add_argument("-n", "--name", help="Fish name (default: the one fish in the state dir)")
     check_p.add_argument("--state-dir", type=_user_path, help="State directory")
 
     # bridge — pull from an external source into a fish
@@ -3382,7 +3405,7 @@ def main():
     # ask — semantic search
     ask_p = sub.add_parser("ask", help="Ask your fish a question — finds meaning, not just words")
     ask_p.add_argument("question", help="What to ask")
-    ask_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    ask_p.add_argument("-n", "--name", help="Fish name (default: the one fish in the state dir)")
     ask_p.add_argument("--state-dir", type=_user_path, help="State directory")
     ask_p.add_argument("--top", type=int, default=5, help="Max results")
 
@@ -3394,14 +3417,14 @@ def main():
     serve_p = sub.add_parser("serve", help="Serve fish as MCP server (stdio)")
     serve_p.add_argument("--feed", type=_user_path, help="Directory or file to ingest on startup")
     serve_p.add_argument("--state-dir", type=_user_path, help="Where to store fish state (default: ~/.linafish/)")
-    serve_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    serve_p.add_argument("-n", "--name", help="Fish name (default: the one fish in the state dir)")
     serve_p.add_argument("--vocab", type=_user_path, help="Path to domain vocabulary JSON (no-op since v3 MIVectorizer; accepted so old scripts do not break)")
 
     # http
     http_p = sub.add_parser("http", help="Serve fish over HTTP (any AI)")
     http_p.add_argument("--feed", type=_user_path, help="Directory or file to ingest on startup")
     http_p.add_argument("--state-dir", type=_user_path, help="Where to store fish state (default: ~/.linafish/)")
-    http_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    http_p.add_argument("-n", "--name", help="Fish name (default: the one fish in the state dir)")
     http_p.add_argument("-p", "--port", type=int, default=8900, help="Port (default: 8900)")
     http_p.add_argument("--vocab", type=_user_path, help="Path to domain vocabulary JSON (no-op since v3 MIVectorizer; accepted so old scripts do not break)")
     http_p.add_argument("--bind", default="local", choices=["local", "lan", "wan"],
@@ -3491,13 +3514,13 @@ def main():
     # history — git log as growth timeline
     history_p = sub.add_parser("history", help="Show fish growth history")
     history_p.add_argument("-c", "--count", type=int, default=20, help="Number of entries")
-    history_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    history_p.add_argument("-n", "--name", help="Fish name (default: the one fish in the state dir)")
     history_p.add_argument("--state-dir", type=_user_path, help="State directory")
 
     # diff — what changed
     diff_p = sub.add_parser("diff", help="Show what changed since last session")
     diff_p.add_argument("ref", nargs="?", default="HEAD~1", help="Git ref to compare (default: HEAD~1)")
-    diff_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    diff_p.add_argument("-n", "--name", help="Fish name (default: the one fish in the state dir)")
     diff_p.add_argument("--state-dir", type=_user_path, help="State directory")
 
     # revert — roll back the mind

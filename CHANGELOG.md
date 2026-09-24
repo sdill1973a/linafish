@@ -12,6 +12,13 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ## [Unreleased]
 
+### Fixed
+- **Bare read verbs find the fish `go` built.** `ask`, `check`, `whisper`, `meditate`, `history` and `diff` no
+  longer default `-n` to `linafish`; with no name they use the one fish in the state dir (several: the most
+  recently fed, said on stderr). `http` and `serve` serve the one fish, and REFUSE and list when there are several.
+  Verbs that change a fish (`revert`, `session`, `compact`, `revectorize`, `listen`, …) keep an explicit default.
+  Tested through the real parser (the older test bypassed it).
+
 ## [2.3.1] - 2026-09-23
 
 A small release: two feeders can now refuse repeats, and a vocabulary guarantee built
@@ -66,9 +73,9 @@ changes nothing for a fish unless you set the new variable.
 - Asking a fish name that does not exist initialises the state dir and answers "empty",
   so a typo looks like an unfed fish.
 - Most verbs default `-n` to `linafish`, so a bare `linafish ask` after `go <dir>` asks an empty
-  fish instead of the one `go` built; only `eat` and `recall` find a lone fish. The docs pass
-  `-n` everywhere. The hints `go` prints now name the fish and its state dir; the ones
-  written into `fish.md` still omit `--state-dir`.
+  fish instead of the one `go` built; only `eat` and `recall` find a lone fish (fixed after this
+  release for the read verbs — see Unreleased). The docs pass `-n` everywhere. The hints `go` prints
+  now name the fish and its state dir; the ones written into `fish.md` still omit `--state-dir`.
 - `School.add_member` does not pass `dedupe`; after a restart, dedupe does not recognise
   repeats of texts longer than 32,768 characters.
 
