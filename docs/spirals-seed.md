@@ -35,10 +35,8 @@ blind or the date filter is wrong). Both counts are published.
 - First full pass: 23 ideas. Of the judge's picks, **48 held, 10 were weak, 20 were false** after a human read each
   one against its text. The false ones were mostly literal word matches ("spin" in a playlist). The human check is
   load-bearing; the judge alone would have shipped a 26 % false rate.
-- **The best finds were invisible at the time.** A nonprofit's legal name turned out to carry a radio idea from ten
-  months earlier. A 2026 drive-time idea (cities hung on a cable, three-cable bays) had an earlier turn in the
-  person's own novel-world notes: *"i want the domes to stack up the columnd - spaced evenly in rings all the way to
-  the sky."*
+- **The best finds were invisible at the time.** Several ideas turned out to have an earlier turn months before,
+  in a different project and different words, that nobody had connected. Those are the finds worth the whole tool.
 - Dated archives matter. One era of the record has no timestamps (copied files), so "dated before" needs an
   era ceiling or the filter quietly admits later text.
 - Separate the person's own words from assistant-written text in their archive. Both can be an earlier turn of
