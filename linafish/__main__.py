@@ -643,7 +643,8 @@ def cmd_watch(args):
                 print(f"  {len(changed)} changed files. Eating...")
                 for f in changed:
                     try:
-                        text = f.read_text(encoding="utf-8", errors="replace")
+                        from .ingest import read_user_text
+                        text = read_user_text(f)
                         if text and len(text.strip()) > 10:
                             engine.eat(text, source=str(f.name))
                     except Exception:

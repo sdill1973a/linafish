@@ -55,6 +55,7 @@ def _gather_seed_parts(
 ) -> list[tuple[str, str]]:
     """Walk each source path; collect (section_title, content) for files
     matching any pattern (with `{date}` substituted)."""
+    from .ingest import read_user_text
     out: list[tuple[str, str]] = []
     for src in sources:
         src = src.expanduser()
@@ -64,7 +65,7 @@ def _gather_seed_parts(
             # File source: include only if its name contains the date.
             if date_iso in src.name:
                 try:
-                    out.append((src.name, src.read_text(encoding="utf-8", errors="replace")))
+                    out.append((src.name, read_user_text(src)))
                 except OSError:
                     pass
             continue
@@ -75,7 +76,7 @@ def _gather_seed_parts(
                 if not match.is_file():
                     continue
                 try:
-                    out.append((match.name, match.read_text(encoding="utf-8", errors="replace")))
+                    out.append((match.name, read_user_text(match)))
                 except OSError:
                     continue
     return out
