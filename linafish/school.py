@@ -183,14 +183,14 @@ class School:
 
     def eat_path(self, path: Path, source: str = None) -> dict:
         """Feed a file or directory through the school."""
-        from .ingest import ingest_directory, ingest_file
+        from .ingest import ingest_directory, ingest_file, read_user_text
 
         if path.is_dir():
             chunks = ingest_directory(path)
         else:
             chunks = ingest_file(path)
             if not chunks:
-                text = path.read_text(encoding="utf-8", errors="replace")
+                text = read_user_text(path)
                 chunks = [type('Chunk', (), {'text': text, 'source': path.name})()]
 
         if not chunks:

@@ -53,7 +53,7 @@ from .formations import (
     detect_formations, hierarchical_merge, formations_to_codebook_text,
     Formation, interpret_formation, formation_rank_key,
 )
-from .ingest import ingest_directory, ingest_file
+from .ingest import ingest_directory, ingest_file, read_user_text
 from . import episodic
 from . import grounding
 from .episodic import (
@@ -2441,7 +2441,7 @@ class FishEngine:
         else:
             chunks = ingest_file(path)
             if not chunks:
-                text = path.read_text(encoding="utf-8", errors="replace")
+                text = read_user_text(path)
                 chunks = [type('Chunk', (), {'text': text, 'source': path.name})()]
 
         if not chunks:

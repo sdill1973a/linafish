@@ -32,10 +32,41 @@ know where meaning lives. Headers, paragraphs, and topic shifts do.
 from __future__ import annotations
 
 
+import codecs
+import io
 import re
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
+
+
+def read_user_text(path: Path) -> str:
+    """Decode a file of someone's writing without mangling it.
+
+    `read_text(encoding="utf-8", errors="replace")` was the reader everywhere,
+    and on Windows it quietly damaged writing before the fish ever saw it:
+
+    - Notepad, Windows PowerShell 5.1 (`echo ... > file`) and many export
+      tools write a UTF-8 BOM. It survived into every crystal as U+FEFF and
+      into the portrait's quoted lines.
+    - Notepad's "Unicode", PowerShell 5.1's default redirection and Word's
+      "Unicode text" write UTF-16. Decoded as UTF-8 that is NUL-interleaved
+      noise — every character becomes two, and the fish eats garbage.
+    - Older Windows text (cp1252) turned its curly quotes, dashes and
+      accented letters into U+FFFD.
+
+    So: honour a BOM if there is one, try strict UTF-8, and fall back to
+    cp1252 — the encoding a Windows file that isn't UTF-8 almost always is.
+    """
+    raw = Path(path).read_bytes()
+    if raw.startswith(codecs.BOM_UTF8):
+        return raw[len(codecs.BOM_UTF8):].decode("utf-8", errors="replace")
+    if raw.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        return raw.decode("utf-16", errors="replace")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("cp1252", errors="replace")
 
 
 @dataclass
@@ -63,7 +94,7 @@ def read_markdown(path: Path) -> list[Chunk]:
     The bound is the guarantee. The author's structure is the preference, and
     the preference has to actually get consulted.
     """
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = read_user_text(path)
 
     # Decide on the header check itself, not on whether the loop below
     # happened to produce output — that was the unreachable-branch bug.
@@ -116,7 +147,7 @@ def read_markdown(path: Path) -> list[Chunk]:
 
 def read_text(path: Path) -> list[Chunk]:
     """Read a plain text file, chunk by paragraphs."""
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = read_user_text(path)
     return chunk_by_paragraphs(text, str(path))
 
 
@@ -230,7 +261,7 @@ def read_docx(path: Path) -> list[Chunk]:
 def read_json(path: Path) -> list[Chunk]:
     """Read a JSON file — tool definitions, configs, schemas."""
     import json
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = read_user_text(path)
     try:
         data = json.loads(text)
         # Pretty-print for readability
@@ -250,7 +281,7 @@ def read_jsonl(path: Path) -> list[Chunk]:
     """Read line-delimited JSON — one chunk per record."""
     import json
     chunks = []
-    with path.open("r", encoding="utf-8", errors="replace") as f:
+    with io.StringIO(read_user_text(path)) as f:
         for i, line in enumerate(f):
             line = line.strip()
             if not line:
@@ -312,7 +343,7 @@ def read_html(path: Path) -> list[Chunk]:
         def text(self) -> str:
             return "".join(self.parts)
 
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = read_user_text(path)
     parser = _Stripper()
     try:
         parser.feed(text)
@@ -329,11 +360,11 @@ def read_csv(path: Path) -> list[Chunk]:
     chunks = []
     sep = "\t" if path.suffix.lower() == ".tsv" else ","
     try:
-        with path.open("r", encoding="utf-8", errors="replace", newline="") as f:
+        with io.StringIO(read_user_text(path), newline="") as f:
             reader = csv.reader(f, delimiter=sep)
             rows = list(reader)
     except Exception:
-        return [Chunk(text=path.read_text(encoding="utf-8", errors="replace"),
+        return [Chunk(text=read_user_text(path),
                       source=str(path), chunk_type="data")]
     if not rows:
         return []
@@ -358,7 +389,7 @@ def read_csv(path: Path) -> list[Chunk]:
 
 def read_yaml(path: Path) -> list[Chunk]:
     """Read YAML via pyyaml if installed, else treat as text."""
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = read_user_text(path)
     try:
         import yaml
         data = yaml.safe_load(text)
@@ -403,7 +434,7 @@ def read_pptx(path: Path) -> list[Chunk]:
 
 def read_rtf(path: Path) -> list[Chunk]:
     """Read RTF. Optional dep: striprtf, else regex strip."""
-    raw = path.read_text(encoding="utf-8", errors="replace")
+    raw = read_user_text(path)
     try:
         from striprtf.striprtf import rtf_to_text
         text = rtf_to_text(raw)
@@ -418,7 +449,7 @@ def read_rtf(path: Path) -> list[Chunk]:
 
 def read_xml(path: Path) -> list[Chunk]:
     """Read XML, strip tags."""
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = read_user_text(path)
     cleaned = re.sub(r"<[^>]+>", " ", text)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return chunk_by_paragraphs(cleaned, str(path))
@@ -426,7 +457,7 @@ def read_xml(path: Path) -> list[Chunk]:
 
 def read_python(path: Path) -> list[Chunk]:
     """Read a Python file, chunk by class/function definitions."""
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = read_user_text(path)
     chunks = []
     current_block = []
     current_name = path.name
