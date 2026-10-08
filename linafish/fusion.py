@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple
 
-from .crystallizer_v3 import PROTECTED_VOCAB, protected_vocab
+from .crystallizer_v3 import PROTECTED_VOCAB, _f32, protected_vocab
 from .engine import FishEngine
 from .formations import Formation, formation_rank_key
 from .ingest import ingest_directory, ingest_file
@@ -862,7 +862,7 @@ class FusionEngine:
             new_vec = engine.fish.vectorizer.vectorize(crystal.text, engine.fish.vocab)
             if new_vec:
                 ache = engine.fish.vectorizer.ache_relevance(crystal.text)
-                crystal.mi_vector = [v * ache for v in new_vec]
+                crystal.mi_vector = _f32([v * ache for v in new_vec])
                 crystal.resonance = crystal.mi_vector
             crystal.couplings = []  # clear old couplings
 
@@ -903,7 +903,7 @@ class FusionEngine:
                 new_vec = engine.fish.vectorizer.vectorize(crystal.text, engine.fish.vocab)
                 if new_vec:
                     ache = engine.fish.vectorizer.ache_relevance(crystal.text)
-                    crystal.mi_vector = [v * ache for v in new_vec]
+                    crystal.mi_vector = _f32([v * ache for v in new_vec])
                     crystal.resonance = crystal.mi_vector
                 crystal.couplings = []
             engine.fish._compute_couplings(
