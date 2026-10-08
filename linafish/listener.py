@@ -308,7 +308,8 @@ class FishListener:
                 if fstr not in seen or mtime > seen[fstr]:
                     seen[fstr] = mtime
                     try:
-                        text = f.read_text(encoding="utf-8", errors="replace")
+                        from .ingest import read_user_text
+                        text = read_user_text(f)
                         if len(text) >= self.min_length:
                             source = f"folder://{f.relative_to(folder)}"
                             self.feed(text, source=source)
@@ -325,9 +326,24 @@ class FishListener:
         print("Reading from stdin. The fish eats what flows through.")
         print("Ctrl+D (or Ctrl+Z on Windows) to stop.\n")
 
+        def _lines():
+            # A pipe carries bytes in whatever encoding its writer chose; the
+            # locale decode (cp1252 on Windows) mangled UTF-8 from bash, git
+            # and most tools. Decode per line: UTF-8 first, cp1252 fallback.
+            raw = getattr(sys.stdin, "buffer", None)
+            if raw is None or sys.stdin.isatty():
+                yield from sys.stdin
+                return
+            for b in raw:
+                try:
+                    s = b.decode("utf-8")
+                except UnicodeDecodeError:
+                    s = b.decode("cp1252", errors="replace")
+                yield s.lstrip("﻿").replace("\r\n", "\n")
+
         buffer = []
         try:
-            for line in sys.stdin:
+            for line in _lines():
                 if not self.running:
                     break
                 line = line.rstrip("\n")

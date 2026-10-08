@@ -3,6 +3,9 @@
 This page takes you from nothing to a working fish you can question, feed, and
 serve to an AI. Every command below was run, in this order, on a clean install.
 
+On Windows? Follow [Your First Ten Minutes — Windows](getting-started-windows.md):
+the same steps in PowerShell.
+
 ## 1. Install
 
 ```bash
