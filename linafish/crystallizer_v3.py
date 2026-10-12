@@ -15,6 +15,7 @@ import json
 import os
 import re
 import sys
+import time
 from array import array
 from datetime import datetime, timezone
 from collections import Counter, defaultdict
@@ -1901,11 +1902,17 @@ class UniversalFish:
         try:
             offsets = list(meta["offsets"]) if meta else []
             pos = meta["floats"] if meta else 0
-            tmp = vf + ".tmp"
-            if meta is None:
-                out = open(tmp, "wb")
-            else:
-                out = open(vf, "ab")
+            # NEVER append in place (Q's review, 2026-10-12): two processes loading one fish (a server and a CLI recall)
+            # would both append and tear the file. Every write is a whole new sidecar under a name only this process
+            # uses, swapped in by rename; anything already mapped keeps reading the old inode, intact.
+            tmp = f"{vf}.{os.getpid()}.{int(time.time() * 1e6)}.tmp"
+            out = open(tmp, "wb")
+            if meta is not None:
+                with open(vf, "rb") as old:                    # carry the covered prefix forward
+                    while True:
+                        blk = old.read(1 << 24)
+                        if not blk: break
+                        out.write(blk)
             with out:
                 for c in self.crystals[covered:]:
                     v = c.mi_vector
@@ -1914,14 +1921,13 @@ class UniversalFish:
                         out.write(v.tobytes() if (isinstance(v, array) and v.typecode == "f" and sys.byteorder == "little")
                                   else _np.asarray(v, dtype="<f4").tobytes())
                     offsets.append([pos, n]); pos += n
-            if meta is None:
-                os.replace(tmp, vf)
+            os.replace(tmp, vf)
             size = os.path.getsize(self.crystal_log_path)
             with open(self.crystal_log_path, "rb") as f:
                 head = f.read(65536); f.seek(max(0, size - 4096)); tail = f.read(min(4096, size))
             m2 = {"covered_bytes": size, "count": len(self.crystals), "floats": pos, "offsets": offsets,
                   "head_sha": hashlib.sha256(head[:size]).hexdigest(), "tail_sha": hashlib.sha256(tail).hexdigest()}
-            tmpm = mf + ".tmp"
+            tmpm = f"{mf}.{os.getpid()}.tmp"
             with open(tmpm, "w", encoding="utf-8") as f: json.dump(m2, f)
             os.replace(tmpm, mf)
             mm = _np.memmap(vf, dtype="<f4", mode="r") if pos else None

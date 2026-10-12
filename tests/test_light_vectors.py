@@ -119,3 +119,27 @@ def test_formations_are_the_same_light_or_plain(fish, monkeypatch):
         fs = getattr(e, "formations", None) or getattr(e.fish, "formations", []) or []
         return sorted((f.crystal_count, round(f.content_diversity, 9)) for f in fs)
     assert forms(_load(fish, False, monkeypatch)) == forms(_load(fish, True, monkeypatch))
+
+
+def _load_and_dump(args):
+    path, out = args
+    os.environ["LINAFISH_LIGHT_VECTORS"] = "on"
+    e = FishEngine(state_dir=path, name="t", git_autocommit=False)
+    np.save(out, np.concatenate([np.asarray(c.mi_vector, dtype=np.float32) for c in e.fish.crystals if c.mi_vector]))
+
+
+def test_concurrent_loads_never_tear_the_sidecar(fish, monkeypatch, tmp_path_factory):
+    """Q's review (2026-10-12): a server and a CLI loading one fish at once must not tear the sidecar."""
+    import multiprocessing as mp
+    _load(fish, True, monkeypatch)                                       # a sidecar exists...
+    e = _load(fish, False, monkeypatch)
+    for t in _texts(15, seed=9):                                         # ...and the log has grown past it
+        e.eat(t, admit=False)
+    e.flush()
+    want = np.concatenate([np.asarray(c.mi_vector, dtype=np.float32) for c in _load(fish, False, monkeypatch).fish.crystals if c.mi_vector])
+    outs = [str(tmp_path_factory.mktemp("o") / f"v{i}.npy") for i in range(4)]
+    with mp.get_context("spawn").Pool(4) as pool:                      # four loaders extend the sidecar at once
+        pool.map(_load_and_dump, [(fish, o) for o in outs])
+    for o in outs:
+        assert np.array_equal(np.load(o), want)
+    _same(_vecs(_load(fish, False, monkeypatch)), _vecs(_load(fish, True, monkeypatch)))   # and what they left is sound
