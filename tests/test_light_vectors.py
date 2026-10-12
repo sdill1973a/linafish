@@ -143,3 +143,34 @@ def test_concurrent_loads_never_tear_the_sidecar(fish, monkeypatch, tmp_path_fac
     for o in outs:
         assert np.array_equal(np.load(o), want)
     _same(_vecs(_load(fish, False, monkeypatch)), _vecs(_load(fish, True, monkeypatch)))   # and what they left is sound
+
+
+def test_failed_swap_never_leaves_a_covered_crystal_empty(fish, monkeypatch):
+    """Found on the Windows node 2026-10-12: a new sidecar that cannot be swapped in (Windows won't replace a mapped
+    file; a full disk anywhere) left the crystals the OLD sidecar covered with empty vectors."""
+    _load(fish, True, monkeypatch)                                       # a valid sidecar covers every crystal
+    e = _load(fish, False, monkeypatch)
+    for t in _texts(10, seed=3):
+        e.eat(t, admit=False)                                            # the log grows: the next light load must extend
+    e.flush()
+    want = _vecs(_load(fish, False, monkeypatch))
+    real = os.replace
+    def refuse(src, dst):
+        if str(dst).endswith(".vec.f32"): raise PermissionError(5, "Access is denied (simulated mapped file)")
+        return real(src, dst)
+    monkeypatch.setattr(os, "replace", refuse)
+    _same(want, _vecs(_load(fish, True, monkeypatch)))                   # old sidecar for the covered, memory for the rest
+
+
+def test_failed_swap_and_unusable_old_sidecar_decode_from_the_log(fish, monkeypatch):
+    _load(fish, True, monkeypatch)
+    e = _load(fish, False, monkeypatch)
+    for t in _texts(10, seed=4):
+        e.eat(t, admit=False)
+    e.flush()
+    want = _vecs(_load(fish, False, monkeypatch))
+    real = os.replace
+    monkeypatch.setattr(os, "replace", lambda s, d: (_ for _ in ()).throw(PermissionError(5, "denied")) if str(d).endswith(".vec.f32") else real(s, d))
+    realmm = np.memmap
+    monkeypatch.setattr(np, "memmap", lambda *a, **k: (_ for _ in ()).throw(OSError("simulated unusable sidecar")))
+    _same(want, _vecs(_load(fish, True, monkeypatch)))
