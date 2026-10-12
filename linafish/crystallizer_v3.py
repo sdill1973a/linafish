@@ -1267,7 +1267,17 @@ BASIN_ANGLE = math.atan(2)  # 63.43 degrees — THE angle
 BASIN_COS = 1 / math.sqrt(5)  # 0.4472 — THE threshold
 
 def coupling_angle(a: List[float], b: List[float]) -> float:
-    """Angle between two vectors in radians."""
+    """Angle between two vectors in radians.
+
+    2026-10-12: with numpy, long vectors use float64 arrays (dot over the shared length, each norm over its own full
+    length — the loop's semantics). Measured: the first eat after loading a 13.8K-crystal fish couples the appended
+    suffix with ~76K calls here — 355M Python element steps, 240 s on mapped (light) vectors."""
+    if _np is not None and a is not None and b is not None and min(len(a), len(b)) > 64:
+        x = _as_f64(a, len(a)); y = _as_f64(b, len(b)); n = min(len(x), len(y))
+        dot = float(_np.dot(x[:n], y[:n])); norm_a = math.sqrt(float(_np.dot(x, x))); norm_b = math.sqrt(float(_np.dot(y, y)))
+        if norm_a == 0 or norm_b == 0:
+            return math.pi / 2
+        return math.acos(max(-1.0, min(1.0, dot / (norm_a * norm_b))))
     dot = sum(ai * bi for ai, bi in zip(a, b))
     norm_a = math.sqrt(sum(ai * ai for ai in a))
     norm_b = math.sqrt(sum(bi * bi for bi in b))
@@ -1278,9 +1288,25 @@ def coupling_angle(a: List[float], b: List[float]) -> float:
     return math.acos(cos_val)
 
 
+def _as_f64(v, n):
+    """The first n floats of a vector as float64, zero-copy for array('f') and numpy views."""
+    if isinstance(v, array) and v.typecode == "f":
+        return _np.frombuffer(v, dtype=_np.float32, count=n).astype(_np.float64)
+    return _np.asarray(v[:n], dtype=_np.float64)
+
+
 def gamma(a: List[float], b: List[float]) -> float:
     """Coupling strength. Jaccard-style on vectors.
-    Same as v1 — this is ratio-based and works on any vector."""
+    Same as v1 — this is ratio-based and works on any vector.
+
+    2026-10-12: with numpy, long vectors are summed in float64 arrays instead of two Python generators (same zip
+    semantics: the first min(len) dims count; same numbers as gamma_scan, ~1e-15). The eat path calls this per pair;
+    on a 13.8K-crystal fish one eat took ~9.6 s, and Python-iterating mapped (light) vectors made it 2.8x worse."""
+    n = min(len(a), len(b)) if (a is not None and b is not None) else 0
+    if _np is not None and n > 64:
+        x = _np.abs(_as_f64(a, n)); y = _np.abs(_as_f64(b, n))
+        den = float(_np.maximum(x, y).sum())
+        return float(_np.minimum(x, y).sum()) / den if den > 0 else 0.0
     num = sum(min(abs(ai), abs(bi)) for ai, bi in zip(a, b))
     den = sum(max(abs(ai), abs(bi)) for ai, bi in zip(a, b))
     return num / den if den > 0 else 0.0
