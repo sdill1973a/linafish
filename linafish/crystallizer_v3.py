@@ -1228,6 +1228,51 @@ def gamma(a: List[float], b: List[float]) -> float:
     return num / den if den > 0 else 0.0
 
 
+def gamma_scan(probe, vecs, floor: float = 0.0, chunk: int = 1024):
+    """gamma(probe, v) for every v in ``vecs``; returns [(index, g)] where g > floor.
+
+    Same numbers as calling gamma() in a loop (zip semantics: only the first
+    min(len(probe), len(v)) dimensions count), but with numpy (the optional
+    ``fast`` extra) a whole fish is scored in chunks instead of one Python
+    generator per crystal. Crystal vectors are ragged — each was sized by the
+    vocabulary of its day — so rows are zero-padded to the probe's width and the
+    padding's contribution to the denominator (|probe| past the row's length) is
+    subtracted back out. Without numpy, or for a handful of vectors, it is
+    exactly the loop."""
+    try:
+        import numpy as np
+    except ImportError:
+        np = None
+    out = []
+    if np is None or len(vecs) < 64 or not probe:
+        for i, v in enumerate(vecs):
+            if v:
+                g = gamma(probe, v)
+                if g > floor:
+                    out.append((i, g))
+        return out
+    p = np.abs(np.asarray(probe, dtype=np.float64))
+    P = len(p)
+    tail = np.concatenate(([0.0], np.cumsum(p)))     # tail[k] = sum |p[:k]|
+    idx_all = [i for i, v in enumerate(vecs) if v]
+    for s0 in range(0, len(idx_all), chunk):
+        idx = idx_all[s0:s0 + chunk]
+        m = np.zeros((len(idx), P))
+        lens = np.empty(len(idx), dtype=np.int64)
+        for r, i in enumerate(idx):
+            v = vecs[i]
+            L = min(len(v), P)
+            m[r, :L] = v[:L]
+            lens[r] = L
+        np.abs(m, out=m)
+        num = np.minimum(m, p).sum(axis=1)
+        den = np.maximum(m, p).sum(axis=1) - (tail[P] - tail[lens])
+        g = np.divide(num, den, out=np.zeros_like(num), where=den > 1e-300)
+        for j in np.nonzero(g > floor)[0]:
+            out.append((idx[j], float(g[j])))
+    return out
+
+
 # ---------------------------------------------------------------------------
 # CHAINCODE MARRIAGE — coupling_strength with temporal proximity
 # ---------------------------------------------------------------------------
