@@ -47,6 +47,7 @@ from .crystallizer_v3 import (
     Crystal, MIVectorizer, UniversalFish,
     crystallize as v3_crystallize,
     gamma,
+    gamma_scan,
     CANONICAL_SEED_SET, MAX_CRYSTAL_TEXT, PROTECTED_VOCAB, protected_vocab)
 from .formations import (
     detect_formations, hierarchical_merge, formations_to_codebook_text,
@@ -1155,13 +1156,10 @@ class FishEngine:
         if not probe or not probe.mi_vector:
             return []
         scores = []
-        for c in self.fish.crystals:
-            vec = c.mi_vector if c.mi_vector else c.resonance
-            if not vec:
-                continue
-            g = gamma(probe.mi_vector, vec)
-            if g > min_gamma:
-                scores.append((g, c))
+        crystals = self.fish.crystals
+        for i, g in gamma_scan(probe.mi_vector,
+                               [c.mi_vector if c.mi_vector else c.resonance for c in crystals], min_gamma):
+            scores.append((g, crystals[i]))
         scores.sort(key=lambda x: x[0], reverse=True)
         return scores[:top]
 
@@ -3152,13 +3150,10 @@ class FishEngine:
             }
 
         scores = []
-        for c in self.fish.crystals:
-            vec = c.mi_vector if c.mi_vector else c.resonance
-            if not vec:
-                continue
-            g = gamma(probe.mi_vector, vec)
-            if g > 0.2:
-                scores.append((g, c))
+        crystals = self.fish.crystals
+        for i, g in gamma_scan(probe.mi_vector,
+                               [c.mi_vector if c.mi_vector else c.resonance for c in crystals], 0.2):
+            scores.append((g, crystals[i]))
 
         scores.sort(key=lambda x: x[0], reverse=True)
 
@@ -3369,13 +3364,10 @@ class FishEngine:
             return "Text too short."
 
         scores = []
-        for c in self.fish.crystals:
-            vec = c.mi_vector if c.mi_vector else c.resonance
-            if not vec:
-                continue
-            g = gamma(probe.mi_vector, vec)
-            if g > 0.4:
-                scores.append((g, c))
+        crystals = self.fish.crystals
+        for i, g in gamma_scan(probe.mi_vector,
+                               [c.mi_vector if c.mi_vector else c.resonance for c in crystals], 0.4):
+            scores.append((g, crystals[i]))
 
         scores.sort(key=lambda x: x[0], reverse=True)
 

@@ -13,6 +13,8 @@ import math
 import hashlib
 import os
 import re
+import sys
+from array import array
 from datetime import datetime, timezone
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field, asdict
@@ -213,23 +215,53 @@ class Crystal:
 # cosine over MI weights can use; round-tripping through it moves gamma by
 # ~1e-7, which is orders below any threshold in this codebase. Kept as base64
 # so the JSONL stays a text format you can still read with your eyes.
+#
+# In memory (2026-10-08): vectors are held as ``array('f')`` — the same float32
+# values the disk already stores, 4 bytes each instead of a ~32-byte Python
+# float plus an 8-byte list slot. A vocab-length vector (~7K dims) was ~222 KB
+# per crystal as a list; as array('f') it is ~28 KB. Everything downstream
+# iterates, indexes, len()s or zips the vector, all of which array supports.
+# Pure stdlib: numpy stays an optional extra.
+def _f32(vec):
+    """Coerce a vector to compact float32 ``array('f')``. Empty/None pass
+    through unchanged (callers test truthiness, which is preserved)."""
+    if not vec:
+        return vec if vec is not None else []
+    if isinstance(vec, array) and vec.typecode == "f":
+        return vec
+    return array("f", vec)
+
+
 def _pack_vec(vec) -> str:
     import base64, struct
+    if isinstance(vec, array) and vec.typecode == "f":
+        if sys.byteorder == "little":
+            raw = vec.tobytes()
+        else:
+            tmp = array("f", vec)
+            tmp.byteswap()
+            raw = tmp.tobytes()
+        return base64.b64encode(raw).decode("ascii")
     return base64.b64encode(
         struct.pack(f"<{len(vec)}f", *(float(x) for x in vec))
     ).decode("ascii")
 
 
-def _unpack_vec(blob) -> list:
-    """Decode a packed vector. Returns [] on anything malformed rather than
-    raising — a corrupt vector must not make the whole fish unloadable, and an
-    empty vector is already a case every caller handles."""
-    import base64, struct
+def _unpack_vec(blob):
+    """Decode a packed vector to ``array('f')``. Returns [] on anything
+    malformed rather than raising — a corrupt vector must not make the whole
+    fish unloadable, and an empty vector is already a case every caller
+    handles."""
+    import base64
     if not blob:
         return []
     try:
         raw = base64.b64decode(blob)
-        return list(struct.unpack(f"<{len(raw) // 4}f", raw[: len(raw) // 4 * 4]))
+        a = array("f")
+        a.frombytes(raw[: len(raw) // 4 * 4])
+        if sys.byteorder != "little":
+            a.byteswap()
+        return a if a else []
     except Exception:
         return []
 
@@ -1189,7 +1221,7 @@ class MIVectorizer:
         """
         mi_vec = self.vectorize(text, vocab)
         ache = self.ache_relevance(text)
-        return [v * ache for v in mi_vec]
+        return _f32([v * ache for v in mi_vec])
 
 
 # ---------------------------------------------------------------------------
@@ -1226,6 +1258,51 @@ def gamma(a: List[float], b: List[float]) -> float:
     num = sum(min(abs(ai), abs(bi)) for ai, bi in zip(a, b))
     den = sum(max(abs(ai), abs(bi)) for ai, bi in zip(a, b))
     return num / den if den > 0 else 0.0
+
+
+def gamma_scan(probe, vecs, floor: float = 0.0, chunk: int = 1024):
+    """gamma(probe, v) for every v in ``vecs``; returns [(index, g)] where g > floor.
+
+    Same numbers as calling gamma() in a loop (zip semantics: only the first
+    min(len(probe), len(v)) dimensions count), but with numpy (the optional
+    ``fast`` extra) a whole fish is scored in chunks instead of one Python
+    generator per crystal. Crystal vectors are ragged — each was sized by the
+    vocabulary of its day — so rows are zero-padded to the probe's width and the
+    padding's contribution to the denominator (|probe| past the row's length) is
+    subtracted back out. Without numpy, or for a handful of vectors, it is
+    exactly the loop."""
+    try:
+        import numpy as np
+    except ImportError:
+        np = None
+    out = []
+    if np is None or len(vecs) < 64 or not probe:
+        for i, v in enumerate(vecs):
+            if v:
+                g = gamma(probe, v)
+                if g > floor:
+                    out.append((i, g))
+        return out
+    p = np.abs(np.asarray(probe, dtype=np.float64))
+    P = len(p)
+    tail = np.concatenate(([0.0], np.cumsum(p)))     # tail[k] = sum |p[:k]|
+    idx_all = [i for i, v in enumerate(vecs) if v]
+    for s0 in range(0, len(idx_all), chunk):
+        idx = idx_all[s0:s0 + chunk]
+        m = np.zeros((len(idx), P))
+        lens = np.empty(len(idx), dtype=np.int64)
+        for r, i in enumerate(idx):
+            v = vecs[i]
+            L = min(len(v), P)
+            m[r, :L] = v[:L]
+            lens[r] = L
+        np.abs(m, out=m)
+        num = np.minimum(m, p).sum(axis=1)
+        den = np.maximum(m, p).sum(axis=1) - (tail[P] - tail[lens])
+        g = np.divide(num, den, out=np.zeros_like(num), where=den > 1e-300)
+        for j in np.nonzero(g > floor)[0]:
+            out.append((idx[j], float(g[j])))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -1683,13 +1760,13 @@ class UniversalFish:
                             # can ever meet a string it cannot encode.
                             text=_scrub_unencodable(d.get('text', '')),
                             source=d.get('source', ''),
-                            resonance=d.get('resonance', []),
+                            resonance=_f32(d.get('resonance', [])),
                             keywords=d.get('keywords', []),
                             # 'miv_b32' is the compact form; 'mi_vector' is what
                             # every fish written before 2026-08-09 carries. Both
                             # are read, forever — the old files are not migrated.
                             mi_vector=(_unpack_vec(d['miv_b32'])
-                                       if d.get('miv_b32') else d.get('mi_vector', [])),
+                                       if d.get('miv_b32') else _f32(d.get('mi_vector', []))),
                             couplings=[(x[0], x[1]) for x in d.get('couplings', [])],
                             wrapping_numbers=d.get('wrapping_numbers', {}) or {},
                             structural=d.get('structural', False),
@@ -2099,7 +2176,7 @@ class UniversalFish:
                         norms[norms == 0] = 1
                         R = R / norms
                         for vi, (_, c) in enumerate(eligible):
-                            c.mi_vector = R[vi].tolist()
+                            c.mi_vector = _f32(R[vi].tolist())
             except ImportError:
                 # Fallback: skip centroid subtraction (optimization for homogeneous
                 # corpora, not load-bearing — matches reduce_pca pattern at line 556)
