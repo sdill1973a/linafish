@@ -1945,6 +1945,38 @@ class UniversalFish:
                 pass
         except Exception as e:
             print(f"light vectors: sidecar failed ({type(e).__name__}: {e}) — vectors stay in memory", file=sys.stderr)
+            # The crystals the old sidecar covered were never decoded (that is the point of covering them). If the new
+            # sidecar could not be swapped in — Windows refuses to replace a file another process has mapped; a full
+            # disk does it anywhere — they would be left EMPTY. Found on the mini PC 2026-10-12 (Q had named it: "the
+            # rebuild path is unverified"). Give them the old sidecar, already proven to match this log's prefix;
+            # failing that, decode them from the log. Never leave a covered crystal without its vector.
+            if covered and meta:
+                try:
+                    mm = _np.memmap(vf, dtype="<f4", mode="r")
+                    for c, (o, n) in zip(self.crystals[:covered], meta["offsets"][:covered]):
+                        if n and not c.mi_vector:
+                            old = c.mi_vector; view = mm[o:o + n].view(VecView)
+                            c.mi_vector = view
+                            if (not c.resonance) or (c.resonance is old): c.resonance = view
+                    self._vec_map = mm
+                    return
+                except Exception as e2:
+                    print(f"light vectors: old sidecar unusable too ({type(e2).__name__}) — decoding from the log", file=sys.stderr)
+                self._decode_prefix(covered)
+
+    def _decode_prefix(self, covered):
+        """Decode the vectors of the first `covered` crystals straight from the crystal log (the source of truth)."""
+        want = {c.id: c for c in self.crystals[:covered] if not c.mi_vector}
+        with open(self.crystal_log_path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if not want: break
+                try: d = json.loads(line)
+                except Exception: continue
+                c = want.pop(d.get("id", ""), None)
+                if c is None: continue
+                v = _unpack_vec(d["miv_b32"]) if d.get("miv_b32") else _f32(d.get("mi_vector", []))
+                old = c.mi_vector; c.mi_vector = v
+                if (not c.resonance) or (c.resonance is old): c.resonance = v
 
     def _save_state(self):
         """Persist state atomically.
