@@ -14,6 +14,7 @@ Not clustering. Not k-means. Graph traversal.
 The graph is the truth. Formations are just what the BFS finds.
 """
 
+import hashlib
 import math
 from collections import Counter, deque
 from dataclasses import dataclass, field, InitVar
@@ -294,8 +295,12 @@ class Formation:
         # The set grows unbounded; for 387K-corpus formations the
         # memory cost is ~6MB (one hash per crystal). Acceptable for v1;
         # the gardener pass can prune to a reservoir later if needed.
+        # 2026-10-12: it held the whole normalized TEXT, not a hash — a second lowercased copy of every member's words
+        # (130 MB of the me fish's ~440 MB resident). Now the 16-hex-char digest this comment always described; the
+        # count of distinct values — all content_diversity reads — is unchanged. Never persisted, so nothing migrates.
         if crystal.text:
-            self._seen_hashes.add(normalize_for_dedup(crystal.text))
+            self._seen_hashes.add(hashlib.blake2b(normalize_for_dedup(crystal.text).encode("utf-8", "surrogatepass"),
+                                                  digest_size=8).hexdigest())
         if (n + 1) > 0:
             self.content_diversity = len(self._seen_hashes) / (n + 1)
 

@@ -11,6 +11,7 @@ Same math for text, light, whale clicks, C64.
 
 import math
 import hashlib
+import json
 import os
 import re
 import sys
@@ -232,8 +233,33 @@ def _f32(vec):
     return array("f", vec)
 
 
+# --- light vectors (2026-10-12) ------------------------------------------------
+# Captain, 2026-10-04: "remembering and accessing - not holding it all, ever"; 2026-10-12: "compress knowledge into
+# truth ... chaincoded to the light version of the core truth that we keep - the rest is fuel for the process".
+# A crystal is ~96% vector. Held as anonymous memory, every vector of every crystal sits in RAM, and under pressure
+# the kernel SWAPS it (10-12: swap storms). Opt-in (LINAFISH_LIGHT_VECTORS=on): vectors live once in a float32 sidecar
+# beside the crystal log, memory-mapped read-only; each crystal's mi_vector is a slice of it. Pages are read when a
+# vector is used and dropped (never swapped) when memory is wanted. The JSONL stays the source of truth.
+try:
+    import numpy as _np
+
+    class VecView(_np.ndarray):
+        """A read-only float32 slice of the sidecar. Truthy by length, like the lists and arrays it replaces."""
+        def __bool__(self):
+            return self.size > 0
+except ImportError:                                   # numpy absent: light vectors simply stay off
+    _np = None
+    VecView = None
+
+
+def _light_vectors_on():
+    return _np is not None and os.environ.get("LINAFISH_LIGHT_VECTORS", "off").lower() in ("on", "1", "true")
+
+
 def _pack_vec(vec) -> str:
     import base64, struct
+    if _np is not None and isinstance(vec, _np.ndarray):          # a mapped (light) vector
+        return base64.b64encode(_np.asarray(vec, dtype="<f4").tobytes()).decode("ascii")
     if isinstance(vec, array) and vec.typecode == "f":
         if sys.byteorder == "little":
             raw = vec.tobytes()
@@ -1744,6 +1770,9 @@ class UniversalFish:
             import json
             loaded = 0
             disk_crystals = []
+            light = _light_vectors_on()
+            vmeta = self._vec_sidecar_valid() if light else None
+            covered = vmeta["count"] if vmeta else 0
             with open(self.crystal_log_path, encoding='utf-8', errors='replace') as f:
                 for line in f:
                     try:
@@ -1765,8 +1794,9 @@ class UniversalFish:
                             # 'miv_b32' is the compact form; 'mi_vector' is what
                             # every fish written before 2026-08-09 carries. Both
                             # are read, forever — the old files are not migrated.
-                            mi_vector=(_unpack_vec(d['miv_b32'])
-                                       if d.get('miv_b32') else _f32(d.get('mi_vector', []))),
+                            # light vectors: a crystal the sidecar already covers is not decoded at all
+                            mi_vector=([] if loaded < covered else
+                                       _unpack_vec(d['miv_b32']) if d.get('miv_b32') else _f32(d.get('mi_vector', []))),
                             couplings=[(x[0], x[1]) for x in d.get('couplings', [])],
                             wrapping_numbers=d.get('wrapping_numbers', {}) or {},
                             structural=d.get('structural', False),
@@ -1800,6 +1830,14 @@ class UniversalFish:
                 self.crystals = disk_crystals
             if loaded > 0:
                 self.frozen = True
+            if light and self.crystals is disk_crystals and loaded:
+                if covered and loaded < covered:
+                    # Fewer crystals than the sidecar covers: the covered ones were never decoded. Never map a guess —
+                    # drop the sidecar and load again with every vector decoded (the next load rebuilds it).
+                    try: os.remove(self._vec_paths()[1])
+                    except OSError: pass
+                    return self._load_state()
+                self._map_vectors(vmeta, covered)
 
         # Populate the content-dedup set from whatever crystals are now
         # in memory. Cheap if dedup is off (we just skip the build);
@@ -1808,6 +1846,73 @@ class UniversalFish:
             self._seen_hashes = {
                 _content_hash(c.text) for c in self.crystals if c.text
             }
+
+    # ---- light vectors: the sidecar --------------------------------------------------------------------------------
+    def _vec_paths(self):
+        return self.crystal_log_path + ".vec.f32", self.crystal_log_path + ".vec.json"
+
+    def _vec_sidecar_valid(self):
+        """The sidecar's metadata if it still describes a PREFIX of the crystal log (append-only), else None.
+        Proof: the covered byte count fits, and the first 64 KB and the last 4 KB of the covered span hash the same."""
+        vf, mf = self._vec_paths()
+        try:
+            meta = json.load(open(mf, encoding="utf-8"))
+            if os.path.getsize(self.crystal_log_path) < meta["covered_bytes"]: return None
+            if os.path.getsize(vf) != 4 * meta["floats"]: return None
+            with open(self.crystal_log_path, "rb") as f:
+                head = f.read(65536)
+                f.seek(max(0, meta["covered_bytes"] - 4096)); tail = f.read(min(4096, meta["covered_bytes"]))
+            if hashlib.sha256(head[:meta["covered_bytes"]]).hexdigest() != meta["head_sha"]: return None
+            if hashlib.sha256(tail).hexdigest() != meta["tail_sha"]: return None
+            return meta
+        except Exception:
+            return None
+
+    def _map_vectors(self, meta, covered):
+        """Write the vectors of crystals[covered:] onto the sidecar (fresh if meta is None), then point every
+        crystal's mi_vector at its read-only slice. Any failure leaves the in-memory vectors exactly as loaded."""
+        vf, mf = self._vec_paths()
+        try:
+            offsets = list(meta["offsets"]) if meta else []
+            pos = meta["floats"] if meta else 0
+            tmp = vf + ".tmp"
+            if meta is None:
+                out = open(tmp, "wb")
+            else:
+                out = open(vf, "ab")
+            with out:
+                for c in self.crystals[covered:]:
+                    v = c.mi_vector
+                    n = len(v) if v else 0
+                    if n:
+                        out.write(v.tobytes() if (isinstance(v, array) and v.typecode == "f" and sys.byteorder == "little")
+                                  else _np.asarray(v, dtype="<f4").tobytes())
+                    offsets.append([pos, n]); pos += n
+            if meta is None:
+                os.replace(tmp, vf)
+            size = os.path.getsize(self.crystal_log_path)
+            with open(self.crystal_log_path, "rb") as f:
+                head = f.read(65536); f.seek(max(0, size - 4096)); tail = f.read(min(4096, size))
+            m2 = {"covered_bytes": size, "count": len(self.crystals), "floats": pos, "offsets": offsets,
+                  "head_sha": hashlib.sha256(head[:size]).hexdigest(), "tail_sha": hashlib.sha256(tail).hexdigest()}
+            tmpm = mf + ".tmp"
+            with open(tmpm, "w", encoding="utf-8") as f: json.dump(m2, f)
+            os.replace(tmpm, mf)
+            mm = _np.memmap(vf, dtype="<f4", mode="r") if pos else None
+            for c, (o, n) in zip(self.crystals, offsets):
+                if not n: continue
+                old = c.mi_vector
+                view = mm[o:o + n].view(VecView)
+                c.mi_vector = view
+                if (not c.resonance) or (c.resonance is old):
+                    c.resonance = view
+            self._vec_map = mm
+            try:                                           # hand the freed vector heap back to the OS
+                import ctypes; ctypes.CDLL("libc.so.6").malloc_trim(0)
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"light vectors: sidecar failed ({type(e).__name__}: {e}) — vectors stay in memory", file=sys.stderr)
 
     def _save_state(self):
         """Persist state atomically.
