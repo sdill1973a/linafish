@@ -53,3 +53,16 @@ guaranteed, so the first form is simpler). Add a load-time check that counts tai
 `formation is None` and reports it in `/health` and `doctor` — the direction this organ could
 not fail in. Backfill: one `_rewrite_crystal_log()` after a full in-memory recouple, behind a
 verb, never automatic.
+
+## Built — same day
+
+`UniversalFish.repersist_tail(k)` (crystallizer_v3): `_persist_crystal` now records each crystal's line offset;
+after `eat()` has filed and coupled, the tail line is rewritten from memory — self-verifying (the lines from the
+recorded offset must parse to exactly the tail's ids, else nothing is touched; tested with a foreign line appended).
+Hooked in `eat()` (k=1), `eat_many()` (the batch, after the final rebuild) and `eat_path()` (the new crystals).
+Tests: `tests/test_persist_after_eat.py` (formation on disk for every crystal; the crystal's own couplings on disk;
+a cold load reads them back; the guard refuses when the tail moved).
+
+Still true, stated: couplings a new crystal adds to OLDER crystals (beyond the tail) reach disk only on a full
+rewrite — a `doctor`/backfill verb over `_rewrite_crystal_log()` after one in-memory recouple is the follow-up for
+the ~13,900 already-unpersisted crystals on the live fish. Not automatic.

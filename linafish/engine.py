@@ -2251,6 +2251,7 @@ class FishEngine:
             if crystal.episode_id is not None:
                 self._index_episode_crystal(crystal)
             self.rebuild_formations()
+            self.fish.repersist_tail(1)          # the line on disk now carries its formation + couplings
             # Eat-latency fix: the crystal is already durable in the JSONL
             # (crystallize_text -> _persist_crystal). Batch the expensive
             # full _save_state (fish.md/codebook rebuild, O(N)) off the hot
@@ -2401,6 +2402,7 @@ class FishEngine:
         finally:
             # Persist whatever partial work we have regardless of exception
             self.rebuild_formations()
+            self.fish.repersist_tail(crystals_added)
             self._save_state(commit=False)
 
         # Optional single-shot commit — only on success, never on exception.
@@ -2497,6 +2499,7 @@ class FishEngine:
             self.fish._compute_couplings(new_crystals)
             self.docs_ingested += 1
             self.rebuild_formations()
+            self.fish.repersist_tail(len(new_crystals))
 
             # Capture initial R(n) after first batch
             r_n = self._compute_r_n()
