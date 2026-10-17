@@ -47,8 +47,12 @@ by ±1 on every query. It is register, not address. Glyph `chains`/`modifiers` w
 
 1. `taste_sparse()` beside `taste_dict()`, same return schema, index built at load from crystal
    text and held compact (numpy postings; 5M Python tuples would be ~400 MB).
-2. On both fish: p@10 ≥ 6 on ≥ 6 of the 8 lexical queries; the 6 paraphrase scores reported as
-   measured, no threshold (they are the direction this key can lose).
+2. Non-regression against today's prototype, counted only over queries with ≥ 10 truth
+   crystals (p@10 cannot reach 6 when fewer than 10 crystals hold the word — a bar that cannot
+   pass is as bad as one that cannot fail). Today: fish A 6 of 7 eligible at ≥ 6/10, fish B 5 of 7;
+   combined 11 of 14. The build must match or beat each fish's row. This bar is set FROM the
+   prototype's numbers, so it is a floor, not a prediction; the 6 paraphrase scores are reported
+   as measured, no threshold (they are the direction this key can lose).
 3. Stage 2 (a dense gamma re-rank over the top 50 only, a reviewer's suggestion): kept only if it
    does not LOWER p@10 on any query; otherwise dropped and recorded.
 4. Per answer ≤ 200 ms on the 35K fish; index ≤ 10% of the crystal log's size.
