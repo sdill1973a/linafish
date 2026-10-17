@@ -15,6 +15,21 @@ one-time revectorize (PR #57's atomic log rewrite) rewrote the log from memory o
 second fish the same stop appears in September. The served process's own `/crystals` shows
 today's crystals with `formation: None, couplings: []` while `/health` reports 387 formations.
 
+## Measured mechanism (scratch fish, 40 eats, fresh state dir, 2.3.1)
+
+| | in memory after eat | on disk | reloaded |
+|---|---|---|---|
+| formation set | 40/40 | **0/40** | 40/40 (re-derived at load by `reindex_formations`, O(N)) |
+| couplings set | **0/40** | 0/40 | 0/40 |
+
+So there are two defects with one start date: (1) formation is computed after the append and
+never written — every disk reader sees None, the served process recomputes it at load;
+(2) **couplings are not produced at all for new crystals in the addressed-formations path** —
+not on the scratch fish, not on the live fish for any crystal since 08-16. The `/health`
+formation count on the live fish has sat at the same number across 13,900 crystals (no new
+address minted), which fits (1) only if those crystals all address existing formations — worth
+one check, not assumed.
+
 ## Consequences
 
 - Every cold load re-couples the whole tail on the first eat (measured: ~76K `coupling_angle`
@@ -25,7 +40,9 @@ today's crystals with `formation: None, couplings: []` while `/health` reports 3
 
 ## Proposed fix (root, not workaround)
 
-Persist AFTER the crystal is complete: move `_persist_crystal` out of `crystallize_text` into
+For (2), first find where `_couple_appended_crystals` / `_compute_couplings` stop producing
+pairs in the addressed path (threshold never met? suffix logic? never reached?) — measured, not
+guessed. For (1), persist AFTER the crystal is complete: move `_persist_crystal` out of `crystallize_text` into
 `eat()`/`eat_many()`/`eat_path()` after filing and coupling (one call site each), or have
 `eat()` rewrite the just-appended line in place (seek to the recorded offset; same length is not
 guaranteed, so the first form is simpler). Add a load-time check that counts tail crystals with
