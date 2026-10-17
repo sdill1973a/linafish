@@ -22,13 +22,19 @@ today's crystals with `formation: None, couplings: []` while `/health` reports 3
 | formation set | 40/40 | **0/40** | 40/40 (re-derived at load by `reindex_formations`, O(N)) |
 | couplings set | **0/40** | 0/40 | 0/40 |
 
-So there are two defects with one start date: (1) formation is computed after the append and
-never written — every disk reader sees None, the served process recomputes it at load;
-(2) **couplings are not produced at all for new crystals in the addressed-formations path** —
-not on the scratch fish, not on the live fish for any crystal since 08-16. The `/health`
-formation count on the live fish has sat at the same number across 13,900 crystals (no new
-address minted), which fits (1) only if those crystals all address existing formations — worth
-one check, not assumed.
+**CORRECTED the same hour.** The table above was taken on 40 near-identical texts, and the adaptive
+coupling threshold (p75 of sampled gammas) ties out on identical vectors — a scratch artifact, not the
+defect. Rerun with 60 varied real texts:
+
+| | in memory after eat | on disk | reloaded | after one more eat |
+|---|---|---|---|---|
+| formation set | 60/60 | **0/60** | 60/60 (re-derived at load) | — |
+| couplings set | **59/60** | **0/60** | 56/60 (recomputed for the whole tail at load) | 56/61 |
+
+So it is ONE defect: both fields are computed after the crystal is appended and nothing ever writes
+them. The served process has them in memory; every disk reader sees None/[]; and every cold load
+recomputes couplings for the entire unpersisted tail (on a 35K fish that tail is ~13,900 crystals —
+the measured 240 s first eat). The earlier "couplings are not produced at all" line is withdrawn.
 
 ## Consequences
 
@@ -40,9 +46,7 @@ one check, not assumed.
 
 ## Proposed fix (root, not workaround)
 
-For (2), first find where `_couple_appended_crystals` / `_compute_couplings` stop producing
-pairs in the addressed path (threshold never met? suffix logic? never reached?) — measured, not
-guessed. For (1), persist AFTER the crystal is complete: move `_persist_crystal` out of `crystallize_text` into
+Persist AFTER the crystal is complete: move `_persist_crystal` out of `crystallize_text` into
 `eat()`/`eat_many()`/`eat_path()` after filing and coupling (one call site each), or have
 `eat()` rewrite the just-appended line in place (seek to the recorded offset; same length is not
 guaranteed, so the first form is simpler). Add a load-time check that counts tail crystals with
