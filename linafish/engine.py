@@ -56,6 +56,7 @@ from .formations import (
 from .ingest import ingest_directory, ingest_file
 from . import episodic
 from . import grounding
+from .sparse import SparseIndex
 from .episodic import (
     EpisodicMoment, load_episode, walk as episodic_walk,
     score_moment, assemble_source_excerpt,
@@ -3079,6 +3080,52 @@ class FishEngine:
             crystals=self.fish.crystals,
         )
 
+    # -- sparse key (exp/sparse-key, 2026-10-17) ---------------------------------------------------------------
+    # The crystal's own terms are the retrieval key; the dense vector stays fuel for eating. Built lazily from the
+    # crystals in memory and extended with the tail on every call, so eats need no hook. LINAFISH_TASTE_SPARSE=on
+    # routes taste_dict() here so a served fish can be A/B'd without a new endpoint.
+    _sparse: Optional[SparseIndex] = None
+
+    def _sparse_index(self) -> SparseIndex:
+        crystals = self.fish.crystals
+        idx = self._sparse
+        if idx is None:
+            idx = self._sparse = SparseIndex(tokenize=self.fish.vectorizer.tokenize)
+        if idx.n_docs > len(crystals):          # crystals were dropped (reset/compact) — start over
+            idx = self._sparse = SparseIndex(tokenize=self.fish.vectorizer.tokenize)
+        for c in crystals[idx.n_docs:]:
+            idx.add(c.text or "")
+        return idx
+
+    def taste_sparse(self, text: str, top: int = 5,
+                     no_heat: bool | None = None) -> dict:
+        """``taste_dict`` over the sparse key: same schema, same terminal reasons. ``relevance`` is the BM25 score
+        scaled by the best hit (1.0 = best), ``match_count`` is the number of crystals sharing a known term.
+        ``grounding.band`` is ``"unscored"`` here — the composition verdict was built on the dense statistics."""
+        total = len(self.fish.crystals)
+        if not self.fish.crystals:
+            return {"ok": False, "reason": "empty_fish", "query_keywords": [], "match_count": 0,
+                    "total_crystals": 0, "matches": []}
+        idx = self._sparse_index()
+        terms = idx.query_terms(text)
+        if not terms:
+            return {"ok": False, "reason": "no_signal", "query_keywords": [], "match_count": 0,
+                    "total_crystals": total, "matches": []}
+        ranked = idx.score(text, top=top)
+        best = ranked[0][1] if ranked else 0.0
+        matches = []
+        top_ids = set()
+        for i, s in ranked:
+            c = self.fish.crystals[i]
+            matches.append({"id": c.id, "text": c.text or "", "source": c.source or "", "ts": c.ts or "",
+                            "relevance": round(float(s / best), 4) if best else 0.0,
+                            "keywords": list(c.keywords) if c.keywords else []})
+            top_ids.add(c.id)
+        self._record_feedback_hits(top_ids, no_heat=no_heat)
+        return {"ok": True, "query_keywords": terms[:8], "match_count": idx.candidates(text),
+                "total_crystals": total, "matches": matches,
+                "grounding": {"band": "unscored", "reason": "sparse key — no composition verdict"}}
+
     def taste_dict(self, text: str, top: int = 5,
                    no_heat: bool | None = None) -> dict:
         """Structured cross-corpus match. Returns a JSON-serializable dict.
@@ -3125,6 +3172,8 @@ class FishEngine:
         weak result to write around. A failure inside the verdict yields
         ``{"band": "error"}`` rather than raising — the taste still returns.
         """
+        if os.environ.get("LINAFISH_TASTE_SPARSE", "off").lower() in ("on", "1", "true"):
+            return self.taste_sparse(text, top=top, no_heat=no_heat)
         total = len(self.fish.crystals)
 
         if not self.fish.crystals:

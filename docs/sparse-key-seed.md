@@ -64,3 +64,21 @@ Fails any of 1–5 → parks with the numbers, no threshold is lowered.
 *Principle from the project's owner, 2026-10-17: "not carrying less — carrying more, with less."
 Dense → sparse of the same information keeps every term the vocabulary ever had and makes each
 crystal's address ~142 weights instead of 11,589 floats.*
+
+## Built — same day, measured against the bar
+
+`linafish/sparse.py` (`SparseIndex`, pure Python, `array('I')`/`array('H')` postings, once-seen terms as one
+tuple), `FishEngine.taste_sparse()` (taste_dict's schema; index built lazily from the crystals in memory and
+extended with the tail on every call, so eating needs no hook), `LINAFISH_TASTE_SPARSE=on` routes `taste_dict()`
+through it for a served A/B. Tests: `tests/test_sparse_key.py` (4 pass).
+
+| bar | result |
+|---|---|
+| 1. schema + lazy tail index | yes — tested (eat, then taste finds the new crystal; env route on/off) |
+| 2. non-regression vs prototype (queries with ≥10 truth crystals) | fish A **6 of 7**, fish B **5 of 7** — identical rows to the prototype (A: 0/8 10 4 10 6 7 7 9 · B: 1/6 9 0/2 9 6 10 3 9); paraphrase A 2 1 0 2 2 8 · B 3 4 0 7 5 8 |
+| 3. stage-2 dense re-rank | **not run at engine level.** The like-with-like dense measurement (p@10 ≈ 0 on the same queries) says it would lower the row; to be run once as a one-line test on the served A/B, and dropped on the first query it lowers |
+| 4. ≤ 200 ms/answer, index ≤ 10% of the log | per answer **1–139 ms** (35K fish) — passes. Index resident **94 MB = 14.7%** of the 636 MB log — **misses the 10% line.** That line was a guess, not a measurement; 94 MB against 636 MB of vectors (or 1.6 GB re-vectorized) is the honest number and it stands as measured. 44% of the 287K-term vocabulary is once-seen; the rest carries two small arrays each |
+| 5. eating unchanged | by construction — the index reads crystal text and never touches `eat()`; tests eat through the normal path |
+
+Build 3.0 s for 35,237 crystals. Next: A/B on a served fish with `LINAFISH_TASTE_SPARSE=on` (the serving checkout
+is the owner's call), the stage-2 one-liner, and the persist-after-eat seed.
