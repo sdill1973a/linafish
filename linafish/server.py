@@ -77,7 +77,7 @@ def serve_fish(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
         },
         {
             "name": "fish_taste",
-            "description": "Cross-corpus matching. Ask the fish what it knows about a topic. Returns crystals ranked by cognitive similarity.",
+            "description": "Cross-corpus matching. Ask the fish what it knows about a topic. Returns JSON: crystals ranked by cognitive similarity plus grounding.band (grounded / thin / ungrounded / thin-recent). Honor the band: thin and ungrounded mean the fish does not hold this. grounded means well-attested, not true.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -114,15 +114,24 @@ def serve_fish(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
             return f"{primer}\n\n---\n\n# This Person's Fish\n\n{pfc}"
         return pfc
 
-    handlers = {
-        "fish_pfc": _warm_boot,
+    handlers = build_handlers(engine, _warm_boot)
+
+    _run_stdio_loop(server_info, tools, handlers)
+
+
+def build_handlers(engine, warm_boot=None) -> dict:
+    """The MCP tool table. Kept separate from the stdio loop so it can be tested without a transport.
+
+    ``fish_taste`` returns ``taste_dict`` as JSON — the same structured answer the HTTP ``/taste`` gives with
+    ``format: "json"`` — so the Claude lane carries ``grounding.band``. Until 2026-10-18 it returned the pretty text,
+    and AGENTS.md told every agent to honor a band this lane never delivered."""
+    return {
+        "fish_pfc": warm_boot or (lambda args: engine.pfc()),
         "fish_eat": lambda args: json.dumps(engine.eat(args.get("text", ""), args.get("source", "session"))),
-        "fish_taste": lambda args: engine.taste(args.get("text", ""), args.get("top", 5)),
+        "fish_taste": lambda args: json.dumps(engine.taste_dict(args.get("text", ""), args.get("top", 5))),
         "fish_match": lambda args: engine.match(args.get("text", ""), args.get("top", 3)),
         "fish_health": lambda args: engine.health(),
     }
-
-    _run_stdio_loop(server_info, tools, handlers)
 
 
 def _run_stdio_loop(server_info: dict, tools: list, handlers: dict):

@@ -130,6 +130,15 @@ or you can read `GET /pfc` on a running HTTP server. Both give you the same
 markdown; the server's advantage is that it stays current as the fish is fed
 and lets you `/taste` and `/eat` as well.
 
+## One writer per fish
+
+A fish's crystal log is append-only and its append is file-locked, but the vector and
+state sidecars beside it are not. **Only one process writes a fish.** If a server is
+already serving it (`linafish http`, `converse`, or `go`), deposit through that server's
+`/eat` — do not start a second engine on the same directory (`linafish serve`, `eat -n`,
+`listen`) while it is up. Two writers do not crash; they quietly leave the sidecars
+disagreeing with the log, which is worse. `linafish doctor` lists what is listening.
+
 ## What you should NOT do
 
 - **Don't treat formations as topic tags.** They are cognitive verb states
@@ -199,6 +208,11 @@ additionally answers `GET /boot`, `GET /fish`, `GET /emerge`, `GET /growth`,
 those (`GET /` on either server lists its live routes). A path the server
 doesn't know returns 404. `/health` and `/pfc` are the two you can always
 rely on.
+
+**MCP (Claude Code, `linafish serve`)** exposes five tools: `fish_pfc`, `fish_eat`,
+`fish_taste`, `fish_match`, `fish_health`. `fish_taste` returns the same JSON as
+`POST /taste` with `"format": "json"`, grounding band included — honor it there too.
+Episodic recall, `meditate` and `afferent` are not on MCP; use the CLI or HTTP for those.
 
 ## Privacy and scope
 
