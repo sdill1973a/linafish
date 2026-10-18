@@ -3,7 +3,8 @@
 What these tests pin: (1) a one-word query finds the crystal that holds the word — the dense key returned zero
 candidates for a full name plus a date against 2,032 crystals holding it; (2) a query with no known term is a loud
 nothing, not a confident wrong list; (3) the engine's taste_sparse keeps taste_dict's schema and extends the index
-with the tail after an eat without any hook; (4) the env route sends taste_dict through it.
+with the tail after an eat without any hook; (4) the env route sends taste_dict through it; (5) the sparse route carries the same grounding band as the
+dense one, marked route=sparse — never "unscored" (2026-10-18).
 """
 import os
 import sys
@@ -54,7 +55,8 @@ def test_engine_taste_sparse_schema_and_tail_growth(monkeypatch):
         assert r["ok"] and r["total_crystals"] == len(e.fish.crystals)
         assert {"id", "text", "source", "ts", "relevance", "keywords"} <= set(r["matches"][0])
         assert "caroline" in r["matches"][0]["text"].lower()
-        assert r["grounding"]["band"] == "unscored"
+        assert r["grounding"]["band"] in ("grounded", "thin", "ungrounded", "thin-recent")
+        assert r["grounding"]["route"] == "sparse" and "gamma" in r["grounding"] or r["grounding"]["band"] != "grounded"
         n_before = e._sparse.n_docs
         e.eat("A brand new sentence about a zeppelin over the harbour at midnight.", source="test")
         r2 = e.taste_sparse("zeppelin harbour", top=1)
@@ -63,7 +65,8 @@ def test_engine_taste_sparse_schema_and_tail_growth(monkeypatch):
         # env route: taste_dict becomes the sparse taste
         monkeypatch.setenv("LINAFISH_TASTE_SPARSE", "on")
         r3 = e.taste_dict("zeppelin harbour", top=1)
-        assert r3["grounding"]["band"] == "unscored"
+        assert r3["grounding"]["route"] == "sparse"
+        assert r3["grounding"]["band"] != "unscored"
         monkeypatch.delenv("LINAFISH_TASTE_SPARSE")
         r4 = e.taste_dict("zeppelin harbour", top=1)
-        assert r4.get("grounding", {}).get("band") != "unscored"
+        assert "route" not in r4.get("grounding", {})          # dense route is unmarked, as before

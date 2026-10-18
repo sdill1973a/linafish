@@ -3097,11 +3097,52 @@ class FishEngine:
             idx.add(c.text or "")
         return idx
 
+    def _grounding_verdict(self, text: str, top_gamma: float) -> dict:
+        """The composition verdict both taste routes attach. Never allowed to break taste: a synthetic result on any
+        failure, not a raised exception. ``top_gamma`` is the top match's whole-query similarity; no match is 0.0, NOT
+        None — passing None made the composition floor skip its own guard, so a query that resonated with NOTHING could
+        still be called ``grounded`` on pair evidence alone (found in the 2.2.0 pre-ship review)."""
+        try:
+            from datetime import datetime, timedelta, timezone
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=72)
+            recent_texts = []
+            for c in reversed(self.fish.crystals):
+                ts = episodic._parse_ts(episodic._crystal_ts(c))
+                if ts is None:
+                    continue
+                if ts < cutoff:
+                    break
+                if c.text:
+                    recent_texts.append(c.text)
+            return grounding.verdict(text, self.fish.vectorizer, recent_texts, gamma=top_gamma)
+        except Exception as e:
+            return {"band": "error", "error": str(e)}
+
+    def _sparse_grounding(self, text: str, ranked) -> dict:
+        """Composition gamma for the sparse route: the dense probe of the query against the top sparse hit's vector.
+        No hit, or a probe with no vector, is gamma 0.0 (zero resonance, the conservative direction)."""
+        top_gamma = 0.0
+        try:
+            if ranked:
+                probe = v3_crystallize(text, self.fish.vectorizer, source="query", vocab=self.fish.vocab)
+                top = self.fish.crystals[ranked[0][0]]
+                vec = top.mi_vector if top.mi_vector else top.resonance
+                if probe and probe.mi_vector and vec:
+                    top_gamma = float(gamma(probe.mi_vector, vec))
+        except Exception:
+            top_gamma = 0.0
+        g = self._grounding_verdict(text, top_gamma)
+        g["route"] = "sparse"
+        return g
+
     def taste_sparse(self, text: str, top: int = 5,
                      no_heat: bool | None = None) -> dict:
         """``taste_dict`` over the sparse key: same schema, same terminal reasons. ``relevance`` is the BM25 score
         scaled by the best hit (1.0 = best), ``match_count`` is the number of crystals sharing a known term.
-        ``grounding.band`` is ``"unscored"`` here — the composition verdict was built on the dense statistics."""
+        ``grounding`` is the same composition verdict as the dense route (pair evidence from the vectorizer, which does
+        not depend on how the hits were ranked), with gamma = the dense similarity of the query probe to the top
+        sparse hit, and ``route: "sparse"`` so a reader can tell which key answered. Until 2026-10-18 this was
+        ``"unscored"`` — the briefing told every agent to honor a band the sparse route did not carry."""
         total = len(self.fish.crystals)
         if not self.fish.crystals:
             return {"ok": False, "reason": "empty_fish", "query_keywords": [], "match_count": 0,
@@ -3124,7 +3165,7 @@ class FishEngine:
         self._record_feedback_hits(top_ids, no_heat=no_heat)
         return {"ok": True, "query_keywords": terms[:8], "match_count": idx.candidates(text),
                 "total_crystals": total, "matches": matches,
-                "grounding": {"band": "unscored", "reason": "sparse key — no composition verdict"}}
+                "grounding": self._sparse_grounding(text, ranked)}
 
     def taste_dict(self, text: str, top: int = 5,
                    no_heat: bool | None = None) -> dict:
@@ -3228,32 +3269,8 @@ class FishEngine:
             "matches": matches,
         }
 
-        # M1 Phase 2 — additive grounding verdict. Never allowed to break
-        # taste: a synthetic result on any failure, not a raised exception.
-        try:
-            from datetime import datetime, timedelta, timezone
-            cutoff = datetime.now(timezone.utc) - timedelta(hours=72)
-            recent_texts = []
-            for c in reversed(self.fish.crystals):
-                ts = episodic._parse_ts(episodic._crystal_ts(c))
-                if ts is None:
-                    continue
-                if ts < cutoff:
-                    break
-                if c.text:
-                    recent_texts.append(c.text)
-            # No match is gamma 0.0, NOT gamma-unknown. Passing None here made
-            # the composition floor skip its own guard (`gamma is not None`), so
-            # a query that resonated with NOTHING could still be called
-            # `grounded` on pair evidence alone — the organ failing in exactly
-            # the direction it was built to fail. Zero resonance is the
-            # strongest evidence against whole-query composition, not the
-            # absence of evidence. (Found in the 2.2.0 pre-ship review.)
-            top_gamma = scores[0][0] if scores else 0.0
-            result["grounding"] = grounding.verdict(
-                text, self.fish.vectorizer, recent_texts, gamma=top_gamma)
-        except Exception as e:
-            result["grounding"] = {"band": "error", "error": str(e)}
+        # M1 Phase 2 — additive grounding verdict (shared with the sparse route, exp/sparse-key 2026-10-18).
+        result["grounding"] = self._grounding_verdict(text, scores[0][0] if scores else 0.0)
 
         return result
 
