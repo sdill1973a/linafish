@@ -58,3 +58,19 @@ def test_repersist_refuses_when_tail_moved():
         log.write_text(before + '{"id": "someone_else_wrote_this"}\n', encoding="utf-8")
         assert e.fish.repersist_tail(1) == 0           # ids at the offset no longer match: untouched
         assert log.read_text(encoding="utf-8").endswith('{"id": "someone_else_wrote_this"}\n')
+
+
+def test_repersist_refuses_an_empty_id():
+    """Olorina's review (2026-10-18): two crystals in her fish carry id "". repersist_tail verifies by id, so an
+    empty id must refuse rather than risk matching the wrong line."""
+    import tempfile
+    from pathlib import Path
+    from linafish.engine import FishEngine
+    with tempfile.TemporaryDirectory() as td:
+        e = FishEngine(state_dir=Path(td), name="emptyid")
+        for i in range(6):
+            e.eat(f"sentence number {i} about rivers and lanterns and memory", source="t")
+        before = open(e.fish.crystal_log_path, encoding="utf-8").read()
+        e.fish.crystals[-1].id = ""
+        assert e.fish.repersist_tail(1) == 0
+        assert open(e.fish.crystal_log_path, encoding="utf-8").read() == before

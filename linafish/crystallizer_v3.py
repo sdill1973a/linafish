@@ -2214,6 +2214,8 @@ class UniversalFish:
         if k <= 0 or k > len(self.crystals):
             return 0
         tail = self.crystals[-k:]
+        if any(not c.id for c in tail):            # an empty id cannot verify a line (Olorina, 2026-10-18: two "" ids in fish/me)
+            return 0
         off = getattr(tail[0], "_log_off", None)
         if off is None:
             return 0
