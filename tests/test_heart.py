@@ -139,5 +139,6 @@ def test_family_dir_tilde_and_absolute_paths(tmp_path):
     )
     hc = HeartConfig(cfg)
     dirs = {m["name"]: str(m["dir"]) for m in hc.family}
-    assert dirs["absolute"].endswith("/abs")
+    # Compare as paths: on Windows str(dir) ends in "\\abs", so endswith("/abs") fails there.
+    assert Path(dirs["absolute"]) == tmp_path / "abs"
     assert "~" not in dirs["home"]
