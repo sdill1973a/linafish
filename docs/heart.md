@@ -16,6 +16,8 @@ cat > ~/my-fish/heart.toml <<'TOML'
 [family]
 journal = { dir = "journal", weight = 1.3 }   # your densest band
 notes   = { dir = "notes",   weight = 1.0 }
+# Windows: write dir paths with forward slashes ("C:/Users/you/notes") or in single quotes ('C:\Users\you\notes').
+# A backslash inside double quotes is a TOML escape, and "\U" is invalid, so that family entry silently never loads.
 
 [gate]
 min_prompt_chars = 20      # trivial turns pay nothing

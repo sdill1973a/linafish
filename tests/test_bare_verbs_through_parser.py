@@ -24,7 +24,10 @@ TEXTS = [
 
 
 def _cli(home, *argv):
-    env = {**os.environ, "HOME": str(home), "PYTHONPATH": str(ROOT)}
+    # HOME and USERPROFILE both: Path.home() reads USERPROFILE on Windows, and with only HOME set the
+    # fixture ran `go`/`check` against a tester's REAL ~/.linafish (THX, 2026-10-18: his my-writing.qlp
+    # was overwritten).
+    env = {**os.environ, "HOME": str(home), "USERPROFILE": str(home), "PYTHONPATH": str(ROOT)}
     env.pop("LINAFISH_PROTECTED_VOCAB", None)
     return subprocess.run([sys.executable, "-m", "linafish", *argv], env=env, capture_output=True,
                           text=True, timeout=300)
