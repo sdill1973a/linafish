@@ -329,17 +329,16 @@ class FishListener:
         def _lines():
             # A pipe carries bytes in whatever encoding its writer chose; the
             # locale decode (cp1252 on Windows) mangled UTF-8 from bash, git
-            # and most tools. Decode per line: UTF-8 first, cp1252 fallback.
+            # and most tools. Decode per line: UTF-8 first; cp1252 only when
+            # the line holds no UTF-8 at all (not on any bad byte — see
+            # ingest.decode_utf8_or_cp1252).
+            from .ingest import decode_utf8_or_cp1252
             raw = getattr(sys.stdin, "buffer", None)
             if raw is None or sys.stdin.isatty():
                 yield from sys.stdin
                 return
             for b in raw:
-                try:
-                    s = b.decode("utf-8")
-                except UnicodeDecodeError:
-                    s = b.decode("cp1252", errors="replace")
-                yield s.lstrip("﻿").replace("\r\n", "\n")
+                yield decode_utf8_or_cp1252(b).lstrip("﻿").replace("\r\n", "\n")
 
         buffer = []
         try:

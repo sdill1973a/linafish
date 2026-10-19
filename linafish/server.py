@@ -137,12 +137,17 @@ def _run_stdio_loop(server_info: dict, tools: list, handlers: dict):
         # MCP stdio is UTF-8 by spec. sys.stdin decodes with the locale
         # encoding — cp1252 on Windows — which turned non-ASCII text from the
         # client into mojibake, so read bytes and decode them ourselves.
-        line = sys.stdin.buffer.readline()
+        # A text-only replacement stdin (tests, some embedders) has no .buffer —
+        # listener.py guards the same way.
+        _buf = getattr(sys.stdin, "buffer", None)
+        line = _buf.readline() if _buf is not None else sys.stdin.readline()
         if not line:
             break
+        if isinstance(line, bytes):
+            line = line.decode("utf-8", errors="replace")
         # Windows PowerShell 5.1 prefixes piped stdin with a UTF-8 BOM; without
         # this the first message (initialize) failed to parse and was dropped.
-        line = line.decode("utf-8", errors="replace").lstrip("﻿").strip()
+        line = line.lstrip("﻿").strip()
         if not line:
             continue
 
