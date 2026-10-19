@@ -2200,7 +2200,45 @@ class UniversalFish:
         if crystal_dir:
             os.makedirs(crystal_dir, exist_ok=True)
         with open(self.crystal_log_path, 'a') as f:
+            crystal._log_off = f.tell()          # where this crystal's line starts — repersist_tail() needs it
             f.write(json.dumps(crystal.to_dict(), default=str) + '\n')
+
+    def repersist_tail(self, k: int) -> int:
+        """Rewrite the last ``k`` crystals' lines in the log from memory, AFTER eat() has filed them into a
+        formation and coupled them (exp/persist-after-eat, 2026-10-17: formation + couplings were computed after
+        the append and nothing ever wrote them — 0 of ~13,900 crystals on disk since 08-16, and every cold load
+        recomputed the whole tail). Self-verifying: the lines from the first tail crystal's recorded offset must
+        parse to exactly those ids, or nothing is touched. Returns the number of lines rewritten. Couplings that
+        a new crystal adds to OLDER crystals (beyond the tail) still reach disk only on a full rewrite."""
+        import json
+        if k <= 0 or k > len(self.crystals):
+            return 0
+        tail = self.crystals[-k:]
+        if any(not c.id for c in tail):            # an empty id cannot verify a line (Olorina, 2026-10-18: two "" ids in fish/me)
+            return 0
+        off = getattr(tail[0], "_log_off", None)
+        if off is None:
+            return 0
+        try:
+            with open(self.crystal_log_path, 'r+', encoding='utf-8') as f:
+                f.seek(off)
+                lines = f.read().splitlines()
+                ids = []
+                for line in lines:
+                    try:
+                        ids.append(json.loads(line).get("id"))
+                    except Exception:
+                        return 0
+                if ids != [c.id for c in tail]:
+                    return 0
+                f.seek(off)
+                f.truncate()
+                for c in tail:
+                    c._log_off = f.tell()
+                    f.write(json.dumps(c.to_dict(), default=str) + '\n')
+            return k
+        except OSError:
+            return 0
 
     def _rewrite_crystal_log(self) -> int:
         """Rewrite the append-only crystal log from memory — ATOMICALLY.
