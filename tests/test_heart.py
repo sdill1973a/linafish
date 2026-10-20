@@ -132,10 +132,13 @@ def test_family_dir_tilde_and_absolute_paths(tmp_path):
     from linafish.heart import HeartConfig
     cfg = tmp_path / "heart.toml"
     cfg.write_text(
-        f'[family]\nabsolute = {{ dir = "{tmp_path}/abs" }}\n'
+        # as_posix(): a Windows tmp_path has backslashes, and "\\U" inside a TOML basic string is an invalid
+        # escape, so the entry never loaded (THX, 2026-10-18). Also a real user gotcha for Windows heart.toml.
+        f'[family]\nabsolute = {{ dir = "{tmp_path.as_posix()}/abs" }}\n'
         'home = { dir = "~/somewhere" }\n'
     )
     hc = HeartConfig(cfg)
     dirs = {m["name"]: str(m["dir"]) for m in hc.family}
-    assert dirs["absolute"].endswith("/abs")
+    # Compare as paths: on Windows str(dir) ends in "\\abs", so endswith("/abs") fails there.
+    assert Path(dirs["absolute"]) == tmp_path / "abs"
     assert "~" not in dirs["home"]
