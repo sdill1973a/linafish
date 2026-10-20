@@ -1,6 +1,6 @@
 # Testing
 
-617 tests at 2.3.1. A full run takes about 40 seconds on a desktop machine.
+644 tests at 2.4.0. A full run takes about 40 seconds on a desktop machine.
 Counts change as tests are added; regenerate them instead of trusting this page:
 
 ```bash

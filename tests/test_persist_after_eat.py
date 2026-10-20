@@ -74,3 +74,50 @@ def test_repersist_refuses_an_empty_id():
         e.fish.crystals[-1].id = ""
         assert e.fish.repersist_tail(1) == 0
         assert open(e.fish.crystal_log_path, encoding="utf-8").read() == before
+
+
+def test_repersist_serialize_failure_leaves_the_tail_on_disk():
+    """Release check 2026-10-20 (Q asked what a failure mid-rewrite does): a serialize error AFTER truncate()
+    deleted the just-eaten crystal from disk. Now the lines are built first; a failure touches nothing."""
+    with tempfile.TemporaryDirectory() as td:
+        e = FishEngine(state_dir=Path(td), name="persist-boom")
+        for t in TEXTS[:12]:
+            e.eat(t, source="test")
+        before = open(e.fish.crystal_log_path, encoding="utf-8").read()
+        tail = e.fish.crystals[-1]
+        cls = type(tail)
+        real = cls.to_dict
+
+        def boom(self, *a, **k):
+            if self is tail:
+                raise ValueError("simulated serialize failure")
+            return real(self, *a, **k)
+
+        cls.to_dict = boom
+        try:
+            assert e.fish.repersist_tail(1) == 0
+        finally:
+            cls.to_dict = real
+        assert open(e.fish.crystal_log_path, encoding="utf-8").read() == before
+        # and the happy path still rewrites, with offsets that let the next repersist verify
+        assert e.fish.repersist_tail(1) == 1
+        assert e.fish.repersist_tail(1) == 1
+        assert [d["id"] for d in _disk(Path(td))][-1] == tail.id
+
+
+def test_eat_after_a_torn_tail_line_survives_reload():
+    """Release check 2026-10-20: a crash left the log ending mid-line; the next eat was appended onto that torn
+    line and lost on reload (2.3.1 too). The append now closes the torn line first."""
+    with tempfile.TemporaryDirectory() as td:
+        e = FishEngine(state_dir=Path(td), name="torn")
+        for t in TEXTS[:10]:
+            e.eat(t, source="test")
+        n = len(e.fish.crystals)
+        with open(e.fish.crystal_log_path, "a", encoding="utf-8") as f:
+            f.write('{"id": "c3_torn", "text": "half a li')
+        e2 = FishEngine(state_dir=Path(td), name="torn")
+        assert len(e2.fish.crystals) == n
+        e2.eat("after a torn tail the next crystal still lands and survives a reload", source="test")
+        e3 = FishEngine(state_dir=Path(td), name="torn")
+        assert len(e3.fish.crystals) == n + 1
+        assert any("survives a reload" in (c.text or "") for c in e3.fish.crystals)
