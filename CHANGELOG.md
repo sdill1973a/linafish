@@ -12,6 +12,57 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-10-20
+
+A faster fish, a fish that keeps what it learned at eat, and Windows support that reads
+your writing in whatever encoding it was saved in. Two new retrieval and storage modes
+ship off by default; turn them on with an environment variable.
+
+**What changes by default when you upgrade:** taste and eat are faster (numpy, when it
+is installed), vectors take less memory, and each eat now writes the crystal's formation
+and couplings to disk instead of recomputing them on every cold load. Existing fish load
+as they are; no migration step.
+
+### Added
+- **Sparse-key taste (opt-in): `LINAFISH_TASTE_SPARSE=on`.** A BM25 index over each
+  crystal's own terms (`linafish/sparse.py`, `FishEngine.taste_sparse`). On two live fish
+  (35K and 14K crystals) the dense vector ranked by vector length more than by content;
+  the term index answered the same test queries at 6–10 of 10, 1–139 ms per answer. The
+  sparse route carries the same grounding band as the dense one. The dense vector is
+  untouched and still drives eating.
+- **Light vectors (opt-in): `LINAFISH_LIGHT_VECTORS=on`.** Vectors live once in a
+  memory-mapped float32 sidecar beside the crystal log. Each write is a whole new sidecar
+  swapped in by `os.replace`, so a reader never sees a torn page; if the swap fails
+  (Windows refuses to replace a mapped file; a full disk), covered crystals fall back to
+  the old sidecar or the log and never come back empty. Formations keep a digest of
+  their text instead of a second copy.
+
+### Changed
+- **Persist after eat.** Formation and couplings were computed after the crystal was
+  appended and never written, so every cold load recomputed them. `repersist_tail`
+  now rewrites the just-eaten lines once they exist. It verifies by id and refuses when
+  the tail moved or an id is empty, and it serializes every line before it touches the
+  file, so a failure leaves the log as it was.
+- **Faster scoring.** `gamma_scan` scores the whole fish in one numpy pass for taste,
+  match and pivot (same match set and top 10 on a real fish, 5–6x faster). `gamma` and
+  `coupling_angle` use numpy for long vectors (eats ~9x faster on a 13.8K-crystal fish).
+  Without numpy, or under 64 vectors, the plain loop runs as before.
+- **float32 in memory.** `mi_vector` and resonance load as `array('f')` straight from the
+  stored float32 bytes: identical values, about an eighth of the memory.
+
+### Fixed
+- **An eat after a crash no longer disappears.** If a crash left the crystal log ending
+  mid-line, the next eat was appended onto that torn line and both were lost on reload
+  (2.3.1 did this too). The append now closes the torn line first; it stays one
+  unreadable line, which the loader skips, and the new crystal is kept.
+- **Windows: writing in any common encoding.** Files are read as UTF-8, UTF-16 or UTF-8
+  with a BOM, and fall back to cp1252 per line rather than for the whole file, so one
+  stray byte no longer turns a whole document into replacement characters. `read_jsonl`
+  and `read_csv` stream again. MCP stdio is UTF-8; `server.py` guards `sys.stdin.buffer`.
+  A PowerShell getting-started guide. (Reviewed by Olorina.)
+- **Tests are Windows-safe.** The CLI tests set `USERPROFILE` as well as `HOME`, so the
+  suite never writes into a tester's real `~/.linafish`.
+
 ## [2.3.1] - 2026-09-24
 
 A small release: two feeders can now refuse repeats, and a vocabulary guarantee built

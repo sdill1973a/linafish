@@ -2199,9 +2199,24 @@ class UniversalFish:
         crystal_dir = os.path.dirname(self.crystal_log_path)
         if crystal_dir:
             os.makedirs(crystal_dir, exist_ok=True)
+        line = json.dumps(crystal.to_dict(), default=str) + '\n'
+        # A crash mid-write can leave the log without its final newline; appending straight onto that torn
+        # line glued the next crystal to it and both were lost on reload (release check 2026-10-20, also in
+        # 2.3.1). Close the torn line first: it stays one unreadable line, and the new crystal starts clean.
+        torn = False
+        try:
+            with open(self.crystal_log_path, 'rb') as r:
+                r.seek(0, os.SEEK_END)
+                if r.tell():
+                    r.seek(-1, os.SEEK_END)
+                    torn = r.read(1) != b'\n'
+        except FileNotFoundError:
+            pass
         with open(self.crystal_log_path, 'a') as f:
+            if torn:
+                f.write('\n')
             crystal._log_off = f.tell()          # where this crystal's line starts — repersist_tail() needs it
-            f.write(json.dumps(crystal.to_dict(), default=str) + '\n')
+            f.write(line)
 
     def repersist_tail(self, k: int) -> int:
         """Rewrite the last ``k`` crystals' lines in the log from memory, AFTER eat() has filed them into a
@@ -2219,6 +2234,12 @@ class UniversalFish:
         off = getattr(tail[0], "_log_off", None)
         if off is None:
             return 0
+        # Serialize BEFORE the file is touched: a failure after truncate() deleted the just-eaten crystals
+        # from disk (release check 2026-10-20, Q's question; same lesson as _rewrite_crystal_log).
+        try:
+            out = [json.dumps(c.to_dict(), default=str) + '\n' for c in tail]
+        except Exception:
+            return 0
         try:
             with open(self.crystal_log_path, 'r+', encoding='utf-8') as f:
                 f.seek(off)
@@ -2231,11 +2252,16 @@ class UniversalFish:
                         return 0
                 if ids != [c.id for c in tail]:
                     return 0
+                offs, pos = [], off
+                for line in out:
+                    offs.append(pos)
+                    pos += len(line.encode('utf-8'))
                 f.seek(off)
                 f.truncate()
-                for c in tail:
-                    c._log_off = f.tell()
-                    f.write(json.dumps(c.to_dict(), default=str) + '\n')
+                f.write(''.join(out))
+                f.flush()
+            for c, o in zip(tail, offs):
+                c._log_off = o
             return k
         except OSError:
             return 0
