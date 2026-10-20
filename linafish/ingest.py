@@ -32,10 +32,108 @@ know where meaning lives. Headers, paragraphs, and topic shifts do.
 from __future__ import annotations
 
 
+import codecs
 import re
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
+
+
+def decode_utf8_or_cp1252(raw: bytes) -> str:
+    """Strict UTF-8 first; cp1252 only when the bytes don't look like UTF-8 at all.
+
+    The first version fell back to cp1252 on ANY decode error, which made it
+    all-or-nothing: one stray byte in a UTF-8 file turned every curly quote,
+    dash and accent in it into mojibake (Olorina's review of #104, 2026-10-18:
+    `didn't land — café` became `didnâ€™t land â€” cafÃ©`). Worse on Linux —
+    `listen_folder` and `watch` read files that are still being appended to,
+    so a read that lands mid-write cuts a multibyte character, and that whole
+    read became cp1252. The house's fish eat growing logs exactly this way.
+
+    So, on a strict-UTF-8 failure:
+    - a sequence cut off at the END of the bytes (reason "unexpected end of
+      data") is a truncated write, not a different encoding — keep everything
+      before the cut. One ambiguity: a single trailing cp1252 byte such as the
+      é of a short "café" is byte-identical to a UTF-8 lead byte at EOF. The
+      tie-break is the rest of the file — if the prefix already holds real
+      UTF-8, or the cut tail is two or more bytes (a lead byte plus its
+      continuation, which cp1252 text almost never ends in), it is a cut;
+      a lone high byte after pure ASCII is cp1252;
+    - if the text decodes with real multibyte UTF-8 characters elsewhere, it
+      IS UTF-8 with a bad byte — keep it, one U+FFFD where the byte was;
+    - only when there is no genuine UTF-8 in it at all is it cp1252.
+    """
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError as e:
+        if e.reason == "unexpected end of data":
+            head = raw[:e.start].decode("utf-8", errors="replace")
+            if len(raw) - e.start >= 2 or any(ord(c) > 0x7F for c in head):
+                return head
+            return raw.decode("cp1252", errors="replace")
+        s = raw.decode("utf-8", errors="replace")
+        if any(ord(c) > 0x7F and c != "\ufffd" for c in s):
+            return s
+        return raw.decode("cp1252", errors="replace")
+
+
+def decode_user_bytes(raw: bytes) -> str:
+    """Decode the bytes of someone's writing: honour a BOM, then UTF-8, then cp1252."""
+    if raw.startswith(codecs.BOM_UTF8):
+        return raw[len(codecs.BOM_UTF8):].decode("utf-8", errors="replace")
+    if raw.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        return raw.decode("utf-16", errors="replace")
+    return decode_utf8_or_cp1252(raw)
+
+
+def read_user_text(path: Path) -> str:
+    """Decode a file of someone's writing without mangling it.
+
+    `read_text(encoding="utf-8", errors="replace")` was the reader everywhere,
+    and on Windows it quietly damaged writing before the fish ever saw it:
+
+    - Notepad, Windows PowerShell 5.1 (`echo ... > file`) and many export
+      tools write a UTF-8 BOM. It survived into every crystal as U+FEFF and
+      into the portrait's quoted lines.
+    - Notepad's "Unicode", PowerShell 5.1's default redirection and Word's
+      "Unicode text" write UTF-16. Decoded as UTF-8 that is NUL-interleaved
+      noise — every character becomes two, and the fish eats garbage.
+    - Older Windows text (cp1252) turned its curly quotes, dashes and
+      accented letters into U+FFFD.
+
+    So: honour a BOM if there is one, try strict UTF-8, and fall back to
+    cp1252 only when the bytes hold no UTF-8 at all (see
+    `decode_utf8_or_cp1252` for why the fallback is not all-or-nothing).
+    UTF-16 WITHOUT a BOM is not detected — its bytes are valid UTF-8 and
+    decode as NUL-interleaved text; Windows tools almost always write the BOM.
+    """
+    return decode_user_bytes(Path(path).read_bytes())
+
+
+def iter_user_lines(path: Path):
+    """Stream a file of someone's writing line by line, decoded like `read_user_text`.
+
+    `read_jsonl` and `read_csv` streamed before this branch; reading the whole
+    file to sniff its encoding would have made them load large corpora
+    (Discord queues, session transcripts) into memory at once, on a box that
+    has been OOM-killed before. Sniff the BOM from the first bytes, then
+    stream: a BOM'd file through a text reader in its declared encoding, any
+    other file byte-line by byte-line through the UTF-8/cp1252 decision.
+    """
+    path = Path(path)
+    with path.open("rb") as fb:
+        head = fb.read(4)
+    if head.startswith(codecs.BOM_UTF8):
+        with path.open("r", encoding="utf-8-sig", errors="replace", newline="") as f:
+            yield from f
+        return
+    if head.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        with path.open("r", encoding="utf-16", errors="replace", newline="") as f:
+            yield from f
+        return
+    with path.open("rb") as fb:
+        for b in fb:
+            yield decode_utf8_or_cp1252(b)
 
 
 @dataclass
@@ -63,7 +161,7 @@ def read_markdown(path: Path) -> list[Chunk]:
     The bound is the guarantee. The author's structure is the preference, and
     the preference has to actually get consulted.
     """
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = read_user_text(path)
 
     # Decide on the header check itself, not on whether the loop below
     # happened to produce output — that was the unreachable-branch bug.
@@ -116,7 +214,7 @@ def read_markdown(path: Path) -> list[Chunk]:
 
 def read_text(path: Path) -> list[Chunk]:
     """Read a plain text file, chunk by paragraphs."""
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = read_user_text(path)
     return chunk_by_paragraphs(text, str(path))
 
 
@@ -230,7 +328,7 @@ def read_docx(path: Path) -> list[Chunk]:
 def read_json(path: Path) -> list[Chunk]:
     """Read a JSON file — tool definitions, configs, schemas."""
     import json
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = read_user_text(path)
     try:
         data = json.loads(text)
         # Pretty-print for readability
@@ -250,24 +348,23 @@ def read_jsonl(path: Path) -> list[Chunk]:
     """Read line-delimited JSON — one chunk per record."""
     import json
     chunks = []
-    with path.open("r", encoding="utf-8", errors="replace") as f:
-        for i, line in enumerate(f):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                data = json.loads(line)
-                text = json.dumps(data, indent=2)
-            except json.JSONDecodeError:
-                text = line
-            if len(text) > 20:
-                chunks.append(Chunk(
-                    text=text,
-                    source=str(path),
-                    section=f"record_{i}",
-                    chunk_type="data",
-                    position=i,
-                ))
+    for i, line in enumerate(iter_user_lines(path)):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            data = json.loads(line)
+            text = json.dumps(data, indent=2)
+        except json.JSONDecodeError:
+            text = line
+        if len(text) > 20:
+            chunks.append(Chunk(
+                text=text,
+                source=str(path),
+                section=f"record_{i}",
+                chunk_type="data",
+                position=i,
+            ))
     return chunks
 
 
@@ -312,7 +409,7 @@ def read_html(path: Path) -> list[Chunk]:
         def text(self) -> str:
             return "".join(self.parts)
 
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = read_user_text(path)
     parser = _Stripper()
     try:
         parser.feed(text)
@@ -329,11 +426,10 @@ def read_csv(path: Path) -> list[Chunk]:
     chunks = []
     sep = "\t" if path.suffix.lower() == ".tsv" else ","
     try:
-        with path.open("r", encoding="utf-8", errors="replace", newline="") as f:
-            reader = csv.reader(f, delimiter=sep)
-            rows = list(reader)
+        reader = csv.reader(iter_user_lines(path), delimiter=sep)
+        rows = list(reader)
     except Exception:
-        return [Chunk(text=path.read_text(encoding="utf-8", errors="replace"),
+        return [Chunk(text=read_user_text(path),
                       source=str(path), chunk_type="data")]
     if not rows:
         return []
@@ -358,7 +454,7 @@ def read_csv(path: Path) -> list[Chunk]:
 
 def read_yaml(path: Path) -> list[Chunk]:
     """Read YAML via pyyaml if installed, else treat as text."""
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = read_user_text(path)
     try:
         import yaml
         data = yaml.safe_load(text)
@@ -403,7 +499,7 @@ def read_pptx(path: Path) -> list[Chunk]:
 
 def read_rtf(path: Path) -> list[Chunk]:
     """Read RTF. Optional dep: striprtf, else regex strip."""
-    raw = path.read_text(encoding="utf-8", errors="replace")
+    raw = read_user_text(path)
     try:
         from striprtf.striprtf import rtf_to_text
         text = rtf_to_text(raw)
@@ -418,7 +514,7 @@ def read_rtf(path: Path) -> list[Chunk]:
 
 def read_xml(path: Path) -> list[Chunk]:
     """Read XML, strip tags."""
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = read_user_text(path)
     cleaned = re.sub(r"<[^>]+>", " ", text)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return chunk_by_paragraphs(cleaned, str(path))
@@ -426,7 +522,7 @@ def read_xml(path: Path) -> list[Chunk]:
 
 def read_python(path: Path) -> list[Chunk]:
     """Read a Python file, chunk by class/function definitions."""
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = read_user_text(path)
     chunks = []
     current_block = []
     current_name = path.name
