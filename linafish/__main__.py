@@ -126,14 +126,14 @@ def cmd_eat(args):
     # explicit, so every `eat` left a duplicate render wherever it was run — including
     # three fish in this repo's root on every test run. With an explicit state dir the
     # persistent copy IS the output; -o still writes wherever you point it.
+    # 2026-11-07: the default state dir no longer gets a cwd copy either. A new-user
+    # audit (Windows + Linux) found every `eat` dropping `<name>.fish.md` wherever it
+    # was run, beside the real fish in ~/.linafish. The persistent copy IS the output.
     if args.output:
         output = Path(args.output)
         output.write_text(codebook, encoding="utf-8")
-    elif explicit_root:
-        output = engine.fish_file
     else:
-        output = Path(f"{name}.fish.md")
-        output.write_text(codebook, encoding="utf-8")
+        output = engine.fish_file
     print(f"\nFish: {output} ({len(codebook)} chars, "
           f"{result.get('formations', 0)} formations)")
     print(f"Persisted: {engine.fish_file}")
