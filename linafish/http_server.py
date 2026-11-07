@@ -593,6 +593,40 @@ class _ExclusiveHTTPServer(ThreadingHTTPServer):
     allow_reuse_address = os.name != "nt"
 
 
+def _explain_busy_port(host: str, port: int, name: str, timeout: float = 3.0) -> str:
+    """Say what actually holds the port, instead of assuming it is this fish.
+
+    2026-11-07: a busy :8900 used to read "already serving this fish" even when the
+    holder was a different fish (THX, Windows audit). Probe /pfc, whose first line is
+    "# LiNafish: <name>"; a loading daemon answers 503. Best effort and read-only: any
+    failure falls back to a neutral sentence. The refusal itself never changes.
+    """
+    import urllib.error
+    import urllib.request
+    probe_host = "127.0.0.1" if host in ("0.0.0.0", "", "::") else host
+    try:
+        with urllib.request.urlopen(f"http://{probe_host}:{port}/pfc", timeout=timeout) as r:
+            head = r.read(300).decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as he:
+        if he.code == 503:
+            return (f"A linafish daemon is still loading on this port. Wait for it, or "
+                    f"use -p PORT for '{name}'. Refusing to start a second writer.")
+        head = ""
+    except Exception:
+        return (f"Something else holds this port and did not answer as a linafish fish "
+                f"(not a linafish /pfc). Use -p PORT for '{name}'.")
+    first = head.lstrip().splitlines()[0] if head.strip() else ""
+    if first.startswith("# LiNafish:"):
+        holder = first.split(":", 1)[1].strip()
+        if holder == name:
+            return (f"linafish is already serving '{name}' on this port. "
+                    f"Refusing to start a second writer.")
+        return (f"This port is serving a different fish, '{holder}'. "
+                f"Use -p PORT to serve '{name}' alongside it.")
+    return (f"Something else holds this port (not a linafish fish). "
+            f"Use -p PORT for '{name}'.")
+
+
 def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = None,
                name: str = "linafish", port: int = 8900,
                vocab_path: Optional[Path] = None,
@@ -640,8 +674,7 @@ def serve_http(feed_path: Optional[Path] = None, state_dir: Optional[Path] = Non
         server = _ExclusiveHTTPServer((resolved_host, port), _NotReadyHandler)
     except OSError as e:
         print(f"linafish http: cannot bind {resolved_host}:{port} — {e}\n"
-              f"  Another daemon is almost certainly already serving this "
-              f"fish. Refusing to start a second writer.", file=sys.stderr)
+              f"  {_explain_busy_port(resolved_host, port, name)}", file=sys.stderr)
         raise SystemExit(1)
 
     # Serve 503s immediately so the port never lies in either direction:
