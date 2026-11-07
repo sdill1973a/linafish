@@ -2038,6 +2038,36 @@ def _detect_install_mode():
     return False, None, str(pkg_dir)
 
 
+def _daemon_serves_dir(host: str, port: int, state_dir: Path):
+    """-> (name, ours) for a linafish daemon on host:port, or None if it can't be identified.
+
+    2026-11-07: doctor counted any daemon on 8900-8902 as the reader's (Anchor: from a
+    fresh HOME it reported another user's converse as yours). /health names the fish_file;
+    ours means that file lives in this state dir. /health can hang on a very large fish, so
+    fall back to /pfc's "# LiNafish: <name>" line plus <state_dir>/<name>.fish.md existing.
+    """
+    import urllib.request
+    sd = Path(state_dir).resolve()
+    try:
+        with urllib.request.urlopen(f"http://{host}:{port}/health", timeout=2) as r:
+            info = json.loads(r.read(65536).decode("utf-8", errors="replace"))
+        fish_file = Path(info.get("fish_file", ""))
+        if str(fish_file):
+            name = info.get("name") or fish_file.name.replace(".fish.md", "")
+            return name, fish_file.parent.resolve() == sd
+    except Exception:
+        pass
+    try:
+        with urllib.request.urlopen(f"http://{host}:{port}/pfc", timeout=3) as r:
+            first = r.read(300).decode("utf-8", errors="replace").lstrip().splitlines()[0]
+        if first.startswith("# LiNafish:"):
+            name = first.split(":", 1)[1].strip()
+            return name, (sd / f"{name}.fish.md").exists()
+    except Exception:
+        pass
+    return None
+
+
 def _assess_modes(state_dir=None) -> dict:
     """Tell the caller which 'legs' of the linafish system are live.
 
@@ -2078,9 +2108,11 @@ def _assess_modes(state_dir=None) -> dict:
             ],
         }
 
-    # Leg 2: AI-facing — probe local servers
-    servers = {}
+    # Leg 2: AI-facing — probe local servers. Only daemons serving THIS state dir's
+    # fish count (2026-11-07); others are named as not yours, never claimed.
+    servers, foreign = {}, []
     for port in (8900, 8901, 8902):
+        kind = None
         try:
             req = urllib.request.Request(f"http://127.0.0.1:{port}/")
             with urllib.request.urlopen(req, timeout=1.0) as resp:
@@ -2088,14 +2120,21 @@ def _assess_modes(state_dir=None) -> dict:
             try:
                 data = json.loads(body)
                 if isinstance(data, dict) and "service" in data:
-                    servers[port] = "converse"
-                    continue
+                    kind = "converse"
             except json.JSONDecodeError:
                 pass
-            if "LiNafish" in body:
-                servers[port] = "http"
+            if kind is None and "LiNafish" in body:
+                kind = "http"
         except Exception:
             continue
+        if kind is None:
+            continue
+        ident = _daemon_serves_dir("127.0.0.1", port, sd)
+        if ident and ident[1]:
+            servers[port] = kind
+        else:
+            who = f"'{ident[0]}'" if ident else "an unidentified fish"
+            foreign.append(f":{port} serves {who}, not a fish in {sd}")
 
     if servers:
         ai_has = [f"{kind} on :{port}" for port, kind in sorted(servers.items())]
@@ -2105,10 +2144,10 @@ def _assess_modes(state_dir=None) -> dict:
             "status": "missing",
             "has": [],
             "needs": [
-                "No server on 8900/8901/8902. Run `linafish http -n <fish>` "
+                "No server for this state dir on 8900/8901/8902. Run `linafish http -n <fish>` "
                 "(AI-facing) or `linafish converse --mind <name>` "
                 "(federation-facing).",
-            ],
+            ] + [f"(Port in use by another fish: {f})" for f in foreign],
         }
 
     # Leg 3: growing — has the fish been written to recently?
@@ -2525,13 +2564,28 @@ def cmd_doctor(args):
     # -- Live daemons --
     print("Live daemons on default ports:")
     import socket
+    import urllib.request
+    my_dir = (Path(args.state_dir) if getattr(args, "state_dir", None)
+              else Path.home() / ".linafish").resolve()
+
     def _probe(host, port, label):
+        # 2026-11-07: a listening port is not "your" daemon. From a fresh HOME, doctor
+        # printed [+] for whatever held :8901 (another user's or state dir's fish). A live
+        # daemon's /health names its fish_file; only a fish in this state dir counts.
         try:
             s = socket.create_connection((host, port), timeout=0.3)
             s.close()
-            return f"  [+] {label} at {host}:{port}"
         except Exception:
             return f"  [ ] {label} at {host}:{port} (not listening)"
+        ident = _daemon_serves_dir(host, port, my_dir)
+        if ident is None:
+            return (f"  [?] {label} at {host}:{port} (something is listening; "
+                    f"could not confirm it serves this state dir)")
+        name, ours = ident
+        if ours:
+            return f"  [+] {label} at {host}:{port} serving your fish '{name}'"
+        return (f"  [-] {label} at {host}:{port} serving '{name}' "
+                f"(not yours: another state dir)")
     print(_probe("127.0.0.1", 8901, "converse"))
     print(_probe("127.0.0.1", 8902, "converse (me fish)"))
     print(_probe("127.0.0.1", 8900, "http server / room fish"))
