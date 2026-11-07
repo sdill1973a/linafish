@@ -145,8 +145,6 @@ Point `go` at your writing. Journals, emails, notes, code, docs — anything you
 - **`--state-dir <dir>`**: fish live in `~/.linafish/` by default. Fish in one state directory share one vectorizer, so if you keep several unrelated fish, give each its own `--state-dir` and pass it to every command for that fish. See [Getting Started](docs/getting-started.md#one-fish-per---state-dir).
 - **`http -n my-writing`** serves the fish you built at `http://127.0.0.1:8900`. Don't use `http --feed ~/my-writing` for this — `--feed` builds a second fish (named `linafish` unless you pass `-n`).
 
-`eat` without `--state-dir` also writes a copy of the portrait, `<name>.fish.md`, to the directory you run it from.
-
 ## Asking the fish things
 
 Once you have a fish, `go` isn't the only verb:
