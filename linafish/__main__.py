@@ -1333,6 +1333,12 @@ def cmd_soul(args):
         print(f"  Soul file was not written to {soul_path}.")
 
 
+# Entries `check` wants before it claims to know you. One number for the verdict and the
+# advice: before 2026-11-07 it said "I know you." on formation count alone (16 entries,
+# 10 patterns) while its own advice below said it needed about 30 to see clearly.
+MATERIAL_BAR = 30
+
+
 def cmd_check(args):
     """How's your fish doing? Quick health + what to do next."""
     engine = _resolve_engine(args)
@@ -1364,6 +1370,9 @@ def cmd_check(args):
     elif formations <= 5:
         print("  I'm growing. I see a few patterns in how you think.")
         print("  Keep feeding me and the portrait will deepen.")
+    elif crystals < MATERIAL_BAR:
+        print(f"  A first sketch. I see {formations} patterns, but from {crystals} entries")
+        print("  treat them as a guess. About 30 entries and the portrait sharpens.")
     else:
         print("  I know you.")
         print(f"  {formations} patterns found in how you think.")
@@ -1383,8 +1392,8 @@ def cmd_check(args):
 
     # Suggestions
     print("  What to do next:")
-    if crystals < 30:
-        print("    Feed me more writing — I need about 30 entries to see clearly")
+    if crystals < MATERIAL_BAR:
+        print(f"    Feed me more writing — I need about {MATERIAL_BAR} entries to see clearly")
     else:
         print(f"    Paste {engine.fish_file} into your AI")
         print("    They'll respond as someone who knows how you think")
