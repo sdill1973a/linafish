@@ -27,6 +27,7 @@ import os
 import signal
 import socket
 import sys
+import threading
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -504,6 +505,8 @@ def serve_converse(
     token: str = None,
     expose_full_sources: Optional[bool] = None,
     dedupe: bool = False,
+    save_state_every_n_eats: int = 200,
+    flush_interval_secs: float = 30.0,
 ):
     """Start the converse server.
 
@@ -554,17 +557,33 @@ def serve_converse(
     # 2026-05-02: pure git_autocommit=False stranded daemon history because
     # daemons never call session_end). SIGTERM/SIGINT handler flushes
     # uncommitted eats on graceful shutdown.
+    #
+    # Eat-latency fix, ported from http_server.py (runbook
+    # fish_engine_eat_latency_root_fix_2026-06-20). That fix gated the O(N)
+    # full _save_state behind save_state_every_n_eats and drove it off the
+    # request path — but only serve_http got it. Converse kept the engine
+    # default of 1, so EVERY /eat re-serialized the whole corpus into fish.md:
+    # measured 2026-10-04 on a 21K-crystal me-fish, 13.1s and 14.6s per /eat,
+    # with fish.md rewritten 1s after each crystal append. Crystals stay durable
+    # per-eat in the append-only JSONL; only the derived fish.md is batched.
     engine = FishEngine(state_dir=state_dir, name=name, commit_every_n_eats=100,
-                        dedupe=dedupe)
+                        dedupe=dedupe,
+                        save_state_every_n_eats=save_state_every_n_eats)
+
+    _stop_flush = threading.Event()
 
     def _flush_on_shutdown(signum, frame):
         # Reentrancy-safe: if a _save_state is in progress we cannot commit
         # right now without risking torn-state capture (codex round-2
         # 2026-05-02). Mark intent and let the in-flight save's finally
         # clause handle the commit + exit. If idle, flush + exit here.
+        _stop_flush.set()
         engine._shutdown_pending = True
         if not engine._save_in_progress:
             try:
+                # Capture any eats deferred by the batching gate (fresh
+                # fish.md), then commit the final rollback point.
+                engine.flush()
                 engine.flush_commit(f"converse daemon shutdown (signal {signum})")
             except Exception as e:
                 print(f"flush_commit failed on shutdown: {e}", file=sys.stderr)
@@ -577,11 +596,29 @@ def serve_converse(
     ConverseHandler.auth_token = token
     ConverseHandler.expose_full_sources = expose_full_sources
 
+    # Drive the batched full save off the request path, same shape as
+    # serve_http: fish.md never lags more than flush_interval_secs. A missed
+    # tick only delays the fish.md refresh — never data (JSONL is per-eat).
+    if flush_interval_secs > 0:
+        def _flush_loop():
+            while not _stop_flush.wait(flush_interval_secs):
+                if getattr(engine, "_shutdown_pending", False) or \
+                        getattr(engine, "_save_in_progress", False):
+                    continue
+                try:
+                    engine.flush()
+                except Exception as e:
+                    print(f"[flush] error: {e}", file=sys.stderr, flush=True)
+        threading.Thread(target=_flush_loop, name="linafish-flush",
+                         daemon=True).start()
+
     server = ThreadingHTTPServer((host, port), ConverseHandler)
 
     print(f"  LiNafish Converse", file=sys.stderr)
     print(f"  Mind: {mind}", file=sys.stderr)
     print(f"  Fish: {engine.name} ({len(engine.crystals)} crystals)", file=sys.stderr)
+    print(f"  Flush: every {flush_interval_secs:.0f}s "
+          f"(batched fish.md save, gate={save_state_every_n_eats} eats)", file=sys.stderr)
     print(f"  Dedupe: {'on — /eat refuses an exact repeat' if dedupe else 'off'}", file=sys.stderr)
     print(f"  Listening: http://{host}:{port}", file=sys.stderr)
     print(f"  Access: {bind}" + (f" (token required)" if token else ""), file=sys.stderr)
@@ -591,4 +628,5 @@ def serve_converse(
     try:
         server.serve_forever()
     except KeyboardInterrupt:
+        _stop_flush.set()
         print(f"\n  Converse stopped. {len(engine.crystals)} crystals.", file=sys.stderr)
