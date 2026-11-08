@@ -50,7 +50,6 @@ linafish eat new-entry.txt -n my-writing               # feed it one more file
 
 - **The fish is named after the folder.** `~/my-writing` makes a fish called `my-writing`. Pass that to `-n`.
 - It lives at `~/.linafish/my-writing.fish.md`. That one readable file is the fish your AI reads.
-  `eat` run without `--state-dir` also leaves a copy of it in the folder you run it from.
 - **Give it material.** About 10 documents gives a first sketch, about 30 a portrait you will recognise.
   With less, treat what it says as a guess.
 
@@ -86,7 +85,7 @@ when the moment reaches something it holds, and stays quiet when it doesn't. Wir
 linafish heart "$USER_PROMPT"
 ```
 
-It never writes, it fails silent, and quiet is a valid answer. Quiet and not sure why?
+It never writes to your fish (only its own beat log), it fails silent, and quiet is a valid answer. Quiet and not sure why?
 `~/.linafish/heart_beat_log.jsonl` says whether the moment was gated or simply matched nothing. Give it a frame so the model knows what
 the lines are: *memory, dated; the live conversation wins.* The fish informs and the moment decides.
 Details: **[docs/heart.md](docs/heart.md)**.
