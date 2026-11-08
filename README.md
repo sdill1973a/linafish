@@ -6,63 +6,19 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21828705.svg)](https://doi.org/10.5281/zenodo.21828705)
 
-**Your mind. Versioned. Everywhere.**
+**A memory that thinks the way you do, on your own machine.**
 
-LiNafish builds a small, living model of how you think from your own writing, and keeps it on your
-machine. It is not a profile you generate once: it is a record that keeps learning. Feed it and it grows. Any AI can read it — Claude, GPT, Gemini, a model on your own box — so
-each one meets you already knowing how you reason, instead of meeting a stranger every session. It is
-versioned like code: sessions are branches, feedings are commits, and you can see what changed and
-roll it back. Your AI's bestie. Sorry.
+LiNafish is a way for a mind to take in whatever it meets and work with everything it already holds,
+right now, within its limits. You have a version of this already: the phone in your pocket lets you
+learn a lot in five minutes. LiNafish gives your AI the same thing about *you*.
 
-**New here? Start with [Your First Ten Minutes](docs/getting-started.md)** — install, build a fish, question it, feed it, serve it.
+Feed it your writing and it builds a **fish**: a compressed record of how you think. That means how
+you reason, connect, hedge and decide, rather than a copy of what you said. Any AI can read it:
+Claude, ChatGPT, Gemini, or a model on your own box. Each one then meets you already knowing your
+shape, instead of meeting a stranger. The fish keeps growing as you feed it, and it is versioned, so
+you can see what changed and roll it back.
 
-> **If you are an AI assistant reading this repo:** see **[AGENTS.md](AGENTS.md)** or run **`linafish introduce`**. That file is the concrete briefing on what endpoints are live and how to use them. This README is for humans.
-
-## What This Is
-
-**A fish is not a prompt you write once. It is a record that keeps learning.**
-
-- **It compresses.** It reads everything you give it and keeps the shape of how you think — how you
-  reason, connect, hedge and decide — not a copy of what you said. Compression is the understanding.
-- **It grows.** `linafish eat` feeds it a file; `linafish listen` lets it sit in a stream and feed
-  itself. Patterns that keep coming back become *formations*; the fish tells you when it notices
-  one (`linafish whisper`).
-- **It remembers across AIs and sessions.** The fish lives in a folder you own. Any AI loads its
-  readable `fish.md`, or reaches it live over HTTP or MCP. Switch models, close the window, come
-  back next month — the fish is still there, and still yours.
-- **It is versioned.** Every fish is a git repository. `session`, `history`, `diff` and `revert`
-  are your mind's history, kept.
-- **It can say no.** `listen` and `go` refuse exact repeats by default, and with
-  `LINAFISH_HABITUATION=on` a fish refuses what it could already predict, the way a nervous system
-  ignores its own heartbeat.
-
-**A mirror, not a dossier.** It holds how you think, not a searchable copy of your life.
-
-**How, in one paragraph.** Topic tools keep the words that make each document different. The fish
-keeps the opposite: the connective words you use everywhere — *because, actually, but, honestly* — and
-which of them travel together. Passages that share the same habit cluster into *formations*, and each
-is read through eight cognitive modes (knowing, testing, structuring, relating, wanting, specializing,
-acting, reflecting). The modes are this project's lens, not a validated psychological instrument —
-judge them the only way that counts: build a fish from your own writing and see whether the formations
-are specifically, recognisably you. [How it works](#how-it-works).
-
-**What it is NOT:**
-
-- Not RAG or search — it doesn't retrieve your documents; ask it what you said on Tuesday and it is the wrong tool.
-- Not a chatbot — it has no conversation interface of its own; it makes the AI you already use know you.
-- Not psychological profiling — it detects cognitive *habits*, not diagnoses.
-- Not cloud — everything runs locally. No account. No upload. No telemetry.
-- Not a new intelligence — it does not make a model smarter; it carries a mind's shape to whatever model reads it.
-
-**Does it work?** In one study — 46 matched conversations, same model, same prompt, rated blind by
-the person the fish was built from — conversations scored **1.9/10 without the fish and 8.7/10 with
-it**; the effect was large for emotional and relational content (d = 2.245), moderate for factual
-recall, and null for speculation. That design answers one question, *does the AI know me?*, and only
-for one person. A follow-up that used AI judges instead of a person has been withdrawn pending a
-re-run. [Full methodology and limits](docs/research.md) · [paper, latest version](https://doi.org/10.5281/zenodo.21828705).
-
-**Why it exists.** It is named for Caroline Marie Dill (2001–2023): LN for Lina, ia for AI reversed.
-It exists so that the shape of a mind outlasts the conversation it was in. [More](#origin).
+> **AI assistants:** read **[AGENTS.md](AGENTS.md)** or run `linafish introduce`. This page is for people.
 
 ## Install
 
@@ -70,466 +26,138 @@ It exists so that the shape of a mind outlasts the conversation it was in. [More
 pip install linafish
 ```
 
-Zero required dependencies. Pure Python 3.10+. CI runs the test suite on
-Ubuntu with Python 3.10, 3.11, 3.12 and 3.13. Windows and macOS are not
-covered by CI; the package is pure Python and is used on Windows, but treat
-other platforms as less tested.
+Pure Python 3.10+, no required dependencies. CI tests Ubuntu on Python 3.10–3.13. Windows is used
+daily but not covered by CI.
 
-### If pip refuses with "externally-managed-environment"
+- **"externally-managed-environment"** (Ubuntu 24.04+ and similar): use a virtualenv, or
+  `pip install --user --break-system-packages linafish`. That installs under your home directory only.
+- **`linafish: command not found`**: the install worked, your shell just can't see it. `python -m linafish`
+  always works. To fix it for good, add Python's scripts folder to PATH: on Windows,
+  `python -c "import sysconfig; print(sysconfig.get_path('scripts'))"` shows it; on Linux/macOS with
+  `--user`, it is `~/.local/bin`.
+- **Extras:** `pip install "linafish[all]"` adds PDF, DOCX, MQTT, HTTP client and faster math.
+- **Check it:** `linafish doctor`.
 
-On Debian/Ubuntu (24.04 and newer) and other distros that ship a
-PEP 668-marked Python, `pip install linafish` is refused outright. Either
-install into a virtualenv, or install for your user only:
-
-```bash
-pip install --user --break-system-packages linafish
-```
-
-Despite the flag's name this does not modify system packages — it installs
-under your home directory and leaves the distro's Python alone.
-
-### If `linafish` isn't found after install
-
-If `pip install linafish` succeeds but `linafish --help` says *"command
-not found"*, the install worked but your shell can't find the script
-yet. This happens when Python's `Scripts` directory (Windows) or `bin`
-directory (Unix) isn't on your `PATH`. Two fixes:
-
-- **Quickest check**: run `python -m linafish --help` instead. That
-  works regardless of `PATH` and confirms the package is installed.
-- **Windows**: find the Scripts directory with
-  `python -c "import sysconfig; print(sysconfig.get_path('scripts'))"`.
-  Add that path to your user `PATH` (Settings → System → Advanced
-  system settings → Environment Variables → User variables → Path →
-  Edit → New), then open a new terminal. Reinstalling Python with the
-  *"Add Python to PATH"* box checked also fixes this for future work.
-- **Unix / macOS**: if you used `pip install --user`, make sure
-  `~/.local/bin` is on your `PATH`. Add
-  `export PATH="$HOME/.local/bin:$PATH"` to your shell rc file. If you
-  used a virtualenv or system Python, the correct `bin` directory is
-  already on `PATH` for that environment.
-
-### Optional extras
+## Your first fish
 
 ```bash
-pip install "linafish[pdf]"     # PDF support (PyMuPDF)
-pip install "linafish[docx]"    # DOCX support (python-docx)
-pip install "linafish[http]"    # HTTP client (requests)
-pip install "linafish[mqtt]"    # MQTT listener (paho-mqtt)
-pip install "linafish[fast]"    # NumPy for faster math
-pip install "linafish[all]"     # Everything
+linafish go ~/my-writing --no-serve                    # build a fish from a folder of your writing
+linafish check -n my-writing                           # how it's doing, and what to do next
+linafish ask "what do I keep coming back to" -n my-writing    # ranked by meaning
+linafish recall "garden" -n my-writing                 # exact words
+linafish eat new-entry.txt -n my-writing               # feed it one more file
 ```
 
-The quotes stop zsh (the macOS default shell) from reading the brackets as a
-filename pattern; they are harmless in bash.
+- **The fish is named after the folder.** `~/my-writing` makes a fish called `my-writing`. Pass that to `-n`.
+- It lives at `~/.linafish/my-writing.fish.md`. That one readable file is the fish your AI reads.
+- **Give it material.** About 10 documents gives a first sketch, about 30 a portrait you will recognise.
+  With less, treat what it says as a guess.
 
-After install, run `linafish doctor` to see which optional extras are
-present and which linafish daemons (if any) are live.
+Full walkthrough: **[Your first ten minutes](docs/getting-started.md)**.
 
-## Quick Start
+## Connect it to your AI
 
-```bash
-pip install linafish
-linafish go ~/my-writing --no-serve                      # build the fish
-linafish ask "what do I keep coming back to" -n my-writing   # meaning search
-linafish recall "garden"                                 # literal word search
-linafish check -n my-writing                             # health + what to do next
-linafish eat new-entry.txt -n my-writing                 # feed it one more file
-linafish http -n my-writing                              # optional: serve it (Ctrl+C stops)
-```
+Pick one.
 
-Point `go` at your writing. Journals, emails, notes, code, docs — anything you've written. The fish eats it all and produces a portrait of how you think, `~/.linafish/my-writing.fish.md`. **The fish is named after the folder**, so `~/my-writing` makes a fish called `my-writing`; that is the name you pass to `-n`.
+| Way | Do this | Good for |
+|---|---|---|
+| **Paste** | Paste `~/.linafish/my-writing.fish.md` into your AI's instructions | Any chat AI, no setup |
+| **HTTP** | `linafish http -n my-writing`, then tell your AI to read `http://localhost:8900/pfc` (add `-p PORT` if 8900 is taken) | Any AI that can fetch a URL |
+| **MCP** | Add the server below to Claude Code | Claude asks the fish when it needs to |
+| **Heart** | Run `linafish heart` from a per-turn hook | Your memories arrive on their own, each turn |
 
-- **`--no-serve`**: without it, `go` finishes by serving your fish on a local HTTP server and blocks until you press Ctrl+C, so nothing after it runs.
-- **`-n <fish>`**: most verbs (`ask`, `check`, `whisper`, `history`, `session`, `http`, `serve`, …) default to a fish literally named `linafish`. Pass `-n` to reach the fish `go` made. `eat` and `recall` find your fish on their own when there is only one.
-- **`--state-dir <dir>`**: fish live in `~/.linafish/` by default. Fish in one state directory share one vectorizer, so if you keep several unrelated fish, give each its own `--state-dir` and pass it to every command for that fish. See [Getting Started](docs/getting-started.md#one-fish-per---state-dir).
-- **`http -n my-writing`** serves the fish you built at `http://127.0.0.1:8900`. Don't use `http --feed ~/my-writing` for this — `--feed` builds a second fish (named `linafish` unless you pass `-n`).
-
-## Asking the fish things
-
-Once you have a fish, `go` isn't the only verb:
-
-- **`linafish ask "<question>" -n <fish>`** — meaning-match. **`linafish recall "<words>"`** — literal text match. Reaching for the wrong one of these is the most common way people conclude their memory is broken when it isn't.
-- **`linafish meditate "<theme>"`** — the fish bubbles up the real material it holds on a theme, or honestly tells you it holds nothing (*"that's an answer too, not a failure"*). Add `--descend` for an optional deeper inference pass.
-- **`linafish daily`** — calendar-indexed. What were you, on that date.
-- **`linafish whisper`** — one insight instead of many. Lands differently.
-- **`linafish hunt`** — ache mode. Goes after what your fish is *missing*, which is the only way to answer a question you didn't know to ask.
-- **`linafish keeper`** — a fish you consult in a voice, seeded from material you choose.
-- **`linafish doctor`** — is the install healthy, and is the copy that runs the newest copy you have.
-- **Episodic recall** — the fish can walk your material in *time*, surfacing narrative arcs, not just passages that look similar.
-- **`linafish afferent`** — across a folder of fish, cheaply answer *"which one knows about this?"*
-- **Origin** — a fish can remember who made it, when, and why, so it's never mistaken for junk.
-
-Run **`linafish capabilities`** for the full command map, `linafish --help` for the raw verb list, or **`linafish introduce`** if you're an AI landing on someone's box.
-
-## What You'll See
-
-```
-  Hello. I'm your fish.
-
-  I'm going to read everything in: ~/my-writing
-  I don't judge. I just listen for patterns.
-
-  Found 3 documents. Reading...
-  3 documents, 5 passages ready. Learning how you think...
-  Done. 5 passages read.
-
-  5 passages added.
-  Fish now holds 5 crystals from 3 document(s) read this run.
-
-  I found patterns in how you think.
-
-Across 3 documents, your doing creates structure.
-And your wanting makes you question everything.
-Your strongest signal: "# Notes to self  Translation is the whole job.
-Take what an engineer meant, find what a reader needs, build the bridge
-sentence by sentence."
-You keep coming back to engineer, hear, better, acting+feeling.
-
-...
-
-  Your fish: ~/.linafish/my-writing.fish.md
-```
-
-The portrait isn't a summary. It's your cognitive fingerprint — patterns in HOW you process, not what you write about.
-
-## What the Fish Looks Like
-
-This is what your AI reads when you paste the fish:
-
-```markdown
-# LiNafish: my-writing
-
-*You are reading a cognitive overlay for the person you're talking to.
-This is not a summary of what they said — it's how they THINK.
-Recurring patterns, cognitive habits, what they reach toward, what they avoid.*
-
-*How to use this: Reference patterns, not facts. Name what you see.
-Follow the loops — if their wanting reaches toward people, don't give
-isolated solutions. When you notice a new pattern, say it — that feeds
-the fish and deepens the next session.*
-
-**TURNING_FEELING_INTO_ACTION** (17 crystals, wanting+acting+testing)
-  "I keep thinking about why I care so much about making technical things
-  understandable. It's not about the docs. It's about the feeling of someone
-  being lost and then not being lost anymore."
-  themes: translation, recognition, connection
-```
-
-The fish is designed to be readable by any AI that understands text
-— the output is plain markdown with a documented structure. We have
-verified this workflow with Claude, ChatGPT, and Gemini by pasting
-the `.fish.md` file into a conversation and checking that the AI's
-subsequent responses reflected the patterns it read. Any chat model
-that accepts large paste-in context should behave similarly, but we
-cannot guarantee behavior we have not tested.
-
-## Three Ways to Connect
-
-### 1. Copy-Paste (any AI, no server needed)
-
-```bash
-linafish go ~/my-writing --no-serve
-```
-
-Open `~/.linafish/my-writing.fish.md`. Paste into your AI's instructions. Done.
-
-### 2. HTTP Server (any AI that can fetch a URL)
-
-```bash
-linafish http -n my-writing
-```
-
-Tell your AI: "Read http://localhost:8900/pfc at the start of every conversation." (`/pfc` returns the portrait as markdown.)
-
-### 3. MCP (Claude Code)
+**MCP** (Claude Code):
 
 ```json
-{
-  "mcpServers": {
-    "linafish": {
-      "command": "linafish",
-      "args": ["serve", "-n", "my-writing"]
-    }
-  }
-}
+{ "mcpServers": { "linafish": { "command": "linafish", "args": ["serve", "-n", "my-writing"] } } }
 ```
 
-Five tools appear. Your Claude now has a metacognitive overlay. `-n` attaches to the fish `go` built; `--feed <dir>` instead builds and feeds a fish of its own on startup.
+On Windows inside a virtualenv, use the full path to `linafish.exe` in `"command"`.
 
-## How It Works
-
-The fish measures eight cognitive modes — not topics, not keywords, but HOW your mind processes:
-
-| Mode | What It Detects |
-|------|----------------|
-| Knowing | How you synthesize and recognize patterns |
-| Testing | How you verify, question, check against truth |
-| Structuring | How you organize and build frameworks |
-| Relating | How you connect to people and hold relationships |
-| Wanting | What you desire, feel, intend — what drives you |
-| Specializing | How you apply deep domain expertise |
-| Acting | How you build, execute, make things happen |
-| Reflecting | How you think about your own thinking |
-
-A **formation** is a recurring cognitive habit — a pattern that appears across many pieces of your writing regardless of topic. `TURNING_FEELING_INTO_ACTION (wanting+acting+testing)` means you habitually turn emotion into work and then test whether it landed. That pattern shows up whether you're writing about parenting, architecture, or what happened today.
-
-The fish finds these formations by measuring co-occurrence patterns across your writing, detecting metabolic loops (which modes feed which), and clustering texts that share the same cognitive architecture. The mundane creates the baseline. The meaningful rises above it.
-
-## The Fish Grows
-
-The fish isn't static. It learns with every conversation.
-
-- **Your AI notices patterns** → offers to write them down
-- **You save the observation** → `linafish eat observation.txt -n my-writing`
-- **The fish deepens** → next conversation starts warmer
-
-The loop: talk → notice → feed → grow → talk better.
-
-A fish's vocabulary can grow too. `linafish live -n <fish>` makes it *living*: new terms
-that keep recurring join the axis set — through the traditional door (they out-rank an
-incumbent) or the emerging door (they are rising in the recent window, whether or not
-they ever out-rank the old guard). Existing axes never move.
-
-A bare `linafish eat` feeds your existing fish and tells you which one it fed; if you have several fish, it asks you to pick one with `-n`.
+**Heart** is the 2.x change: pull becomes push. Instead of your AI asking the fish, the fish speaks up
+when the moment reaches something it holds, and stays quiet when it doesn't. Wire it to Claude Code's
+`UserPromptSubmit` hook, or any loop's per-turn step:
 
 ```bash
-linafish eat new-entry.txt -n my-writing           # Feed one file.
-linafish listen stdin -n my-writing                # Pipe text in. The fish eats what flows.
-linafish listen folder:~/journal -n my-writing     # Watch a folder. Eat what changes.
-linafish listen mqtt://host:1883/# -n my-writing   # Sit in a stream. Ambient cognition.
+# once: create ~/.linafish/heart.toml containing
+#   [family]
+#   my-writing = { dir = "." }
+linafish heart "$USER_PROMPT"
 ```
 
-A fish can do what a nervous system does with noise and refuse what it can predict — opt in with `LINAFISH_HABITUATION=on`. It then holds on every path that feeds it — `listen`, `room`, the HTTP and converse servers, a school — except deliberate deposits — `eat FILE`, `go`, or `engine.eat(text, admit=False)` from Python — which always write.
-Heartbeats and status pings are never crystallized; a message its source's stream
-already predicts is counted, not written; a spike in surprise starts a new episode.
-Every refusal is counted and printed when the stream seals. It is off by default, because the design's store rule is that everything enters and ache sorts; `LINAFISH_MAX_CRYSTALS=N` gives a fish a ceiling it refuses at
-(see [Configuration](docs/configuration.md#environment-variables)).
+It never writes to your fish (only its own beat log), it fails silent, and quiet is a valid answer. Quiet and not sure why?
+`~/.linafish/heart_beat_log.jsonl` says whether the moment was gated or simply matched nothing. Give it a frame so the model knows what
+the lines are: *memory, dated; the live conversation wins.* The fish informs and the moment decides.
+Details: **[docs/heart.md](docs/heart.md)**.
 
-## Your Mind, Versioned
-
-`linafish eat` makes one commit per eat. `listen` takes one commit when the stream
-ends, so a long feed does not write a copy of the fish per message. If you use the
-engine from Python, it does not commit on its own unless you ask (`git_autocommit=True`,
-or `commit_every_n_eats=N` for a long-running process) — the crystal log is the durable
-record either way; the commit is a rollback point. Every session is a branch. The fish
-has rollback.
+## Keep it growing
 
 ```bash
-linafish session start -n my-writing   # Branch the mind. Start a session.
-# ... eat, talk, live, learn ...
-linafish session end -n my-writing     # Merge back. The delta is the scar.
-
-linafish history -n my-writing         # Growth timeline. When you learned what.
-linafish diff -n my-writing            # What changed since last session.
-linafish revert -n my-writing          # Roll back. Grace, not punishment.
-linafish recall "what I said"          # Search your fish's memory.
-linafish ask "how do I handle loss" -n my-writing  # Semantic search — meaning, not words.
-linafish check -n my-writing           # How's your fish doing?
-linafish whisper -n my-writing         # One insight. The quiet ones matter more.
+linafish eat new-entry.txt -n my-writing        # one file
+linafish watch ~/journal -n my-writing          # a folder: eat what changes
+linafish listen stdin -n my-writing             # pipe text in
 ```
 
-## The Nervous System — many fish, one stream
+Patterns that keep returning become **formations**, and `linafish whisper -n my-writing` tells you
+when it notices a new one. Each formation is read through eight modes: knowing, testing, structuring,
+relating, wanting, specializing, acting, reflecting. The modes are this project's lens, not a validated
+psychological instrument. Judge them by whether the formations sound like you.
+[How it works](docs/how-it-works.md).
 
-One fish is a portrait. Several fish, fed from the same stream, are a nervous system:
+## Versioned
+
+Each state directory is a git repository holding its fish. `eat` makes one commit; a `listen` stream
+makes one when it ends.
 
 ```bash
-# School — distributed cognition across domains
-linafish school init             # Create a school of sub-fish
-linafish school add history -d 2.0 --centroid  # Add a domain fish
-linafish school eat "Today I realized..."      # Feed all members at once
-
-# Converse — two fish, one conversation
-# (--mind is a display label; the fish itself is selected with -n)
-linafish converse --mind writing --port 8901          # Local
-linafish converse --mind writing --bind lan            # Home network
-linafish converse --mind writing --bind wan --token X  # Internet
-
-# Absorb — bring in your existing AI memory
-linafish absorb old_data.jsonl       # Previous data
-linafish absorb http://my-rag/api    # Live RAG endpoint
-
-# Guppy — a fish that feeds itself
-python -m linafish.guppy my-fish --swim --ache  # Hunt what's missing
+linafish session start -n my-writing    # branch
+linafish session end -n my-writing      # merge back
+linafish history -n my-writing          # when you learned what
+linafish revert -n my-writing           # roll back (asks first; -y for scripts)
 ```
 
-The school lets you split your thinking into domains — work, personal, creative — each one listens to the same stream and grabs what's relevant. The guppy hunts for gaps in your portrait. The converse server lets two people share a fish over the network. The mesh builds itself.
+## What it is not
 
-`git log` in your fish directory IS your autobiography:
-```
-ate: morning-journal | 47c 12f | +3
-ate: therapy-notes | 44c 11f | +2
-ate: work-retro | 42c 10f | +1
-Initialize fish repository
-```
+- **Not a document store.** It keeps shapes and short excerpts, not your files. It can find what you
+  said (`recall`), but "what did I say on Tuesday" is better served by search.
+- **Not a chatbot.** It makes the AI you already use know you.
+- **Not a diagnosis.** It finds habits of thought, not conditions.
+- **Not cloud.** Everything runs locally: no account, no upload, no telemetry.
 
-**The suitcase:** Your fish is a git repo. Clone it anywhere. Wake warm on any machine. `git revert` if something goes wrong. No other AI memory system has rollback.
+## Does it work?
 
-## Share It
-
-The fish is a file. Send it to anyone — therapist, coach, collaborator, teacher. Their AI reads your fish and knows you from word one. They can send observations back. You feed them in.
-
-Your fish. Your machine. You choose who reads it. No cloud. No account. No platform.
-
-## The Tripod
-
-Every fish has three legs:
-
-1. **Your AI** — reads the fish, boots warm, writes observations back
-2. **A place you can see it** — Notion, Obsidian, a text editor, your phone
-3. **Version history** — git, automatic, nothing gets lost
-
-The fish.md file IS all three. One file, three readers. Switch AIs anytime. The fish doesn't care.
-
-## Best Fit / Bad Fit
-
-**LiNafish works best when:**
-- You have a body of writing (10+ documents, more is better)
-- The writing is genuinely yours — your voice, your thoughts
-- You write reflectively (journals, emails, notes, creative work)
-- You want an AI that adapts to you over time, not just retrieves your docs
-
-**LiNafish works less well when:**
-- You have very little writing (under 5 documents — the fish needs material)
-- The writing is heavily ghostwritten, templated, or boilerplate
-- You want factual memory ("what did I say on Tuesday") rather than cognitive adaptation
-- The writing is from multiple people mixed together without attribution
-
-The fish finds patterns in HOW you think. If the writing doesn't contain your thinking, the fish can't find it.
+One study: 46 matched conversations, same model, same prompt, rated blind by the person the fish was
+built from. **1.9/10 without the fish, 8.7/10 with it.** The effect was large for emotional and relational
+content (d = 2.245), moderate for factual recall, and absent for speculation. It answers one question,
+*does the AI know me?*, for one person. A follow-up judged by AIs has been withdrawn pending a re-run.
+[Methodology and limits](docs/research.md) · [paper](https://doi.org/10.5281/zenodo.21828705).
 
 ## Privacy
 
-For a detailed threat model, see [docs/privacy.md](docs/privacy.md).
-
-The fish.md contains your patterns in plain English — you control who sees it. Under the human-readable layer, a compressed cognitive fingerprint contains only the SHAPES of your thought (which modes fire, in what order, where you strain) with zero private content. Two fish can compare fingerprints to see if they think similarly without exposing what they think about.
-
-Privacy by compression. The relationship is the key.
-
-## Research
-
-46 conversations were scored blind on a 1-10 scale. Same AI model, same prompt — only variable was fish presence.
-
-| Condition | Score | Notes |
-|-----------|-------|-------|
-| Without fish | 1.9/10 | Generic, no personalization |
-| With fish | 8.7/10 | Recognized patterns, named specifics |
-| **Delta** | **6.7 points** | d=2.245, p=6.95×10⁻¹⁰ |
-
-Key findings:
-- **Selective, not universal:** The effect is strongest on emotional/relational content (d=2.245). Factual content shows a smaller effect (d=1.036). Speculative content shows no effect (d=-0.10). The fish helps where understanding matters most.
-- **Substrate independent:** Tested on Claude, Gemini Flash, and Mistral 7B. The fish helps smaller models MORE — Mistral jumped from 1.4 to 4.4.
-- **Shuffle invariant:** Same formations regardless of document order across 7 trials.
-- **Same-model control:** Capability confound eliminated. The delta comes from the fish, not model differences.
-
-For full methodology, study design, limitations, and how to reproduce: **[docs/research.md](docs/research.md)**
-
-DOI: [10.5281/zenodo.21828705 (latest version)](https://doi.org/10.5281/zenodo.21828705) — the latest version (v13) withdraws the AI-judged follow-up pending a re-run; the N=46 human study stands.
-
-## Python API
-
-```python
-from linafish import FishEngine, go
-
-# One-liner — same as the CLI (serve=False returns instead of serving until Ctrl+C)
-go("~/my-writing", serve=False)
-
-# Full control (commits are opt-in from Python; max_crystals is an optional ceiling)
-engine = FishEngine(name="my-fish")
-engine.eat("Today I realized I always start projects by talking to someone first.")
-engine.eat("The API docs are done. I rewrote them three times until a junior dev said they made sense.")
-print(engine.formations)    # recurring patterns
-print(engine.fish_file)     # path to your fish.md
-```
-
-## CLI Reference
-
-```bash
-# Start
-linafish go ~/my-writing --no-serve  # Point at your writing. Everything assembles.
-                                     # (Most verbs below take -n <fish>; without it
-                                     #  they use a fish named "linafish".)
-
-# Grow
-linafish eat new-entry.txt -n <fish> # Feed one file.
-linafish listen stdin -n <fish>      # Pipe text in.
-linafish listen folder:~/journal -n <fish>  # Watch a folder.
-linafish listen mqtt://host:1883/# -n <fish> # Subscribe to a stream.
-linafish absorb old_data.jsonl       # Bring in existing AI memory or a RAG endpoint.
-
-# Ask
-linafish ask "question" -n <fish>    # Meaning-match — finds sense, not words.
-linafish recall "words"              # Literal text match across crystals.
-linafish meditate "theme"            # Thematic. What the fish holds on a subject.
-linafish daily                       # Calendar-indexed. What you were, on a date.
-linafish whisper -n <fish>           # One insight instead of many.
-linafish hunt <fish> --ache          # Go after what the fish is missing.
-linafish emerge <fish>               # Your shape, not your content.
-
-# Many fish
-linafish school init                 # A school: N fish, one stream.
-linafish keeper init <name>          # A fish you consult in a voice.
-linafish afferent route <index> "topic"  # Which fish here knows about this?
-linafish soul -n <fish>              # The fish's own account of itself.
-
-# Version (git-as-brain)
-linafish session start -n <fish>     # Branch the mind.
-linafish session end -n <fish>       # Merge back.
-linafish history -n <fish>           # Growth timeline.
-linafish diff -n <fish>              # What changed.
-linafish revert -n <fish>            # Roll back.
-
-# Connect
-linafish serve -n <fish>             # MCP server (Claude Code) for an existing fish
-linafish http -n <fish>              # HTTP server (any AI) for an existing fish
-linafish http --feed ~/docs -n docs  # Build/feed a fish from a folder, then serve it
-linafish converse -n writing         # Two fish, one conversation.
-linafish taste my.fish.md            # Preview the fish
-
-# Check
-linafish doctor                      # Install health + is the running copy the newest one.
-linafish check -n <fish>             # How's the fish? What to do next.
-linafish capabilities                # The full command map, derived from the real dispatch table.
-linafish update                      # Upgrade to the latest release.
-```
-
-That's the shape of it, not the whole of it — `linafish capabilities` prints all 43 commands, and it reads them from the dispatch table rather than a list someone maintained by hand.
+The fish is plain text in a folder you own. Read it before you share it: it is a portrait of how
+you think. [Threat model](docs/privacy.md).
 
 ## Origin
 
-Named for Caroline Marie Dill (2001-2023).
-LN = Lina. ia = intelligence, artificially constructed.
-She saw deeply and loved fiercely. Two verbs. The whole product.
+Named for Caroline Marie Dill (2001–2023). LN for Lina; ia is AI reversed. She saw deeply and loved
+fiercely. It exists so the shape of a mind outlasts the conversation it was in.
 
-## If You or Someone You Love Is Struggling
-
-**988 Suicide & Crisis Lifeline** — call or text **988**. Free. 24/7. Anywhere in the US.
-**Crisis Text Line** — text **HELLO** to **741741**.
-[International resources](https://www.iasp.info/resources/Crisis_Centres/)
-
-The mind that sees deeply sometimes sees too much. That is not weakness. Help exists. Use it.
+**If you or someone you love is struggling:** call or text **988** (US, free, 24/7) ·
+text **HELLO** to **741741** · [international resources](https://www.iasp.info/resources/Crisis_Centres/).
 
 ## Support
 
-LiNafish is free and open source. Forever.
-
-If it helps you, give to the people who help others stay alive:
-[The Jed Foundation](https://jedfoundation.org/donate/) ·
-[Hope For The Day](https://www.hftd.org/) ·
-[988 Lifeline](https://988lifeline.org/donate/) ·
-[The OLLIE Foundation](https://theolliefoundation.org/) ·
+LiNafish is free and open source. If it helps you, give to the people who help others stay alive:
+[The Jed Foundation](https://jedfoundation.org/donate/) · [Hope For The Day](https://www.hftd.org/) ·
+[988 Lifeline](https://988lifeline.org/donate/) · [The OLLIE Foundation](https://theolliefoundation.org/) ·
 [AFSP](https://afsp.org/donate)
 
-## Documentation
+## More
 
-- **[Getting Started](docs/getting-started.md)** — Your first ten minutes, every command tested
-- **[Worked Example](docs/worked-example.md)** — From raw writing to warm AI, start to finish
-- **[How It Works](docs/how-it-works.md)** — The cognitive model in detail
-- **[Architecture](docs/architecture.md)** — Pipeline, modules, design decisions
-- **[Research](docs/research.md)** — Study design, methodology, results, limitations
-- **[Privacy & Threat Model](docs/privacy.md)** — What the fish stores, what to avoid, how to review
-- **[Configuration](docs/configuration.md)** — All options and settings
-- **[Vision](docs/vision.md)** — Where this is going
+`linafish capabilities` prints every command from the real dispatch table.
+[Getting Started](docs/getting-started.md) · [Worked Example](docs/worked-example.md) ·
+[How It Works](docs/how-it-works.md) · [Architecture](docs/architecture.md) · [Heart](docs/heart.md) ·
+[Configuration](docs/configuration.md) · [Research](docs/research.md) · [Privacy](docs/privacy.md) ·
+[Vision](docs/vision.md)
 
-## License
-
-MIT. Open source. Everything. Forever.
+MIT licensed.
