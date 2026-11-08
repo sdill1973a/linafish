@@ -12,6 +12,39 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-11-08
+
+Fixes found by two AI minds installing linafish from the README as strangers would
+(one on Linux, one on Windows), plus a one-page README.
+
+**What changes when you upgrade:** `eat` without `-o` no longer leaves a `<name>.fish.md`
+in the folder you run it from; the fish is in its state directory (`~/.linafish/` by
+default). Scripts that read the old copy should read the state-directory file or pass
+`-o`. `doctor` may take a few seconds longer when a port is held by a daemon that does
+not answer.
+
+### Changed
+- **README is one landing page instead of four.** About 160 lines: what linafish is, a
+  first fish, how your AI reads it, heart, and links to the docs. The command list, the
+  research and the origin story each appear once.
+
+### Fixed
+- **`eat` no longer writes `<name>.fish.md` into the folder you run it from.** The fish
+  lives in its state directory only.
+- **`check` says "I know you." only at about 30 entries**, the bar its own advice already
+  named. Below that it calls the portrait a first sketch.
+- **`http` on a busy port says what is actually on it:** the same fish, a different fish
+  (use `-p PORT`), one still loading, or something that is not a fish.
+- **`doctor` counts only daemons serving this state directory's fish.** On a shared
+  machine it used to report other people's servers as yours.
+- **`converse` gets the eat-latency save gate `http` already had.** A served `/eat` on a
+  21K-crystal fish took 13–18 s because every eat rewrote the whole fish.md; the full save
+  now runs every 200 eats and on a 30 s timer, off the request path. Crystals are still
+  written to the append-only JSONL on every eat; shutdown flushes.
+
+### Maintenance
+- CI: actions/checkout and actions/upload-artifact to v7; setuptools dev bound to <85.
+
 ## [2.4.0] - 2026-10-20
 
 A faster fish, a fish that keeps what it learned at eat, and Windows support that reads

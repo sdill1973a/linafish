@@ -31,3 +31,11 @@ v2.3.1
 # tree and built artifacts, wheel smoke on a real fish vs PyPI 2.3.1, and Q's review found a truncate-then-write
 # hole in repersist_tail — fixed and proven both ways first. Line typed by Anchor on his instruction, attributed.
 v2.4.0
+
+# 2026-11-08 08:25 CST — Captain authorized v2.4.1 in session 01L5FeWKokL29Fu4PU8eDJvZ: "lets ... get the linafish
+# prs sorted and a version pushed out to correct what we learned". Before tagging: suite 666 green, privacy gate
+# clean on tree + built wheel/sdist (gate proven to fail on a planted canary), wheel smoke (no cwd copy), Q's review:
+# her blocking race claim checked against the code (eat and flush share _eat_lock) and disproven under an 8-thread
+# stress (480 eats, 49 concurrent flushes, 480 everywhere); her two warnings folded into the changelog.
+# Line typed by Anchor on his instruction, attributed.
+v2.4.1
