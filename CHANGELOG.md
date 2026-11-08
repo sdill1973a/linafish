@@ -17,6 +17,12 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 Fixes found by two AI minds installing linafish from the README as strangers would
 (one on Linux, one on Windows), plus a one-page README.
 
+**What changes when you upgrade:** `eat` without `-o` no longer leaves a `<name>.fish.md`
+in the folder you run it from; the fish is in its state directory (`~/.linafish/` by
+default). Scripts that read the old copy should read the state-directory file or pass
+`-o`. `doctor` may take a few seconds longer when a port is held by a daemon that does
+not answer.
+
 ### Changed
 - **README is one landing page instead of four.** About 160 lines: what linafish is, a
   first fish, how your AI reads it, heart, and links to the docs. The command list, the
