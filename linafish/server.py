@@ -215,6 +215,16 @@ def _run_stdio_loop(server_info: dict, tools: list, handlers: dict):
                 }
         elif method == "ping":
             response = {"jsonrpc": "2.0", "id": req_id, "result": {}}
+        elif req_id is not None:
+            # JSON-RPC: every REQUEST (has an id) gets a reply. Before this branch an
+            # unknown method — resources/list, prompts/list, which several MCP clients
+            # probe regardless of advertised capabilities — got nothing, and the client
+            # sat on the request until its own timeout. Notifications (no id) stay silent.
+            response = {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "error": {"code": -32601, "message": f"Method not found: {method}"},
+            }
 
         if response:
             _write(response)
