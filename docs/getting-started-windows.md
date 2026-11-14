@@ -28,7 +28,7 @@ linafish --version
 
 If `linafish` is not found but `python -m linafish --version` works, Python's
 `Scripts` folder is not on your `PATH`; see
-[Install](../README.md#if-linafish-isnt-found-after-install).
+[Install](../README.md#install).
 
 If you use [uv](https://docs.astral.sh/uv/), `uv tool install linafish` puts
 `linafish.exe` in `%USERPROFILE%\.local\bin` in its own environment; run

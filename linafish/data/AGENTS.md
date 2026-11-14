@@ -62,14 +62,17 @@ Returns the most relevant crystals by similarity score (`top` sets how many;
 default 5). Add `"format": "json"` to get the structured shape, which also
 carries `grounding.band`: `grounded`, `thin`, `ungrounded`, or `thin-recent`.
 **The band is not a verdict.** It scores how often the query's words appear
-together in the fish, not whether the fish holds the thing. Measured 2026-11-14
-on two served fish (60 lines × 2: invented, true, and identity lines): 120 of 120
-came back `thin`, `thin-recent` or `ungrounded`, and none came back `grounded`, so
-`thin` does NOT mean the fish lacks it. Read the `evidence` pairs and the
-`matches` themselves, and check the source before you say the fish does or does
-not hold something. `grounded` means well-attested, NOT true. Use this when
-you want to say something like *"you've thought about this before, here's
-the shape of it"* instead of generating from your own priors.
+together in the fish, not whether the fish holds the thing. `grounded` means
+well-attested, NOT true: a short invented line that borrows one real word pair
+can still ground. `thin` does NOT mean the fish lacks it. Measured 2026-11-14 on
+two served fish (60 lines each: invented, true, and identity lines): on 2.4.1
+the band could not reach `grounded` at all — 120 of 120 came back `thin`,
+`thin-recent` or `ungrounded`, true and invented alike. The release after 2.4.1
+repairs the gate, and even then only 12 of 20 true lines and 6 of 20 identity
+lines ground (0 of 20 invented). Read the `evidence` pairs and the `matches`
+themselves, and check the source before you say the fish does or does not hold
+something. Use this when you want to say something like *"you've thought about
+this before, here's the shape of it"* instead of generating from your own priors.
 
 ### 3. DEPOSIT — crystallize your insight back into the fish
 
@@ -119,8 +122,12 @@ linafish http -n Documents           # serve that fish at http://127.0.0.1:8900
 
 The fish is named after the folder (`~/Documents` makes a fish called
 `Documents`), and `-n` is how every later command reaches it. Without `-n`,
-`http`, `serve`, `ask`, `check` and most other verbs use a fish literally
-named `linafish`. Two traps:
+`http`, `serve`, `ask`, `check` and most other verbs look in the state
+directory: one fish there is used silently. Of several, `ask`, `check` and
+`whisper` use the most recently fed and name it on stderr, while `eat`, `http`
+and `serve` refuse and list them. None, and the historical name `linafish` is
+used and reported empty. With more than one fish, pass `-n`, or a read verb
+will query the wrong one without an error. Two traps:
 
 - `linafish go` without `--no-serve` builds the fish and then serves it on a
   random port until Ctrl+C, so a command after it in the same script never runs.
