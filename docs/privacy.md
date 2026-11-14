@@ -14,7 +14,7 @@ Everything lives in `~/.linafish/` on your machine. There is no server, no cloud
 | `{name}_v3_state.json` + `{name}_crystals.jsonl` | Full engine state: all crystals with text, scores, coupling data. | Yes. JSON/JSONL with your original text chunks. |
 | `name.qlp` | Compressed cognitive state in QLP notation. Dimension chains, formation signatures, soul reading. | Partially. The English summary is readable. The glyph chains are not. |
 
-No data leaves your machine unless you copy it somewhere. LiNafish makes no network calls. It has no dependencies that phone home. It is pure Python with zero external dependencies.
+No data leaves your machine unless you copy it somewhere or point a verb at an address. By default LiNafish makes no network calls and has no telemetry. The verbs that do reach out (`update` to PyPI, `demo --api-key` to Gemini, `bridge`, `absorb http://…`, `listen mqtt://…`, `room`, `hunt`, `meditate --descend`) talk only to the address you give them. It is pure Python with no required dependencies.
 
 ## What's in the fish.md (Plain English)
 
@@ -199,7 +199,7 @@ in full. Read `docs/episodic-recall.md` before turning it on.
 | Concern | Answer |
 |---------|--------|
 | Where is my data? | `~/.linafish/` on your machine. Nowhere else. |
-| Does it phone home? | No. Zero network calls. Zero dependencies. |
+| Does it phone home? | No. No telemetry, and no network calls except to an address you give a verb (see the top of this page). No required dependencies. |
 | Can someone read my fish.md? | Yes. It is plain markdown. Crystal quotes are your words. |
 | What is the worst case? | Someone reads your crystal quotes and learns your cognitive patterns, emotional tendencies, and a few dozen of your sentences. |
 | How do I mitigate? | Read your fish.md before sharing. Edit or remove sensitive quotes. Use named fish to separate contexts. |

@@ -262,6 +262,8 @@ Every setting the package reads from the environment. Unset means the default.
 | `LINAFISH_NO_HEAT` | unset | `1`/`true`: the engine is an ambient reader — it never writes on its own. |
 | `LINAFISH_EXPOSE_FULL_SOURCES` | unset | `1`/`true`: the converse server's `/moment/<episode_id>` returns untruncated episode source. Off by default because it is the highest-fidelity surface the fish has. |
 | `LINAFISH_MAX_PAIR_COUNTS` | engine default | Cap on the co-occurrence pair table. Truncation is reported at save, never silent. |
+| `LINAFISH_TASTE_SPARSE` | `off` | `on`: `taste` answers from a BM25 index over each crystal's own terms instead of the dense vector (2.4.0). Eating is unchanged. |
+| `LINAFISH_LIGHT_VECTORS` | `off` | `on` (needs numpy): vectors live once in a memory-mapped float32 sidecar beside the crystal log instead of inside every crystal (2.4.0). |
 | `LINAFISH_MESSAGES_FILE` | `<state_dir>/messages.jsonl` | Override the HTTP server's messages file path (absolute path). |
 | `LINAFISH_MQTT_USER` / `_PASS` | unset | Broker credentials for `room` and for the guppy's publish. |
 | `LINAFISH_MQTT_HOST` / `_PORT` | unset / `1883` | Broker for the guppy's publish only. `room` takes its broker from `--broker` / `--port`. `listen mqtt://…` reads none of these: it takes host, port and optional `user:pass@` from its URL. |
