@@ -1,5 +1,7 @@
 """Three defects a user could hit, found reading the core top to bottom for the
-2.4.2 release review (2026-11-14). Each test fails on 2.4.1 and passes with the fix.
+2.4.2 release review (2026-11-14). Four of these eight fail on 2.4.1 (the DEBUG crash,
+the module regex, the skipped-line warning, the no_vocab reason); the other four pin
+the quiet side of each fix and pass either way.
 
 1. ``logging`` at DEBUG crashed ``eat_path`` / ``_formative_assess`` with
    ``TypeError: Logger._log() got an unexpected keyword argument 'file'`` —
@@ -40,7 +42,10 @@ def test_eat_path_survives_debug_logging(tmp_path, caplog):
     assert result["crystals_added"] == 5
 
 
-def test_formative_assess_survives_debug_logging(tmp_path, caplog):
+def test_maintain_completes_under_debug_logging(tmp_path, caplog):
+    """The maintenance cycle runs the formative/re-eat logging paths; it must complete.
+    (On 2.4.1 this passed too — the formative path raised into its own except before
+    reaching the bad call — so it is a guard, not the proof. The regex test below is.)"""
     corpus = _corpus(tmp_path)
     engine = FishEngine(state_dir=tmp_path / "state", name="dbg")
     engine.eat_path(corpus)

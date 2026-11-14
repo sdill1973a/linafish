@@ -64,8 +64,8 @@ carries `grounding.band`: `grounded`, `thin`, `ungrounded`, or `thin-recent`.
 **The band is not a verdict.** It scores how often the query's words appear
 together in the fish, not whether the fish holds the thing. Calibrated 2026-11-14
 on two served fish (60 lines × 2: invented, true, and identity lines): with the
-current gate, no invented line reaches `grounded`, but about half of the TRUE lines
-stay `thin` too — so `thin` does NOT mean the fish lacks it. Read the `evidence`
+current gate, none of the 20 invented calibration lines reached `grounded`, but about
+half of the TRUE lines stay `thin` too — so `thin` does NOT mean the fish lacks it. Read the `evidence`
 pairs and the `matches` themselves, and check the source before you say the fish
 does or does not hold something. `grounded` means well-attested, NOT true — a
 short invented line that borrows one real word pair can still ground. Use this when
