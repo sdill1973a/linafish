@@ -106,30 +106,18 @@ through a passage (knowing, testing, structuring, relating, wanting,
 specializing, acting, thinking-about-thinking) rather than topics. The
 same 8 have produced meaningful formations across every corpus we've
 tested: personal journals, academic papers, novels, historical
-letters, and source code. For specialized domains, extend the
-per-dimension vocabulary to pick up domain-specific signal:
-
-```json
-{
-  "KO": ["excavation", "stratigraphy", "typology", "seriation"],
-  "TE": ["reanalysis", "determination", "dating", "C14"],
-  "CR": ["burial", "mortuary", "ritual", "political", "elite"]
-}
-```
-
-The dimensions stay. The vocabulary grows. The fish learns new domains without changing its cognitive structure.
-
-**Hybrid vocabulary strategy:** For best results with conversational data, combine the default QLP-8 vocabulary (which captures cognitive mode) with domain-specific terms (which capture topic-level structure). The QLP-8 words are the forced set that TF-IDF would kill — they survive because they ARE the signal. Domain words add topography to the flat field, allowing formations to emerge around both how and what someone thinks.
-
-When extending vocabulary, add words that are structurally important to the domain, not just common. "Excavation" in archaeology is not just a topic word — it implies a methodological stance (KO). "Reanalysis" implies a truth-seeking posture (TE). The best domain extensions map domain concepts to cognitive operations.
+letters, and source code. The vocabulary is learned from your writing, so a
+new domain needs no configuration: its terms earn axes as they recur. To make
+sure specific terms always get an axis, set `LINAFISH_PROTECTED_VOCAB=term1,term2`
+before building (see [Configuration](configuration.md#environment-variables)).
+The old `--vocab` JSON file is accepted for compatibility and does nothing.
 
 ## Research
 
-Based on: *Recursive Codebook Protocol: Compression as Relationship in Human-AI Communication*
+Based on: *Two Compression Regimes in Recursive Symbolic Communication: Empirical Evidence for a Broadcast-Ansible Boundary*
 
 - DOI: [10.5281/zenodo.21828705 (latest version)](https://doi.org/10.5281/zenodo.21828705) — the paper's latest version (v13) partially withdraws the AI-judged warm/cold fidelity results while preserving the N=46 human study
 - N=46, d_emotional=2.245, d_factual=1.036, p=6.95e-10
 - Same-model control: Cold 1.9, Warm 8.7, Delta 6.7
 - Cross-substrate: Claude, Gemini, Mistral
-- Warm Decoder Delta (WDD) = score_warm - score_cold
-- ~170 glyph saturation ceiling (exceeded in generative regime)
+- Methodology, limits and what was withdrawn: [docs/research.md](research.md)

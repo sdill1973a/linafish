@@ -93,6 +93,18 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
   user to. The `revectorize_all` docstring describes the opposite failure ("vocab is
   frozen after the first batch") and is wrong about the mechanism.
 
+### Docs
+- Truth sweep before release. AGENTS.md's band paragraph describes the gate as it is after
+  the fix above (`grounded` is reachable; `thin` is still not absence). `eat` has not left a
+  copy of the fish in the current directory since 2.4.1, and getting-started and
+  configuration stop saying it does. The `--vocab` JSON / `extend_vocabulary()` advice in
+  how-it-works and architecture, which nothing reads, is replaced by
+  `LINAFISH_PROTECTED_VOCAB`; the two 2.4.0 opt-ins (`LINAFISH_TASTE_SPARSE`,
+  `LINAFISH_LIGHT_VECTORS`) join the environment table. privacy.md names the verbs that
+  reach the network and when. The paper is cited by its Zenodo title, and the PyPI
+  `Research` link points at the concept DOI so it resolves to the withdrawal-corrected
+  version instead of the original. Test counts regenerated.
+
 ## [2.4.1] - 2026-11-08
 
 Fixes found by two AI minds installing linafish from the README as strangers would

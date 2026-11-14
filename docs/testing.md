@@ -1,6 +1,6 @@
 # Testing
 
-644 tests at 2.4.0. A full run takes about 40 seconds on a desktop machine.
+674 tests on master after 2.4.1 (2026-11-14). A full run takes one to two minutes on a desktop machine.
 Counts change as tests are added; regenerate them instead of trusting this page:
 
 ```bash
@@ -22,7 +22,7 @@ larger groups (run `ls tests/` for the complete list):
 Chain metadata on crystals: chain ids, ordinal proximity, parent-child links,
 and the temporal coupling bonus they enable.
 
-### Grounding Tests (`test_grounding.py`) — 18 tests
+### Grounding Tests (`test_grounding.py`) — 22 tests
 The graded verdict on `taste_dict`: informative-token selection, pair evidence
 and specificity weighting, the band edges, the recency lift, and the two guards a
 `grounded` band must pass (composition: whole-query gamma above the floor, default
