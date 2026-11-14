@@ -97,6 +97,15 @@ def cmd_eat(args):
         print("No content found.")
         sys.exit(1)
 
+    if result.get("sealed"):
+        # The engine refused (eat_path returns sealed=True, crystals_added 0) and this
+        # printed "0 crystals added" plus a full portrait, exit 0 — a silent no-op that
+        # a script or a forgetful owner reads as success. Nothing was eaten; say so, and
+        # exit the way revert does when declined: non-zero.
+        print(f"  Fish '{engine.name}' is sealed (at {engine.fish.sealed_at}) — nothing eaten. "
+              f"A sealed fish does not grow again.", file=sys.stderr)
+        sys.exit(1)
+
     print(f"  {result.get('crystals_added', 0)} crystals added "
           f"({result.get('total_crystals', 0)} total) from {source}")
     print(f"  {result.get('formations', 0)} formations")
@@ -875,6 +884,28 @@ def cmd_absorb(args):
               f"{result.get('formations', '?')} formations")
 
 
+def _commit_maintenance(engine, message: str) -> None:
+    """Commit after a maintenance verb (live / seal / compact / revectorize).
+
+    git_autocommit is False by default (2.3.0), so these verbs saved state and left the
+    fish repo dirty: `history` did not show the change and `revert` died on git's "local
+    changes would be overwritten". A state change the owner asked for by name is a
+    rollback point, so commit it here. compact/revectorize also leave
+    `<name>_crystals.jsonl.bak-pre-rewrite` beside the log — a full copy of every crystal.
+    `_git_commit` runs `git add -A`, and a fish repo's history is not free, so the backup
+    is ignored before the commit (new repos get the rule at init; old ones get it here).
+    """
+    try:
+        gi = engine.state_dir / ".gitignore"
+        existing = gi.read_text(encoding="utf-8") if gi.exists() else ""
+        if "*.bak-*" not in existing.splitlines():
+            gi.write_text(existing + ("" if existing.endswith("\n") or not existing else "\n")
+                          + "*.bak-*\n", encoding="utf-8")
+    except OSError:
+        pass
+    engine._git_commit(message)
+
+
 def cmd_live(args):
     """Turn a fish's vocabulary living (append-only growth)."""
     engine = _resolve_engine(args)
@@ -882,6 +913,7 @@ def cmd_live(args):
         print(f"  Fish '{engine.name}' is already living.")
         return
     engine.enable_living_vocab()
+    _commit_maintenance(engine, f"live: {engine.name} vocabulary now living")
     print(f"  Fish '{engine.name}' is now living — its vocabulary will "
           f"grow append-only and never desync its crystals.")
 
@@ -894,6 +926,7 @@ def cmd_seal(args):
               f"(at {engine.fish.sealed_at}).")
         return
     engine.seal()
+    _commit_maintenance(engine, f"seal: {engine.name} at {engine.fish.sealed_at}")
     print(f"  Fish '{engine.name}' sealed at {engine.fish.sealed_at} — "
           f"epoch {engine.fish.epoch}, {len(engine.crystals)} crystals. "
           f"It will not grow again.")
@@ -919,6 +952,9 @@ def cmd_revectorize(args):
     if not result.get("revectorized"):
         print(f"  Skipped: {result.get('reason', 'unknown')}")
         return
+    # revectorize_all saves with commit=False on purpose ("the caller decides when to
+    # commit"). The CLI is that caller, and it never did — see cmd_live.
+    _commit_maintenance(engine, f"revectorize: {engine.name} | {n}c {result['post_formation_count']}f")
     print(f"  Done.")
     print(f"  Formations: {result['pre_formation_count']} -> {result['post_formation_count']}")
     print(f"  Survived: {len(result['survived'])}, "
@@ -948,6 +984,7 @@ def cmd_compact(args):
     if not result.get("revectorized"):
         print(f"  Skipped: {result.get('reason', 'unknown')}")
         return
+    _commit_maintenance(engine, f"compact: {engine.name} | vocab {vocab_before} -> {result['vocab_size']}")
     print(f"  Done. Vocab: {vocab_before} -> {result['vocab_size']} terms.")
     print(f"  Formations: {result['pre_formation_count']} -> "
           f"{result['post_formation_count']}")
@@ -958,8 +995,11 @@ def cmd_converse(args):
     """Two fish, one conversation."""
     from .converse import serve_converse
     state_dir = Path(args.state_dir) if args.state_dir else None
+    # Same rule as http/serve (2.3.2): -n omitted -> the one fish in the state dir, named out loud;
+    # several -> refuse and list them. Until now the parser defaulted to "linafish", so
+    # `linafish converse` after `go ~/my-writing` served an EMPTY fish of that name for hours.
     serve_converse(
-        name=args.name,
+        name=_serve_name(args),
         state_dir=state_dir,
         port=args.port,
         bind=args.bind,
@@ -1658,7 +1698,11 @@ def cmd_keeper(args):
         print(f"  State:   {kinfo.state_dir}")
         print(f"  Crystals: {kinfo.crystals}")
         print()
-        print(f"Feed:    linafish listen stdin -n {kinfo.full_name} < material.md")
+        # Explicit --state-dir: the keeper lives in its own subdir, and `-n` alone only finds
+        # it under the DEFAULT root. Run as printed with a custom --state-dir, the old hint
+        # fed a brand-new fish of the same name in ~/.linafish instead (review 2026-11-14).
+        print(f"Feed:    linafish listen stdin -n {kinfo.full_name} "
+              f"--state-dir \"{kinfo.state_dir}\" < material.md")
         print(f"Invoke:  linafish keeper invoke {kinfo.name} '<theme>'")
         return
 
@@ -2544,7 +2588,9 @@ def cmd_doctor(args):
     print("Optional dependencies:")
     deps = [
         ("numpy", "fast", "fast math for crystallizer_v3"),
-        ("fitz", "pdf", "PyMuPDF — PDF reader"),
+        # PyMuPDF >= 1.24 ships both names and `import fitz` prints a FutureWarning
+        # on stderr; probe the new name first so a health check does not warn.
+        ("pymupdf|fitz", "pdf", "PyMuPDF — PDF reader"),
         ("docx", "docx", "python-docx — Word reader"),
         ("pptx", "pptx", "python-pptx — PowerPoint reader"),
         ("yaml", "yaml", "PyYAML — YAML reader"),
@@ -2553,11 +2599,14 @@ def cmd_doctor(args):
         ("paho.mqtt.client", "mqtt", "MQTT client for room listener"),
     ]
     for mod, extra, desc in deps:
-        try:
-            __import__(mod)
-            mark = "[+]"
-        except ImportError:
-            mark = "[ ]"
+        mark = "[ ]"
+        for cand in mod.split("|"):
+            try:
+                __import__(cand)
+                mark = "[+]"
+                break
+            except ImportError:
+                continue
         print(f"  {mark} {extra:8} {desc}")
     print()
 
@@ -2587,8 +2636,8 @@ def cmd_doctor(args):
         return (f"  [-] {label} at {host}:{port} serving '{name}' "
                 f"(not yours: another state dir)")
     print(_probe("127.0.0.1", 8901, "converse"))
-    print(_probe("127.0.0.1", 8902, "converse (me fish)"))
-    print(_probe("127.0.0.1", 8900, "http server / room fish"))
+    print(_probe("127.0.0.1", 8902, "converse (second)"))
+    print(_probe("127.0.0.1", 8900, "http server"))
     print()
 
     # -- Fish health --
@@ -3030,15 +3079,19 @@ def cmd_capabilities(args):
     ]
 
     # Optional dependency check
-    def _dep(name):
-        try:
-            importlib.import_module(name)
-            return "yes"
-        except ImportError:
-            return "no"
+    def _dep(*names):
+        # Several names = alternatives; the first that imports wins (PyMuPDF
+        # is `pymupdf` since 1.24, and its old `fitz` name warns on import).
+        for name in names:
+            try:
+                importlib.import_module(name)
+                return "yes"
+            except ImportError:
+                continue
+        return "no"
     deps = {
         "numpy (fast)": _dep("numpy"),
-        "PyMuPDF (pdf)": _dep("fitz"),
+        "PyMuPDF (pdf)": _dep("pymupdf", "fitz"),
         "python-docx (docx)": _dep("docx"),
         "python-pptx (pptx)": _dep("pptx"),
         "PyYAML (yaml)": _dep("yaml"),
@@ -3234,7 +3287,7 @@ def main():
 
     # converse — two fish, one conversation
     conv_p = sub.add_parser("converse", help="Two fish, one conversation. Crystal exchange over HTTP.")
-    conv_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    conv_p.add_argument("-n", "--name", help="Fish name (default: the one fish in the state dir)")
     conv_p.add_argument("--state-dir", type=_user_path, help="State directory")
     conv_p.add_argument("-p", "--port", type=int, default=8901, help="Port (default: 8901)")
     conv_p.add_argument("--bind", default="local", choices=["local", "lan", "wan"],

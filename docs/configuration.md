@@ -60,7 +60,7 @@ State saves to `~/.linafish/my-project_v3_state.json` (plus `my-project_crystals
 }
 ```
 
-`linafish go ~/my-writing` makes a fish named after the folder, `my-writing`. Pass that name with `-n` and leave out `--feed`; the server loads the fish as it is. Without `-n`, `serve` uses a fish named `linafish`.
+`linafish go ~/my-writing` makes a fish named after the folder, `my-writing`. Pass that name with `-n` and leave out `--feed`; the server loads the fish as it is. Without `-n`, `serve` serves the one fish in the state dir and says which; if several live there it stops and lists them, so pass `-n`; with none it falls back to the name `linafish`. (With `--feed` and no `-n` the fish is named `linafish`.)
 
 ### Custom State Directory
 
@@ -94,7 +94,7 @@ Ingest a file or directory into a fish and write its `.fish.md` codebook.
 | `-n, --name` | Fish name. Without it: if exactly one fish lives in the state directory, `eat` feeds it and says so; if several do, it refuses and lists them; if none do, it creates a fish named after the file or directory stem. |
 | `--state-dir` | Where the fish lives (default: `~/.linafish/`). Write the path unquoted or absolute: this flag does not expand a quoted `"~/…"`. |
 | `-d, --description` | Replaces the title line of the written codebook |
-| `-o, --output` | Also write the codebook here. Default: without `--state-dir`, a copy is written to `./{name}.fish.md` in the current directory; with `--state-dir`, nothing is written outside the state directory. |
+| `-o, --output` | Also write the codebook here. Without it, `eat` writes only the state-directory copy (`~/.linafish/{name}.fish.md`); nothing is written where you ran the command (releases before 2.4.1 left a copy there). |
 | `--hint` | No effect. Accepted for old scripts; prints a warning. |
 | `--vocab` | No effect. Accepted for old scripts; prints a warning. |
 
@@ -121,7 +121,7 @@ Start the MCP server (stdio transport).
 |------|-------------|
 | `--feed` | Directory or file to ingest on startup. Leave it out to serve an existing fish as it is. |
 | `--state-dir` | State directory (default: `~/.linafish/`) |
-| `-n, --name` | Fish name (default: `linafish`). Use the name `go` gave your fish. |
+| `-n, --name` | Fish name (default: the one fish in the state dir; several → it lists them and stops). Use the name `go` gave your fish. |
 | `--vocab` | No effect (see [Domain Vocabulary](#domain-vocabulary---vocab--no-effect)) |
 
 ### `linafish http`
@@ -130,7 +130,7 @@ Serve a fish over HTTP for any AI or tool that can fetch a URL. Runs until Ctrl+
 
 | Flag | Description |
 |------|-------------|
-| `-n, --name` | Fish name (default: `linafish`). To serve the fish `go` built from `~/my-writing`, use `-n my-writing`. |
+| `-n, --name` | Fish name (default: the one fish in the state dir; several → it lists them and stops). To serve the fish `go` built from `~/my-writing`, use `-n my-writing`. |
 | `--feed` | Directory or file to ingest on startup. Leave it out to serve an existing fish as it is. |
 | `--state-dir` | State directory (default: `~/.linafish/`) |
 | `-p, --port` | Port (default: 8900) |
@@ -145,7 +145,7 @@ The multi-fish, federation-oriented HTTP server (default port 8901).
 
 | Flag | Description |
 |------|-------------|
-| `-n, --name` | Fish name (default: `linafish`) |
+| `-n, --name` | Fish name (default: the one fish in the state dir; several → it lists them and stops) |
 | `--state-dir` | State directory |
 | `-p, --port` | Port (default: 8901) |
 | `--bind` | `local` (default), `lan` or `wan` |
@@ -283,7 +283,6 @@ room daemon counts them as skips. Nothing about your broker session (`clean_sess
 | `~/.linafish/{name}_v3_state.json` | Persisted engine state |
 | `~/.linafish/{name}_crystals.jsonl` | Crystal log (one crystal per line) |
 | `~/.linafish/{name}.fish.md` | Human-readable codebook |
-| `./{name}.fish.md` | Copy of the codebook that `eat` writes to the current directory when run without `--state-dir` |
 | `~/.linafish/mi_vectorizer.json` | The vectorizer, shared by every fish in that state directory |
 | `~/.linafish/.git` | The fish's history (`linafish history -n {name}`) |
 

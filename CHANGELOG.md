@@ -12,7 +12,75 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ## [Unreleased]
 
+## [2.4.2] - 2026-11-14
+
+The grounding band can say `grounded` again, and the package says only what is true
+of itself: the tests ship with what they read, the PyPI page's links go somewhere,
+and the metadata drops a typing claim it never backed.
+
+**What changes when you upgrade:** `grounding.band` in a served fish's `/taste` JSON
+(`format: json`) can be `"grounded"` again. The composition floor that made it
+unreachable shipped in 2.2.0; on the two served fish measured for this release, 120 of
+120 probes since then came back `thin` or lower, so anything that branched on the band
+has likely only seen `thin` / `thin-recent` / `ungrounded`. It will now see `grounded`
+for well-attested lines. Same meaning as before: well-attested, not true. Nothing else
+changes by default.
+
+### Changed
+- **AGENTS.md — the briefing `linafish introduce` prints — no longer tells an AI that
+  `thin` means the fish does not hold the thing.** Measured 2026-11-14 on two served
+  fish, the band did not separate held from invented (120 of 120 probes came back
+  not-grounded, true and invented alike). The band is described as co-occurrence, not
+  attestation; an AI is told to read `evidence` and `matches` and check the source
+  before saying the fish does or does not hold something. (#113)
+
 ### Fixed
+- **`eat` no longer crashes under DEBUG logging.** Nine `logger.debug(...)` calls in
+  the engine still carried `file=sys.stderr` from when they were `print`s; with
+  `logging` at DEBUG, `eat_path` and the maintenance cycle raised
+  `TypeError: Logger._log() got an unexpected keyword argument 'file'`. Pinned by a
+  test over the module source.
+- **A crystal log with lines that do not parse now says so on load.** `_load_state`
+  skipped them silently and the fish reported itself whole; it now logs one warning
+  with the count ("2 line(s) ... did not parse ... 1 loaded"). Blank lines are not
+  counted. Nothing is deleted — the lines stay in the file.
+- **A one-document fish says why it cannot answer.** Fed a single note, the fish
+  freezes in stranger mode with an empty vocabulary (every idf is 0), the crystal's
+  vector is empty, and `ask`/`taste` said "Text too short or no signal detected" about
+  a query that was neither. `taste_dict` now returns `reason: "no_vocab"` and `taste`
+  says the fish has crystals but no vocabulary yet; a second piece of writing gives it
+  axes. (The first crystal's vector stays empty until `revectorize`; see Known.)
+- **Docs caught up with the band change below:** AGENTS.md no longer says "none came
+  back `grounded`" (that was the pre-fix measurement); the `taste_dict` docstring no
+  longer tells readers `thin` "IS the answer"; `docs/testing.md` describes both guards.
+
+- **`linafish converse` without `-n` serves the fish that is there.** The parser defaulted
+  the name to `linafish`, so after `go ~/my-writing` a bare `converse` (which `doctor` itself
+  suggests) served an empty fish of that name for as long as it ran. It now follows the rule
+  `http` and `serve` got in 2.3.2: one fish in the state dir is served and named on stderr;
+  several is a refusal that lists them. `docs/configuration.md` said the default was
+  `linafish` for all three servers; corrected.
+- **The MCP server answers every request.** `resources/list`, `prompts/list` and any other
+  method it does not implement got no reply at all, so a client that probes them (several
+  do, whatever the advertised capabilities) waited on the request until its own timeout.
+  Any request with an `id` now gets JSON-RPC `-32601 Method not found`; notifications stay
+  silent.
+- **`eat` on a sealed fish says so and exits 1.** It printed `0 crystals added`, a full
+  portrait, and exit 0 — a silent no-op that reads as success. Now: `Fish 'x' is sealed
+  (at …) — nothing eaten` on stderr, exit 1.
+- **`live`, `seal`, `compact` and `revectorize` commit.** They saved state without a commit
+  (the 2.3.0 default), so the fish repo sat dirty: `history` did not show the seal and
+  `revert` failed with git's "local changes would be overwritten". Each now commits under
+  its own name, and `*.bak-*` (the crystal-log backup `compact`/`revectorize` leave behind,
+  a full copy of every crystal) is ignored first so the commit does not store it. A copy an
+  earlier commit already tracked stays tracked until `git rm --cached <name>_crystals.jsonl.bak-pre-rewrite`.
+- **`keeper init` prints a next step that feeds the keeper it just made.** The `Feed:` hint
+  had no `--state-dir`; run as printed on a custom state dir it created a new, empty fish of
+  the same name under `~/.linafish` instead. The hint now names the keeper's own directory.
+- **`doctor` and `capabilities` no longer print a `FutureWarning`** on every run when
+  PyMuPDF ≥ 1.24 is installed (`import fitz` is deprecated there); the new module name is
+  tried first, in the dependency probes and in the PDF reader. `doctor`'s port labels no
+  longer carry this box's own fish names (`me fish`, `room fish`).
 - **`grounding.band` can reach `grounded` again, and it now needs most of the query's
   pairs attested, not one.** Calibrated 2026-11-14 on two served fish (21K and 41K
   crystals) with 20 invented / 20 true / 20 identity lines each: 0 of 120 came back
@@ -33,7 +101,47 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
   true→grounded 12/20, identity 6/20 (before: 0 everywhere). The namesake line from the README
   is `grounded` on both fish under the new gate; it was `thin` on both before. Still true and still documented: `grounded` means well-attested,
   not true — a short invented line that borrows one real pair still grounds — and `thin`
-  does not mean the fish lacks it.
+  does not mean the fish lacks it. (#114)
+- **`pytest` from the released tarball runs clean.** The 2.4.1 sdist carried the tests
+  but not the repo-root `AGENTS.md` or `scripts/migrate_to_addressed_formations.py`
+  that two of them read, so a run from the tarball failed 2 of 674. Both ship now.
+- **The links on the PyPI page go somewhere.** PyPI renders the README without
+  rewriting relative links, so every `docs/…` and `AGENTS.md` link on the project page
+  pointed at a URL under pypi.org that does not exist. They are absolute now; GitHub
+  renders them the same.
+
+### Maintenance
+- Dropped the `Typing :: Typed` classifier: no `py.typed` marker has ever shipped and
+  nothing type-checks the package, so the classifier promised something the wheel did
+  not carry (since 1.1.2).
+- The `Research` URL in the package metadata now points at the paper's concept DOI
+  (10.5281/zenodo.18477224), which resolves to the latest version. It used to point at
+  the original record; the author has since published a version that partially
+  withdraws the AI-judged results, and that is the one a new reader should land on.
+
+### Known (measured 2026-11-14, not fixed — a design call, see the release review)
+- **Every re-freeze makes earlier crystals lose to the newest batch.** `eat_path` and
+  per-text `eat` re-elect the vocabulary and bump the epoch on every call (a served
+  21K-crystal fish reads epoch 40,210). Stored vectors keep the statistics of the day
+  they were eaten; a query is vectorized with today's. Measured on two 30-note
+  batches: a note's own text finds itself top-1 30/30 after one batch, **0/30** after
+  the second (the winner is always a batch-2 note, gamma 0.92 vs 0.58 to itself);
+  same 60 notes in one batch, 30/30. `linafish live` keeps positions stable but does
+  NOT fix this (0/30 too). `revectorize` restores 30/30. Nothing runs it or tells the
+  user to. The `revectorize_all` docstring describes the opposite failure ("vocab is
+  frozen after the first batch") and is wrong about the mechanism.
+
+### Docs
+- Truth sweep before release. AGENTS.md's band paragraph describes the gate as it is after
+  the fix above (`grounded` is reachable; `thin` is still not absence). `eat` has not left a
+  copy of the fish in the current directory since 2.4.1, and getting-started and
+  configuration stop saying it does. The `--vocab` JSON / `extend_vocabulary()` advice in
+  how-it-works and architecture, which nothing reads, is replaced by
+  `LINAFISH_PROTECTED_VOCAB`; the two 2.4.0 opt-ins (`LINAFISH_TASTE_SPARSE`,
+  `LINAFISH_LIGHT_VECTORS`) join the environment table. privacy.md names the verbs that
+  reach the network and when. The paper is cited by its Zenodo title, and the PyPI
+  `Research` link points at the concept DOI so it resolves to the withdrawal-corrected
+  version instead of the original. Test counts regenerated.
 
 ## [2.4.1] - 2026-11-08
 

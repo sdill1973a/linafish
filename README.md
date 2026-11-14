@@ -18,7 +18,7 @@ Claude, ChatGPT, Gemini, or a model on your own box. Each one then meets you alr
 shape, instead of meeting a stranger. The fish keeps growing as you feed it, and it is versioned, so
 you can see what changed and roll it back.
 
-> **AI assistants:** read **[AGENTS.md](AGENTS.md)** or run `linafish introduce`. This page is for people.
+> **AI assistants:** read **[AGENTS.md](https://github.com/sdill1973a/linafish/blob/master/AGENTS.md)** or run `linafish introduce`. This page is for people.
 
 ## Install
 
@@ -53,7 +53,7 @@ linafish eat new-entry.txt -n my-writing               # feed it one more file
 - **Give it material.** About 10 documents gives a first sketch, about 30 a portrait you will recognise.
   With less, treat what it says as a guess.
 
-Full walkthrough: **[Your first ten minutes](docs/getting-started.md)**.
+Full walkthrough: **[Your first ten minutes](https://github.com/sdill1973a/linafish/blob/master/docs/getting-started.md)**.
 
 ## Connect it to your AI
 
@@ -88,7 +88,7 @@ linafish heart "$USER_PROMPT"
 It never writes to your fish (only its own beat log), it fails silent, and quiet is a valid answer. Quiet and not sure why?
 `~/.linafish/heart_beat_log.jsonl` says whether the moment was gated or simply matched nothing. Give it a frame so the model knows what
 the lines are: *memory, dated; the live conversation wins.* The fish informs and the moment decides.
-Details: **[docs/heart.md](docs/heart.md)**.
+Details: **[docs/heart.md](https://github.com/sdill1973a/linafish/blob/master/docs/heart.md)**.
 
 ## Keep it growing
 
@@ -102,7 +102,7 @@ Patterns that keep returning become **formations**, and `linafish whisper -n my-
 when it notices a new one. Each formation is read through eight modes: knowing, testing, structuring,
 relating, wanting, specializing, acting, reflecting. The modes are this project's lens, not a validated
 psychological instrument. Judge them by whether the formations sound like you.
-[How it works](docs/how-it-works.md).
+[How it works](https://github.com/sdill1973a/linafish/blob/master/docs/how-it-works.md).
 
 ## Versioned
 
@@ -130,12 +130,12 @@ One study: 46 matched conversations, same model, same prompt, rated blind by the
 built from. **1.9/10 without the fish, 8.7/10 with it.** The effect was large for emotional and relational
 content (d = 2.245), moderate for factual recall, and absent for speculation. It answers one question,
 *does the AI know me?*, for one person. A follow-up judged by AIs has been withdrawn pending a re-run.
-[Methodology and limits](docs/research.md) · [paper](https://doi.org/10.5281/zenodo.21828705).
+[Methodology and limits](https://github.com/sdill1973a/linafish/blob/master/docs/research.md) · [paper](https://doi.org/10.5281/zenodo.21828705).
 
 ## Privacy
 
 The fish is plain text in a folder you own. Read it before you share it: it is a portrait of how
-you think. [Threat model](docs/privacy.md).
+you think. [Threat model](https://github.com/sdill1973a/linafish/blob/master/docs/privacy.md).
 
 ## Origin
 
@@ -155,9 +155,9 @@ LiNafish is free and open source. If it helps you, give to the people who help o
 ## More
 
 `linafish capabilities` prints every command from the real dispatch table.
-[Getting Started](docs/getting-started.md) · [Worked Example](docs/worked-example.md) ·
-[How It Works](docs/how-it-works.md) · [Architecture](docs/architecture.md) · [Heart](docs/heart.md) ·
-[Configuration](docs/configuration.md) · [Research](docs/research.md) · [Privacy](docs/privacy.md) ·
-[Vision](docs/vision.md)
+[Getting Started](https://github.com/sdill1973a/linafish/blob/master/docs/getting-started.md) · [Worked Example](https://github.com/sdill1973a/linafish/blob/master/docs/worked-example.md) ·
+[How It Works](https://github.com/sdill1973a/linafish/blob/master/docs/how-it-works.md) · [Architecture](https://github.com/sdill1973a/linafish/blob/master/docs/architecture.md) · [Heart](https://github.com/sdill1973a/linafish/blob/master/docs/heart.md) ·
+[Configuration](https://github.com/sdill1973a/linafish/blob/master/docs/configuration.md) · [Research](https://github.com/sdill1973a/linafish/blob/master/docs/research.md) · [Privacy](https://github.com/sdill1973a/linafish/blob/master/docs/privacy.md) ·
+[Vision](https://github.com/sdill1973a/linafish/blob/master/docs/vision.md)
 
 MIT licensed.

@@ -221,7 +221,10 @@ def read_text(path: Path) -> list[Chunk]:
 def read_pdf(path: Path) -> list[Chunk]:
     """Read a PDF file. Uses PyMuPDF if available, falls back to basic extraction."""
     try:
-        import fitz  # PyMuPDF
+        try:
+            import pymupdf as fitz  # PyMuPDF >= 1.24; `import fitz` warns on every PDF eat
+        except ImportError:
+            import fitz  # older PyMuPDF
         doc = fitz.open(str(path))
         chunks = []
         for page_num, page in enumerate(doc):

@@ -1796,12 +1796,15 @@ class UniversalFish:
         if os.path.exists(self.crystal_log_path):
             import json
             loaded = 0
+            skipped = 0
             disk_crystals = []
             light = _light_vectors_on()
             vmeta = self._vec_sidecar_valid() if light else None
             covered = vmeta["count"] if vmeta else 0
             with open(self.crystal_log_path, encoding='utf-8', errors='replace') as f:
                 for line in f:
+                    if not line.strip():
+                        continue            # a blank line is not a crystal and not a loss
                     try:
                         d = json.loads(line)
                         c = Crystal(
@@ -1851,7 +1854,18 @@ class UniversalFish:
                         disk_crystals.append(c)
                         loaded += 1
                     except Exception:
-                        pass
+                        skipped += 1
+            if skipped:
+                # Say how many lines did not load. A torn tail after a hard kill is the
+                # expected shape and is one line; more than that means the log was damaged
+                # some other way. Before this the count was silently zero and a fish that
+                # had lost crystals reported itself whole (release review 2026-11-14).
+                import logging
+                logging.getLogger(__name__).warning(
+                    "UniversalFish._load_state: %d line(s) in %s did not parse as crystals "
+                    "and were skipped (%d loaded). They are still in the file; nothing was "
+                    "deleted.", skipped, self.crystal_log_path, loaded,
+                )
             # Disk is authoritative — use it if it has more crystals
             if loaded > len(self.crystals):
                 self.crystals = disk_crystals

@@ -169,7 +169,7 @@ The fish file is at `~/.linafish/[corpus-name].fish.md` after running `linafish 
 
 The complete methodology, statistical analysis, and theoretical framework:
 
-**"Recursive Compression as Cognitive Infrastructure"**
+**"Two Compression Regimes in Recursive Symbolic Communication: Empirical Evidence for a Broadcast-Ansible Boundary"**
 DOI: [10.5281/zenodo.21828705 (latest version)](https://doi.org/10.5281/zenodo.21828705) — the latest version (v13) partially withdraws the AI-judged warm/cold fidelity results while preserving the N=46 human study.
 
 The paper covers additional findings not summarized here, including:
