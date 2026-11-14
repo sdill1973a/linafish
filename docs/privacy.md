@@ -14,7 +14,7 @@ Everything lives in `~/.linafish/` on your machine. There is no server, no cloud
 | `{name}_v3_state.json` + `{name}_crystals.jsonl` | Full engine state: all crystals with text, scores, coupling data. | Yes. JSON/JSONL with your original text chunks. |
 | `name.qlp` | Compressed cognitive state in QLP notation. Dimension chains, formation signatures, soul reading. | Partially. The English summary is readable. The glyph chains are not. |
 
-No data leaves your machine unless you copy it somewhere or point a verb at an address. By default LiNafish makes no network calls and has no telemetry. The verbs that do reach out (`update` to PyPI, `demo --api-key` to Gemini, `bridge`, `absorb http://…`, `listen mqtt://…`, `room`, `hunt`, `meditate --descend`) talk only to the address you give them. It is pure Python with no required dependencies.
+No data leaves your machine unless you copy it somewhere or point a verb at an address. By default LiNafish makes no network calls and has no telemetry. Verbs that reach out, such as `update` (PyPI), `demo --api-key` (Gemini), `bridge`, `absorb http://…`, `listen mqtt://…`, `room`, `hunt`, `meditate --descend` and `vizmem --render-url`, talk only to the address you give them. It is pure Python with no required dependencies.
 
 ## What's in the fish.md (Plain English)
 
