@@ -35,7 +35,7 @@ lines on two served fish, 21K and 41K crystals). Two findings changed the
    crystal is stored. Every line that cleared max_evidence 1.30 (51 of 120)
    was demoted; 0 of 120 came back ``grounded``, true and invented alike.
    gamma separates true from invented at AUC 0.46 (no better than chance) — and it ranks an invented
-   line ABOVE "Caroline Marie Dill, August 29 2023" on both fish. So gamma
+   line ABOVE the namesake line from the README on both fish. So gamma
    now guards only the zero-resonance case (nothing matched → never
    grounded); the ``gamma_floor`` parameter stays for callers that want a
    stricter floor.
