@@ -39,3 +39,11 @@ v2.4.0
 # stress (480 eats, 49 concurrent flushes, 480 everywhere); her two warnings folded into the changelog.
 # Line typed by Anchor on his instruction, attributed.
 v2.4.1
+
+# 2026-11-14 ~14:2x CST — Captain authorized v2.4.2 in session 01L5FeWKokL29Fu4PU8eDJvZ: "yes on both please" (release
+# + GitHub About), after reading the GO page (data/research/linafish_release_review_2026-11-14/00_READINESS.md in the
+# runtime). Before tagging: five review lanes (core, cli_mcp, onboarding, docs, meta) each skeptic-checked; merged tree
+# 688 passed / 0 failed; privacy gate HARD clean over master..merge; sdist + wheel built and gated; wheel smoke on a
+# real fish. Known (in CHANGELOG): a second eat buries the first until revectorize — older than 2.4.1, 2.5 item.
+# Line typed by Anchor on his instruction, attributed.
+v2.4.2
