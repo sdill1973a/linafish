@@ -23,6 +23,36 @@ an early-return path — see ``FishEngine.taste_dict``). Three questions:
 
 No redesign here — this module implements a frozen spec. Band edges and
 the recency-lift threshold are not tunable knobs; they're the spec.
+
+CALIBRATED 2026-11-14 (120 probes: 20 invented / 20 true / 20 identity
+lines on two served fish, 21K and 41K crystals). Two findings changed the
+``grounded`` gate:
+
+1. The composition floor of 0.885 was unreachable BY CONSTRUCTION. A
+   stored crystal's own text, re-tasted verbatim, scores gamma 0.34-0.43
+   against its own stored vector (measured on both served fish and on the
+   400-crystal test fixture) because the vectorizer keeps moving after the
+   crystal is stored. Every line that cleared max_evidence 1.30 (51 of 120)
+   was demoted; 0 of 120 came back ``grounded``, true and invented alike.
+   gamma separates true from invented at AUC 0.46 (no better than chance) — and it ranks an invented
+   line ABOVE the namesake line from the README on both fish. So gamma
+   now guards only the zero-resonance case (nothing matched → never
+   grounded); the ``gamma_floor`` parameter stays for callers that want a
+   stricter floor.
+2. max_evidence does not separate (AUC 0.70): an invented sentence that
+   borrows ONE real pair ("pole star", "warm decoder") clears 1.30 as
+   easily as a true one. mean_evidence does (AUC 0.95): in a true line most
+   pairs are attested, in an invented line one is. ``grounded`` therefore
+   also requires mean_evidence >= 0.25 (SPREAD_FLOOR; threshold chosen on
+   one half of the rows, 0.247, and checked on the other, 0.209 — 0.25 is
+   the conservative side). Below it the band is ``thin`` with
+   ``demoted_by: "spread"``.
+
+Not fixed, and not claimed: a SHORT invented line (1-3 informative tokens)
+has mean ≈ max, so one borrowed real pair still grounds it. That is the
+register-borrowing hole the contract above already names. And ``thin``
+still does NOT mean "the fish lacks it" — about half the true lines on the
+calibration set stay ``thin``; read the matches, check the disk.
 """
 
 import math
@@ -129,7 +159,14 @@ def pair_evidence(tokens, vectorizer):
     return out
 
 
-def verdict(text, vectorizer, recent_texts=None, gamma=None, gamma_floor=0.885):
+# A 'grounded' band needs most of the query's pairs attested, not one. Calibrated 2026-11-14
+# (see the module docstring): mean_evidence separates true from invented at AUC 0.95 where
+# max_evidence (0.70) and gamma (0.46) do not.
+SPREAD_FLOOR = 0.25
+
+
+def verdict(text, vectorizer, recent_texts=None, gamma=None, gamma_floor=0.0,
+            spread_floor=SPREAD_FLOOR):
     """Grade a query by how much co-occurrence evidence backs it.
 
     Bands (on max_evidence): <0.25 ungrounded, 0.25-1.30 thin,
@@ -139,14 +176,21 @@ def verdict(text, vectorizer, recent_texts=None, gamma=None, gamma_floor=0.885):
     'thin-recent' — the fish just learned this, it hasn't earned
     'grounded' yet.
 
-    Composition fusion (M1 Phase 1c): pair evidence alone can be
-    register-borrowed — a query can wear known vocabulary in known
-    pairings without the query, taken as a whole, actually resonating
-    with anything the fish holds. gamma (the top match's whole-query
-    similarity) catches what pair statistics cannot: if the band would
-    be 'grounded' but gamma is given and falls below gamma_floor, the
-    verdict is demoted to 'thin' and the demotion is named. Omitting
-    gamma leaves the verdict exactly as it was before this fusion.
+    Composition guard (M1 Phase 1c, recalibrated 2026-11-14): if the band
+    would be 'grounded' but gamma is given and is at or below gamma_floor,
+    the verdict is demoted to 'thin' with ``demoted_by: "composition"``.
+    The default floor is 0.0 — gamma 0.0 means the query resonated with
+    nothing, and that can never be grounded. The old default of 0.885 was
+    unreachable on any fish that has kept learning since its crystals were
+    stored (verbatim text scores 0.34-0.43 against its own vector), so it
+    demoted every grounded line, true or invented. Callers may still pass a
+    stricter floor. Omitting gamma skips the guard.
+
+    Spread guard (2026-11-14): a 'grounded' band also requires
+    mean_evidence >= spread_floor. One borrowed real pair lifts
+    max_evidence over 1.30 for an invented sentence as easily as a true
+    one; only a true sentence has MOST of its pairs attested. Below the
+    floor the band is 'thin' with ``demoted_by: "spread"``.
     """
     tokens = informative_tokens(text, vectorizer)
     pairs = pair_evidence(tokens, vectorizer)
@@ -198,9 +242,12 @@ def verdict(text, vectorizer, recent_texts=None, gamma=None, gamma_floor=0.885):
         "recent_support": round(recent_support, 4),
     }
 
-    if band == "grounded" and gamma is not None and gamma < gamma_floor:
+    if band == "grounded" and gamma is not None and gamma <= gamma_floor:
         result["band"] = "thin"
         result["demoted_by"] = "composition"
         result["gamma"] = gamma
+    elif band == "grounded" and mean_evidence < spread_floor:
+        result["band"] = "thin"
+        result["demoted_by"] = "spread"
 
     return result

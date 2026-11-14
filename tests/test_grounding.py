@@ -358,3 +358,65 @@ def test_omitting_gamma_still_leaves_the_verdict_unchanged():
     q = "marisol audits the cooperative ledger"
     assert verdict(q, v, recent)["band"] == verdict(q, v, recent, gamma=0.99)["band"], \
         "omitting gamma must leave the verdict unchanged; only a low/zero gamma demotes"
+
+
+# ---------------------------------------------------------------------------
+# Calibration 2026-11-14 — spread guard + reachable composition floor
+# ---------------------------------------------------------------------------
+# Measured on two served fish (120 probes): the 0.885 gamma floor was unreachable
+# by construction (a crystal's own text re-tasted scores 0.34-0.43 against its
+# own vector), so 0/120 were ever `grounded`; and max_evidence does not separate
+# invented from true (one borrowed real pair clears 1.30) while mean_evidence
+# does. See the grounding.py module docstring.
+
+def _one_real_pair_many_unknown_vec():
+    """One strongly attested pair (gizmo|captain -> max_evidence ~2.0) amid
+    tokens the fish has never seen: the shape of an invented sentence that
+    borrows one real pairing."""
+    return StubVectorizer(
+        doc_count=100,
+        token_doc_counts={"gizmo": 2, "captain": 2},
+        pair_counts={"gizmo|captain": 10},
+    )
+
+
+def test_one_borrowed_pair_among_unknowns_is_demoted_by_spread():
+    vec = _one_real_pair_many_unknown_vec()
+    # 5 informative tokens -> 10 pairs, 1 attested: max > 1.30, mean < 0.25
+    v = verdict("gizmo captain lantern seventh meadow", vec, gamma=0.5)
+    assert v["max_evidence"] > 1.30
+    assert v["mean_evidence"] < 0.25
+    assert v["band"] == "thin"
+    assert v["demoted_by"] == "spread"
+    assert "gamma" not in v, "spread demotion does not report gamma"
+
+
+def test_well_spread_evidence_stays_grounded_no_demotion_key():
+    vec = _one_real_pair_many_unknown_vec()
+    # 2 tokens -> 1 pair, attested: mean == max > 1.30
+    v = verdict("gizmo captain", vec, gamma=0.5)
+    assert v["mean_evidence"] >= 0.25
+    assert v["band"] == "grounded"
+    assert "demoted_by" not in v
+
+
+def test_default_composition_floor_is_reachable_but_zero_still_demotes():
+    """The old default (0.885) demoted EVERY grounded line on the served fish.
+    With the default floor, a modest positive gamma stays grounded; gamma 0.0
+    (nothing resonated) still never does."""
+    vec = _grounded_vec()
+    v_mid = verdict("gizmo captain", vec, gamma=0.35)   # what verbatim text scores live
+    assert v_mid["band"] == "grounded"
+    assert "demoted_by" not in v_mid
+    v_zero = verdict("gizmo captain", vec, gamma=0.0)
+    assert v_zero["band"] == "thin"
+    assert v_zero["demoted_by"] == "composition"
+    assert v_zero["gamma"] == 0.0
+
+
+def test_spread_floor_is_a_parameter_and_composition_wins_when_both_fail():
+    vec = _one_real_pair_many_unknown_vec()
+    q = "gizmo captain lantern seventh meadow"
+    assert verdict(q, vec, gamma=0.5, spread_floor=0.0)["band"] == "grounded"
+    both = verdict(q, vec, gamma=0.0)
+    assert both["demoted_by"] == "composition", "zero resonance is named first"
