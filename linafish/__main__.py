@@ -958,8 +958,11 @@ def cmd_converse(args):
     """Two fish, one conversation."""
     from .converse import serve_converse
     state_dir = Path(args.state_dir) if args.state_dir else None
+    # Same rule as http/serve (2.3.2): -n omitted -> the one fish in the state dir, named out loud;
+    # several -> refuse and list them. Until now the parser defaulted to "linafish", so
+    # `linafish converse` after `go ~/my-writing` served an EMPTY fish of that name for hours.
     serve_converse(
-        name=args.name,
+        name=_serve_name(args),
         state_dir=state_dir,
         port=args.port,
         bind=args.bind,
@@ -3234,7 +3237,7 @@ def main():
 
     # converse — two fish, one conversation
     conv_p = sub.add_parser("converse", help="Two fish, one conversation. Crystal exchange over HTTP.")
-    conv_p.add_argument("-n", "--name", default="linafish", help="Fish name")
+    conv_p.add_argument("-n", "--name", help="Fish name (default: the one fish in the state dir)")
     conv_p.add_argument("--state-dir", type=_user_path, help="State directory")
     conv_p.add_argument("-p", "--port", type=int, default=8901, help="Port (default: 8901)")
     conv_p.add_argument("--bind", default="local", choices=["local", "lan", "wan"],

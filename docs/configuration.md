@@ -60,7 +60,7 @@ State saves to `~/.linafish/my-project_v3_state.json` (plus `my-project_crystals
 }
 ```
 
-`linafish go ~/my-writing` makes a fish named after the folder, `my-writing`. Pass that name with `-n` and leave out `--feed`; the server loads the fish as it is. Without `-n`, `serve` uses a fish named `linafish`.
+`linafish go ~/my-writing` makes a fish named after the folder, `my-writing`. Pass that name with `-n` and leave out `--feed`; the server loads the fish as it is. Without `-n`, `serve` serves the one fish in the state dir and says which; if several live there it stops and lists them, so pass `-n`. (With `--feed` and no `-n` the fish is named `linafish`.)
 
 ### Custom State Directory
 
@@ -121,7 +121,7 @@ Start the MCP server (stdio transport).
 |------|-------------|
 | `--feed` | Directory or file to ingest on startup. Leave it out to serve an existing fish as it is. |
 | `--state-dir` | State directory (default: `~/.linafish/`) |
-| `-n, --name` | Fish name (default: `linafish`). Use the name `go` gave your fish. |
+| `-n, --name` | Fish name (default: the one fish in the state dir; several → it lists them and stops). Use the name `go` gave your fish. |
 | `--vocab` | No effect (see [Domain Vocabulary](#domain-vocabulary---vocab--no-effect)) |
 
 ### `linafish http`
@@ -130,7 +130,7 @@ Serve a fish over HTTP for any AI or tool that can fetch a URL. Runs until Ctrl+
 
 | Flag | Description |
 |------|-------------|
-| `-n, --name` | Fish name (default: `linafish`). To serve the fish `go` built from `~/my-writing`, use `-n my-writing`. |
+| `-n, --name` | Fish name (default: the one fish in the state dir; several → it lists them and stops). To serve the fish `go` built from `~/my-writing`, use `-n my-writing`. |
 | `--feed` | Directory or file to ingest on startup. Leave it out to serve an existing fish as it is. |
 | `--state-dir` | State directory (default: `~/.linafish/`) |
 | `-p, --port` | Port (default: 8900) |
@@ -145,7 +145,7 @@ The multi-fish, federation-oriented HTTP server (default port 8901).
 
 | Flag | Description |
 |------|-------------|
-| `-n, --name` | Fish name (default: `linafish`) |
+| `-n, --name` | Fish name (default: the one fish in the state dir; several → it lists them and stops) |
 | `--state-dir` | State directory |
 | `-p, --port` | Port (default: 8901) |
 | `--bind` | `local` (default), `lan` or `wan` |
