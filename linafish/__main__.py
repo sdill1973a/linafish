@@ -97,6 +97,15 @@ def cmd_eat(args):
         print("No content found.")
         sys.exit(1)
 
+    if result.get("sealed"):
+        # The engine refused (eat_path returns sealed=True, crystals_added 0) and this
+        # printed "0 crystals added" plus a full portrait, exit 0 — a silent no-op that
+        # a script or a forgetful owner reads as success. Nothing was eaten; say so, and
+        # exit the way revert does when declined: non-zero.
+        print(f"  Fish '{engine.name}' is sealed (at {engine.fish.sealed_at}) — nothing eaten. "
+              f"A sealed fish does not grow again.", file=sys.stderr)
+        sys.exit(1)
+
     print(f"  {result.get('crystals_added', 0)} crystals added "
           f"({result.get('total_crystals', 0)} total) from {source}")
     print(f"  {result.get('formations', 0)} formations")
