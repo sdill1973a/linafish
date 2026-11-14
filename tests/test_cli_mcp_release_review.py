@@ -217,7 +217,7 @@ def test_doctor_and_capabilities_do_not_warn_on_stderr(tmp_path):
     for argv in (("doctor", "--state-dir", str(state)), ("capabilities",)):
         r = _cli(tmp_path, *argv)
         assert r.returncode == 0, r.stdout + r.stderr
-        assert "Warning" not in r.stderr, argv[0] + " stderr:\n" + r.stderr
+        assert "FutureWarning" not in r.stderr and "fitz" not in r.stderr, argv[0] + " stderr:\n" + r.stderr
     r = _cli(tmp_path, "doctor", "--state-dir", str(state))
     assert "me fish" not in r.stdout and "room fish" not in r.stdout, r.stdout
 

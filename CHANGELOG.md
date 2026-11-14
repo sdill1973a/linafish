@@ -31,7 +31,8 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
   (the 2.3.0 default), so the fish repo sat dirty: `history` did not show the seal and
   `revert` failed with git's "local changes would be overwritten". Each now commits under
   its own name, and `*.bak-*` (the crystal-log backup `compact`/`revectorize` leave behind,
-  a full copy of every crystal) is ignored first so the commit does not store it.
+  a full copy of every crystal) is ignored first so the commit does not store it. A copy an
+  earlier commit already tracked stays tracked until `git rm --cached <name>_crystals.jsonl.bak-pre-rewrite`.
 - **`keeper init` prints a next step that feeds the keeper it just made.** The `Feed:` hint
   had no `--state-dir`; run as printed on a custom state dir it created a new, empty fish of
   the same name under `~/.linafish` instead. The hint now names the keeper's own directory.
