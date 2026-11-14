@@ -12,6 +12,29 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ## [Unreleased]
 
+### Fixed
+- **`grounding.band` can reach `grounded` again, and it now needs most of the query's
+  pairs attested, not one.** Calibrated 2026-11-14 on two served fish (21K and 41K
+  crystals) with 20 invented / 20 true / 20 identity lines each: 0 of 120 came back
+  `grounded`. Two causes. (1) The composition floor (top-match gamma ≥ 0.885) was
+  unreachable by construction — a stored crystal's own text, re-tasted verbatim, scores
+  gamma 0.34–0.43 against its own vector because the vectorizer keeps moving after the
+  crystal is stored — so every line that cleared the evidence edge was demoted, true and
+  invented alike. gamma also does not separate true from invented (AUC 0.46, chance level; it ranks an
+  invented line above "Caroline Marie Dill, August 29 2023" on both fish). The default
+  floor is now 0.0: gamma 0.0 (nothing resonated) still can never be grounded; the
+  `gamma_floor` parameter stays for callers who want a stricter cut. (2) `max_evidence`
+  does not separate either (AUC 0.70) — one borrowed real pair lifts an invented sentence
+  over 1.30 — but `mean_evidence` does (AUC 0.95). `grounded` now also requires
+  `mean_evidence >= 0.25`; below it the band is `thin` with `demoted_by: "spread"`.
+  Threshold chosen on half the rows (0.247) and checked on the other half (0.209). Result
+  on the held-out half, computed from the recorded features of the 120 probes (not re-run
+  live — the served fish carry the installed build): invented→grounded 0/20,
+  true→grounded 12/20, identity 6/20 (before: 0 everywhere). "Caroline Marie Dill, August
+  29 2023" is `grounded` on both fish under the new gate; it was `thin` on both before. Still true and still documented: `grounded` means well-attested,
+  not true — a short invented line that borrows one real pair still grounds — and `thin`
+  does not mean the fish lacks it.
+
 ## [2.4.1] - 2026-11-08
 
 Fixes found by two AI minds installing linafish from the README as strangers would

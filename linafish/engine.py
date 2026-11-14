@@ -3199,8 +3199,9 @@ class FishEngine:
                     "evidence": [(tok, tok, count), ...],
                     "unknown_pairs": [(tok, tok), ...],
                     "recent_support": float,
-                    "demoted_by": str,  # "composition", only when the floor fired
-                    "gamma": float,     # only alongside demoted_by
+                    "demoted_by": str,  # "composition" (gamma at/below floor) or "spread"
+                                        # (mean_evidence < 0.25); only when a guard fired
+                    "gamma": float,     # only alongside demoted_by == "composition"
                 },
             }
 
