@@ -2584,7 +2584,9 @@ def cmd_doctor(args):
     print("Optional dependencies:")
     deps = [
         ("numpy", "fast", "fast math for crystallizer_v3"),
-        ("fitz", "pdf", "PyMuPDF — PDF reader"),
+        # PyMuPDF >= 1.24 ships both names and `import fitz` prints a FutureWarning
+        # on stderr; probe the new name first so a health check does not warn.
+        ("pymupdf|fitz", "pdf", "PyMuPDF — PDF reader"),
         ("docx", "docx", "python-docx — Word reader"),
         ("pptx", "pptx", "python-pptx — PowerPoint reader"),
         ("yaml", "yaml", "PyYAML — YAML reader"),
@@ -2593,11 +2595,14 @@ def cmd_doctor(args):
         ("paho.mqtt.client", "mqtt", "MQTT client for room listener"),
     ]
     for mod, extra, desc in deps:
-        try:
-            __import__(mod)
-            mark = "[+]"
-        except ImportError:
-            mark = "[ ]"
+        mark = "[ ]"
+        for cand in mod.split("|"):
+            try:
+                __import__(cand)
+                mark = "[+]"
+                break
+            except ImportError:
+                continue
         print(f"  {mark} {extra:8} {desc}")
     print()
 
@@ -2627,8 +2632,8 @@ def cmd_doctor(args):
         return (f"  [-] {label} at {host}:{port} serving '{name}' "
                 f"(not yours: another state dir)")
     print(_probe("127.0.0.1", 8901, "converse"))
-    print(_probe("127.0.0.1", 8902, "converse (me fish)"))
-    print(_probe("127.0.0.1", 8900, "http server / room fish"))
+    print(_probe("127.0.0.1", 8902, "converse (second)"))
+    print(_probe("127.0.0.1", 8900, "http server"))
     print()
 
     # -- Fish health --
@@ -3070,15 +3075,19 @@ def cmd_capabilities(args):
     ]
 
     # Optional dependency check
-    def _dep(name):
-        try:
-            importlib.import_module(name)
-            return "yes"
-        except ImportError:
-            return "no"
+    def _dep(*names):
+        # Several names = alternatives; the first that imports wins (PyMuPDF
+        # is `pymupdf` since 1.24, and its old `fitz` name warns on import).
+        for name in names:
+            try:
+                importlib.import_module(name)
+                return "yes"
+            except ImportError:
+                continue
+        return "no"
     deps = {
         "numpy (fast)": _dep("numpy"),
-        "PyMuPDF (pdf)": _dep("fitz"),
+        "PyMuPDF (pdf)": _dep("pymupdf", "fitz"),
         "python-docx (docx)": _dep("docx"),
         "python-pptx (pptx)": _dep("pptx"),
         "PyYAML (yaml)": _dep("yaml"),
