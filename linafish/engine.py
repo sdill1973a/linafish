@@ -653,8 +653,7 @@ class FishEngine:
                 demoted = sum(1 for w in result.recommendations.values() if w < 1.5)
                 promoted = sum(1 for w in result.recommendations.values() if w > 2.5)
                 if demoted or promoted:
-                    import logging as _log; _log.getLogger(__name__).debug(f"  [formative] Adjusted: {demoted} demoted, {promoted} promoted",
-                          file=sys.stderr)
+                    import logging as _log; _log.getLogger(__name__).debug(f"  [formative] Adjusted: {demoted} demoted, {promoted} promoted")
 
             # Track R(n) — compression efficiency over time
             r_n = self._compute_r_n()
@@ -692,8 +691,7 @@ class FishEngine:
             self._save_assessment_state()
 
             import logging as _log; _log.getLogger(__name__).debug(f"  [formative] Epoch {self.fish.epoch}: R(n)={r_n:.4f}, "
-                  f"{len(self.fish.crystals)}c, {len(self.formations)}f",
-                  file=sys.stderr)
+                  f"{len(self.fish.crystals)}c, {len(self.formations)}f")
             return log_entry
 
         except Exception as e:
@@ -874,7 +872,7 @@ class FishEngine:
         try:
             path.write_text(json.dumps(state, indent=2, default=str), encoding="utf-8")
         except Exception as e:
-            import logging as _log; _log.getLogger(__name__).debug(f"[assessment] Failed to save state: {e}", file=sys.stderr)
+            import logging as _log; _log.getLogger(__name__).debug(f"[assessment] Failed to save state: {e}")
 
     def _load_assessment_state(self):
         """Load persisted assessment state if it exists."""
@@ -890,7 +888,7 @@ class FishEngine:
             self._seed_weights = state.get("seed_weights", {})
             self._pre_assessed = state.get("pre_assessed", False)
         except Exception as e:
-            import logging as _log; _log.getLogger(__name__).debug(f"[assessment] Failed to load state: {e}", file=sys.stderr)
+            import logging as _log; _log.getLogger(__name__).debug(f"[assessment] Failed to load state: {e}")
 
     # -------------------------------------------------------------------
     # GIT
@@ -2462,7 +2460,7 @@ class FishEngine:
         # Run on the full batch. This is the universal screener.
         # The assessment sees ALL the texts and recommends d + seed_weights.
         if not self._pre_assessed and HAS_ASSESSMENT:
-            import logging as _log; _log.getLogger(__name__).debug(f"[assessment] Pre-assessing {total} documents...", file=sys.stderr)
+            import logging as _log; _log.getLogger(__name__).debug(f"[assessment] Pre-assessing {total} documents...")
             self.pre_assess(texts)
 
         # Phase 1: Learn all texts (build co-occurrence stats)
@@ -2483,7 +2481,7 @@ class FishEngine:
         elif self.seed_grammar:
             seed_label = " +grammar"
         import logging as _log; _log.getLogger(__name__).debug(f"  Vocab frozen: {self.fish.vocab[:10]}... (d={self.d}, "
-              f"size={len(self.fish.vocab)}{seed_label})", file=sys.stderr)
+              f"size={len(self.fish.vocab)}{seed_label})")
 
         # Crystallize all — with progress output every 10 docs
         source_name = path.name if not path.is_dir() else str(path)
@@ -2512,7 +2510,7 @@ class FishEngine:
 
             self._save_state()
             import logging as _log; _log.getLogger(__name__).debug(f"  Done: {len(new_crystals)} crystals, {len(self.formations)} formations, "
-                  f"R(n)={r_n:.4f}", file=sys.stderr)
+                  f"R(n)={r_n:.4f}")
 
         return {
             "crystals_added": len(new_crystals),
@@ -2780,7 +2778,7 @@ class FishEngine:
         if dissolved or emerged:
             import logging as _log; _log.getLogger(__name__).debug(f"  [re-eat] Survived: {len(survived)}, "
                   f"Dissolved: {len(dissolved)}, "
-                  f"Emerged: {len(emerged)}", file=sys.stderr)
+                  f"Emerged: {len(emerged)}")
             if dissolved:
                 import logging as _log; _log.getLogger(__name__).debug(f"Dissolved: {', '.join(sorted(dissolved)[:5])}")
             if emerged:
@@ -2802,7 +2800,7 @@ class FishEngine:
         self._save_state()
 
         import logging as _log; _log.getLogger(__name__).debug(f"  Re-eat complete. Epoch {self.fish.epoch}. "
-              f"Vocab: {self.fish.vocab[:5]}...", file=sys.stderr)
+              f"Vocab: {self.fish.vocab[:5]}...")
 
         result = {
             "re_eat": True,
@@ -3206,15 +3204,24 @@ class FishEngine:
             }
 
         ``ok=False`` with ``reason`` set covers the empty-fish, not-frozen,
-        no-signal, and no-resonance cases — same five terminal paths the
-        text ``taste()`` returns. Consumers (guppies, federation tooling)
-        check ``ok`` before iterating ``matches``.
+        no-vocab, no-signal, and no-resonance cases — the same terminal
+        paths the text ``taste()`` returns. Consumers (guppies, federation
+        tooling) check ``ok`` before iterating ``matches``.
+
+        ``no_vocab`` (2026-11-14): the fish is frozen but elected no axes. A
+        fish fed ONE document starts in stranger mode (d >= 5), where every
+        term's idf is 0 and nothing qualifies, so the first crystal carries
+        an empty vector and every query returned ``no_signal`` — "Text too
+        short" — about a text that was not short. The honest reason is that
+        the fish has no coordinate system yet; it gets one at the next eat.
 
         ``grounding.band`` means **WELL-ATTESTED, NOT TRUE** — a fabrication
         composed from real vocabulary in real pairings is indistinguishable
         from a real memory within these statistics (see ``grounding.py``).
-        Honor the band: ``thin`` and ``ungrounded`` ARE the answer, not a
-        weak result to write around. A failure inside the verdict yields
+        The band is not a verdict either way: ``grounded`` is not true and
+        ``thin`` is not absence (about half the true lines on the 2026-11-14
+        calibration set stay ``thin``). Read the ``evidence`` pairs and the
+        ``matches``, then check the source. A failure inside the verdict yields
         ``{"band": "error"}`` rather than raising — the taste still returns.
         """
         if os.environ.get("LINAFISH_TASTE_SPARSE", "off").lower() in ("on", "1", "true"):
@@ -3230,6 +3237,12 @@ class FishEngine:
         if not self.fish.frozen:
             return {
                 "ok": False, "reason": "not_frozen",
+                "query_keywords": [], "match_count": 0,
+                "total_crystals": total, "matches": [],
+            }
+        if not self.fish.vocab:
+            return {
+                "ok": False, "reason": "no_vocab",
                 "query_keywords": [], "match_count": 0,
                 "total_crystals": total, "matches": [],
             }
@@ -3292,6 +3305,9 @@ class FishEngine:
             messages = {
                 "empty_fish": "Fish is empty. Nothing to match against.",
                 "not_frozen": "Fish hasn't learned enough yet. Feed more content.",
+                "no_vocab": (f"Fish holds {result['total_crystals']} crystal(s) but has no "
+                             "vocabulary yet — one document is not enough to choose axes. "
+                             "Feed a second piece of writing and ask again."),
                 "no_signal": "Text too short or no signal detected.",
             }
             return messages.get(result["reason"], "No resonance found.")

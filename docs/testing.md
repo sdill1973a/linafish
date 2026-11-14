@@ -24,9 +24,10 @@ and the temporal coupling bonus they enable.
 
 ### Grounding Tests (`test_grounding.py`) — 18 tests
 The graded verdict on `taste_dict`: informative-token selection, pair evidence
-and specificity weighting, the band edges, the recency lift, and the composition
-floor (a `grounded` band demoted to `thin` when whole-query gamma falls below the
-floor; non-grounded bands never demoted).
+and specificity weighting, the band edges, the recency lift, and the two guards a
+`grounded` band must pass (composition: whole-query gamma above the floor, default
+0.0 — nothing resonated is never grounded; spread: mean pair evidence at or above
+0.25 — one borrowed pair is not attestation). Non-grounded bands are never demoted.
 
 ### Dedup Tests (`test_dedup_helpers.py`) — 45 tests
 The `normalize_for_dedup` rule: how incoming text is normalized before

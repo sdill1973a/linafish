@@ -13,6 +13,25 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 ## [Unreleased]
 
 ### Fixed
+- **`eat` no longer crashes under DEBUG logging.** Nine `logger.debug(...)` calls in
+  the engine still carried `file=sys.stderr` from when they were `print`s; with
+  `logging` at DEBUG, `eat_path` and the maintenance cycle raised
+  `TypeError: Logger._log() got an unexpected keyword argument 'file'`. Pinned by a
+  test over the module source.
+- **A crystal log with lines that do not parse now says so on load.** `_load_state`
+  skipped them silently and the fish reported itself whole; it now logs one warning
+  with the count ("2 line(s) ... did not parse ... 1 loaded"). Blank lines are not
+  counted. Nothing is deleted — the lines stay in the file.
+- **A one-document fish says why it cannot answer.** Fed a single note, the fish
+  freezes in stranger mode with an empty vocabulary (every idf is 0), the crystal's
+  vector is empty, and `ask`/`taste` said "Text too short or no signal detected" about
+  a query that was neither. `taste_dict` now returns `reason: "no_vocab"` and `taste`
+  says the fish has crystals but no vocabulary yet; a second piece of writing gives it
+  axes. (The first crystal's vector stays empty until `revectorize`; see Known.)
+- **Docs caught up with the band change below:** AGENTS.md no longer says "none came
+  back `grounded`" (that was the pre-fix measurement); the `taste_dict` docstring no
+  longer tells readers `thin` "IS the answer"; `docs/testing.md` describes both guards.
+
 - **`grounding.band` can reach `grounded` again, and it now needs most of the query's
   pairs attested, not one.** Calibrated 2026-11-14 on two served fish (21K and 41K
   crystals) with 20 invented / 20 true / 20 identity lines each: 0 of 120 came back
@@ -34,6 +53,18 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
   is `grounded` on both fish under the new gate; it was `thin` on both before. Still true and still documented: `grounded` means well-attested,
   not true — a short invented line that borrows one real pair still grounds — and `thin`
   does not mean the fish lacks it.
+
+### Known (measured 2026-11-14, not fixed — a design call, see the release review)
+- **Every re-freeze makes earlier crystals lose to the newest batch.** `eat_path` and
+  per-text `eat` re-elect the vocabulary and bump the epoch on every call (a served
+  21K-crystal fish reads epoch 40,210). Stored vectors keep the statistics of the day
+  they were eaten; a query is vectorized with today's. Measured on two 30-note
+  batches: a note's own text finds itself top-1 30/30 after one batch, **0/30** after
+  the second (the winner is always a batch-2 note, gamma 0.92 vs 0.58 to itself);
+  same 60 notes in one batch, 30/30. `linafish live` keeps positions stable but does
+  NOT fix this (0/30 too). `revectorize` restores 30/30. Nothing runs it or tells the
+  user to. The `revectorize_all` docstring describes the opposite failure ("vocab is
+  frozen after the first batch") and is wrong about the mechanism.
 
 ## [2.4.1] - 2026-11-08
 
