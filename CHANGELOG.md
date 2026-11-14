@@ -32,6 +32,33 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
   back `grounded`" (that was the pre-fix measurement); the `taste_dict` docstring no
   longer tells readers `thin` "IS the answer"; `docs/testing.md` describes both guards.
 
+- **`linafish converse` without `-n` serves the fish that is there.** The parser defaulted
+  the name to `linafish`, so after `go ~/my-writing` a bare `converse` (which `doctor` itself
+  suggests) served an empty fish of that name for as long as it ran. It now follows the rule
+  `http` and `serve` got in 2.3.2: one fish in the state dir is served and named on stderr;
+  several is a refusal that lists them. `docs/configuration.md` said the default was
+  `linafish` for all three servers; corrected.
+- **The MCP server answers every request.** `resources/list`, `prompts/list` and any other
+  method it does not implement got no reply at all, so a client that probes them (several
+  do, whatever the advertised capabilities) waited on the request until its own timeout.
+  Any request with an `id` now gets JSON-RPC `-32601 Method not found`; notifications stay
+  silent.
+- **`eat` on a sealed fish says so and exits 1.** It printed `0 crystals added`, a full
+  portrait, and exit 0 — a silent no-op that reads as success. Now: `Fish 'x' is sealed
+  (at …) — nothing eaten` on stderr, exit 1.
+- **`live`, `seal`, `compact` and `revectorize` commit.** They saved state without a commit
+  (the 2.3.0 default), so the fish repo sat dirty: `history` did not show the seal and
+  `revert` failed with git's "local changes would be overwritten". Each now commits under
+  its own name, and `*.bak-*` (the crystal-log backup `compact`/`revectorize` leave behind,
+  a full copy of every crystal) is ignored first so the commit does not store it. A copy an
+  earlier commit already tracked stays tracked until `git rm --cached <name>_crystals.jsonl.bak-pre-rewrite`.
+- **`keeper init` prints a next step that feeds the keeper it just made.** The `Feed:` hint
+  had no `--state-dir`; run as printed on a custom state dir it created a new, empty fish of
+  the same name under `~/.linafish` instead. The hint now names the keeper's own directory.
+- **`doctor` and `capabilities` no longer print a `FutureWarning`** on every run when
+  PyMuPDF ≥ 1.24 is installed (`import fitz` is deprecated there); the new module name is
+  tried first, in the dependency probes and in the PDF reader. `doctor`'s port labels no
+  longer carry this box's own fish names (`me fish`, `room fish`).
 - **`grounding.band` can reach `grounded` again, and it now needs most of the query's
   pairs attested, not one.** Calibrated 2026-11-14 on two served fish (21K and 41K
   crystals) with 20 invented / 20 true / 20 identity lines each: 0 of 120 came back
