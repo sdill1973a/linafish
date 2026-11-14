@@ -12,6 +12,28 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
 
 ## [Unreleased]
 
+## [2.4.2] - 2026-11-14
+
+The grounding band can say `grounded` again, and the package says only what is true
+of itself: the tests ship with what they read, the PyPI page's links go somewhere,
+and the metadata drops a typing claim it never backed.
+
+**What changes when you upgrade:** `grounding.band` in a served fish's `/taste` JSON
+(`format: json`) can be `"grounded"` again. The composition floor that made it
+unreachable shipped in 2.2.0; on the two served fish measured for this release, 120 of
+120 probes since then came back `thin` or lower, so anything that branched on the band
+has likely only seen `thin` / `thin-recent` / `ungrounded`. It will now see `grounded`
+for well-attested lines. Same meaning as before: well-attested, not true. Nothing else
+changes by default.
+
+### Changed
+- **AGENTS.md — the briefing `linafish introduce` prints — no longer tells an AI that
+  `thin` means the fish does not hold the thing.** Measured 2026-11-14 on two served
+  fish, the band did not separate held from invented (120 of 120 probes came back
+  not-grounded, true and invented alike). The band is described as co-occurrence, not
+  attestation; an AI is told to read `evidence` and `matches` and check the source
+  before saying the fish does or does not hold something. (#113)
+
 ### Fixed
 - **`eat` no longer crashes under DEBUG logging.** Nine `logger.debug(...)` calls in
   the engine still carried `file=sys.stderr` from when they were `print`s; with
@@ -79,7 +101,23 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
   true→grounded 12/20, identity 6/20 (before: 0 everywhere). The namesake line from the README
   is `grounded` on both fish under the new gate; it was `thin` on both before. Still true and still documented: `grounded` means well-attested,
   not true — a short invented line that borrows one real pair still grounds — and `thin`
-  does not mean the fish lacks it.
+  does not mean the fish lacks it. (#114)
+- **`pytest` from the released tarball runs clean.** The 2.4.1 sdist carried the tests
+  but not the repo-root `AGENTS.md` or `scripts/migrate_to_addressed_formations.py`
+  that two of them read, so a run from the tarball failed 2 of 674. Both ship now.
+- **The links on the PyPI page go somewhere.** PyPI renders the README without
+  rewriting relative links, so every `docs/…` and `AGENTS.md` link on the project page
+  pointed at a URL under pypi.org that does not exist. They are absolute now; GitHub
+  renders them the same.
+
+### Maintenance
+- Dropped the `Typing :: Typed` classifier: no `py.typed` marker has ever shipped and
+  nothing type-checks the package, so the classifier promised something the wheel did
+  not carry (since 1.1.2).
+- The `Research` URL in the package metadata now points at the paper's concept DOI
+  (10.5281/zenodo.18477224), which resolves to the latest version. It used to point at
+  the original record; the author has since published a version that partially
+  withdraws the AI-judged results, and that is the one a new reader should land on.
 
 ### Known (measured 2026-11-14, not fixed — a design call, see the release review)
 - **Every re-freeze makes earlier crystals lose to the newest batch.** `eat_path` and

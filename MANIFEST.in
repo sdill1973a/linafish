@@ -6,3 +6,12 @@
 # tarball. A guard that silently does not run is not a guard — the exact
 # failure family the fixture exists to prove we fixed.
 recursive-include tests/fixtures *
+
+# 2026-11-14: two more things the shipped tests read from the repo root and
+# that the 2.4.1 tarball did not carry, so `pytest` from the sdist failed 2 of
+# 674 (test_agents_md_in_sync: FileNotFoundError on AGENTS.md;
+# test_formation_gardener::test_migration_script_runs_on_small_corpus: no
+# scripts/ dir). Same failure family as above: a test that cannot run from the
+# tarball is not a test the tarball's user has.
+include AGENTS.md
+include scripts/migrate_to_addressed_formations.py

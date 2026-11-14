@@ -74,8 +74,6 @@ classifiers = [
     "Environment :: Console",
     "Natural Language :: English",
 
-    # Typing
-    "Typing :: Typed",
 ]
 
 [project.urls]
