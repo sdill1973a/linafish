@@ -1,6 +1,6 @@
 # Testing
 
-674 tests on master after 2.4.1 (2026-11-14). A full run takes one to two minutes on a desktop machine.
+692 tests on the 2.4.2 tree (2026-11-14, five review branches merged). A full run takes one to two minutes on a desktop machine.
 Counts change as tests are added; regenerate them instead of trusting this page:
 
 ```bash
