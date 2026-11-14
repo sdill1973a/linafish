@@ -228,3 +228,23 @@ def test_configuration_doc_does_not_claim_a_linafish_name_default():
     text = (ROOT / "docs" / "configuration.md").read_text(encoding="utf-8")
     assert "(default: `linafish`)" not in text
     assert "`serve` uses a fish named `linafish`" not in text
+
+
+# --- 6. keeper init: the printed next step must feed THIS keeper ---------------------------------
+
+def test_keeper_init_feed_hint_runs_as_printed_on_a_custom_state_dir(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir()
+    r = _cli(tmp_path, "keeper", "init", "notes", "keeps the notes", "--state-dir", str(state))
+    assert r.returncode == 0, r.stdout + r.stderr
+    hint = next(l for l in r.stdout.splitlines() if l.startswith("Feed:"))
+    cmd = hint.split("Feed:", 1)[1].split("<", 1)[0].strip()
+    assert "--state-dir" in cmd, hint
+    import shlex
+    argv = shlex.split(cmd)[1:]  # drop the leading "linafish"
+    r = _cli(tmp_path, *argv, stdin="A line fed by the printed hint, and it must reach the keeper itself.")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "fed by the printed hint" in (state / "notes-keeper" / "notes-keeper_crystals.jsonl").read_text(encoding="utf-8")
+    # ...and not a brand-new fish of the same name under the default root
+    assert not (tmp_path / ".linafish" / "notes-keeper_crystals.jsonl").exists()
+    assert not (tmp_path / ".linafish" / "notes-keeper").exists()

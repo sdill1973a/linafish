@@ -1698,7 +1698,11 @@ def cmd_keeper(args):
         print(f"  State:   {kinfo.state_dir}")
         print(f"  Crystals: {kinfo.crystals}")
         print()
-        print(f"Feed:    linafish listen stdin -n {kinfo.full_name} < material.md")
+        # Explicit --state-dir: the keeper lives in its own subdir, and `-n` alone only finds
+        # it under the DEFAULT root. Run as printed with a custom --state-dir, the old hint
+        # fed a brand-new fish of the same name in ~/.linafish instead (review 2026-11-14).
+        print(f"Feed:    linafish listen stdin -n {kinfo.full_name} "
+              f"--state-dir \"{kinfo.state_dir}\" < material.md")
         print(f"Invoke:  linafish keeper invoke {kinfo.name} '<theme>'")
         return
 

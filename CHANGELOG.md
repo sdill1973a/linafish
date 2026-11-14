@@ -32,6 +32,9 @@ Dill](https://github.com/sdill1973a/linafish#what-this-is).
   `revert` failed with git's "local changes would be overwritten". Each now commits under
   its own name, and `*.bak-*` (the crystal-log backup `compact`/`revectorize` leave behind,
   a full copy of every crystal) is ignored first so the commit does not store it.
+- **`keeper init` prints a next step that feeds the keeper it just made.** The `Feed:` hint
+  had no `--state-dir`; run as printed on a custom state dir it created a new, empty fish of
+  the same name under `~/.linafish` instead. The hint now names the keeper's own directory.
 - **`doctor` and `capabilities` no longer print a `FutureWarning`** on every run when
   PyMuPDF ≥ 1.24 is installed (`import fitz` is deprecated there); the new module name is
   tried first, in the dependency probes and in the PDF reader. `doctor`'s port labels no
