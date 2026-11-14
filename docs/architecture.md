@@ -335,7 +335,7 @@ linafish/
 
 ## Design Decisions
 
-**TF-IDF over neural embeddings.** The 8-dimensional vector is computed by counting keyword hits against a curated vocabulary. This means: no GPU, no model download, no API call, deterministic output, reproducible results across machines. The tradeoff is lower semantic coverage — the vocabulary must be extended for new domains. The `extend_vocabulary()` function handles this explicitly.
+**Counting over neural embeddings.** The vector is computed from word counts and a mutual-information vocabulary learned from the corpus itself (v3). This means: no GPU, no model download, no API call, and results reproducible on any machine that can count words. The tradeoff is that a small corpus leans on the seed grammar until its own vocabulary accumulates; `LINAFISH_PROTECTED_VOCAB` reserves axes for terms you care about.
 
 **Local files over databases.** All state lives in `~/.linafish/` as JSON, JSONL, and markdown files. No SQLite. No cloud sync. No account creation. The fish.md file is the primary artifact — if you lose everything else, the fish.md still teaches an AI who you are.
 
