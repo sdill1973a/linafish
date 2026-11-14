@@ -56,9 +56,8 @@ What's next:
   ...
 ```
 
-The "What's next" list at the end suggests `linafish http --feed …` and
-`linafish serve --feed …` for a live connection. Use the `-n` form in step 7
-instead: `--feed` builds a separate fish.
+The "What's next" list at the end shows `linafish http -n my-writing` and
+`linafish serve -n my-writing` for a live connection; step 7 covers both.
 
 `--no-serve` matters. Without it, `go` starts an HTTP server once the fish is
 built and keeps running until you press Ctrl+C, so the next command in your
@@ -104,10 +103,12 @@ linafish check -n my-writing
     I'm still young. I need more of your writing to find patterns.
   ```
 
-**Pass `-n my-writing` to `ask` and `check`.** Without `-n`, those two verbs
-(and most others, such as `whisper`, `history` and `session`) look for a fish
-literally named `linafish`, and report it as empty. `eat` and `recall` are the
-exceptions: with only one fish in the folder they find it on their own.
+**Pass `-n my-writing` once you have more than one fish.** Without `-n`, every
+verb looks in `~/.linafish`. With one fish there, it is used silently (that is
+why `recall` above worked). With several, `ask`, `check` and `whisper` use the
+most recently fed one and say so on stderr, while `eat`, `http` and `serve`
+refuse and list them. Nothing stops a read verb from answering from the wrong
+fish, so name it.
 
 A small fish gives rough answers. Patterns firm up at around 30 entries.
 
@@ -143,10 +144,13 @@ By default everything is under `~/.linafish/`:
 (plus a few small sidecar files: _assessment, _episodes, _feedback, _habituation)
 ```
 
-Step 5 also left a copy, `my-writing.fish.md`, in the directory you ran `eat`
-from. That is by design: `eat` without `--state-dir` writes a copy of the
-portrait to the current directory. With `--state-dir`, it writes only into
-that directory.
+`eat` writes only into the state directory; nothing is left in the folder you
+ran it from. (Releases before 2.4.1 also dropped a copy of `my-writing.fish.md`
+there. Pass `-o ./my-writing.fish.md` if you want that copy back.)
+
+`linafish history -n my-writing` lists one commit per `eat`. `go` does not
+commit, so right after step 3 the history shows only the repository being
+created; the first real entry appears after step 5.
 
 ### One fish per `--state-dir`
 
