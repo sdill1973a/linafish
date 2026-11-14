@@ -907,7 +907,7 @@ class FishEngine:
                 )
                 gitignore = self.state_dir / ".gitignore"
                 if not gitignore.exists():
-                    gitignore.write_text("*.tmp\n*.lock\n", encoding="utf-8")
+                    gitignore.write_text("*.tmp\n*.lock\n*.bak-*\n", encoding="utf-8")
                     self._git_commit("Initialize fish repository")
             except (FileNotFoundError, subprocess.TimeoutExpired):
                 pass

@@ -884,6 +884,28 @@ def cmd_absorb(args):
               f"{result.get('formations', '?')} formations")
 
 
+def _commit_maintenance(engine, message: str) -> None:
+    """Commit after a maintenance verb (live / seal / compact / revectorize).
+
+    git_autocommit is False by default (2.3.0), so these verbs saved state and left the
+    fish repo dirty: `history` did not show the change and `revert` died on git's "local
+    changes would be overwritten". A state change the owner asked for by name is a
+    rollback point, so commit it here. compact/revectorize also leave
+    `<name>_crystals.jsonl.bak-pre-rewrite` beside the log — a full copy of every crystal.
+    `_git_commit` runs `git add -A`, and a fish repo's history is not free, so the backup
+    is ignored before the commit (new repos get the rule at init; old ones get it here).
+    """
+    try:
+        gi = engine.state_dir / ".gitignore"
+        existing = gi.read_text(encoding="utf-8") if gi.exists() else ""
+        if "*.bak-*" not in existing.splitlines():
+            gi.write_text(existing + ("" if existing.endswith("\n") or not existing else "\n")
+                          + "*.bak-*\n", encoding="utf-8")
+    except OSError:
+        pass
+    engine._git_commit(message)
+
+
 def cmd_live(args):
     """Turn a fish's vocabulary living (append-only growth)."""
     engine = _resolve_engine(args)
@@ -891,6 +913,7 @@ def cmd_live(args):
         print(f"  Fish '{engine.name}' is already living.")
         return
     engine.enable_living_vocab()
+    _commit_maintenance(engine, f"live: {engine.name} vocabulary now living")
     print(f"  Fish '{engine.name}' is now living — its vocabulary will "
           f"grow append-only and never desync its crystals.")
 
@@ -903,6 +926,7 @@ def cmd_seal(args):
               f"(at {engine.fish.sealed_at}).")
         return
     engine.seal()
+    _commit_maintenance(engine, f"seal: {engine.name} at {engine.fish.sealed_at}")
     print(f"  Fish '{engine.name}' sealed at {engine.fish.sealed_at} — "
           f"epoch {engine.fish.epoch}, {len(engine.crystals)} crystals. "
           f"It will not grow again.")
@@ -928,6 +952,9 @@ def cmd_revectorize(args):
     if not result.get("revectorized"):
         print(f"  Skipped: {result.get('reason', 'unknown')}")
         return
+    # revectorize_all saves with commit=False on purpose ("the caller decides when to
+    # commit"). The CLI is that caller, and it never did — see cmd_live.
+    _commit_maintenance(engine, f"revectorize: {engine.name} | {n}c {result['post_formation_count']}f")
     print(f"  Done.")
     print(f"  Formations: {result['pre_formation_count']} -> {result['post_formation_count']}")
     print(f"  Survived: {len(result['survived'])}, "
@@ -957,6 +984,7 @@ def cmd_compact(args):
     if not result.get("revectorized"):
         print(f"  Skipped: {result.get('reason', 'unknown')}")
         return
+    _commit_maintenance(engine, f"compact: {engine.name} | vocab {vocab_before} -> {result['vocab_size']}")
     print(f"  Done. Vocab: {vocab_before} -> {result['vocab_size']} terms.")
     print(f"  Formations: {result['pre_formation_count']} -> "
           f"{result['post_formation_count']}")
