@@ -56,10 +56,6 @@ What's next:
   ...
 ```
 
-The "What's next" list at the end suggests `linafish http --feed …` and
-`linafish serve --feed …` for a live connection. Use the `-n` form in step 7
-instead: `--feed` builds a separate fish.
-
 `--no-serve` matters. Without it, `go` starts an HTTP server once the fish is
 built and keeps running until you press Ctrl+C, so the next command in your
 terminal never runs. Serving is covered in step 7.
@@ -142,11 +138,6 @@ By default everything is under `~/.linafish/`:
 ~/.linafish/.git                        # history: linafish history -n my-writing
 (plus a few small sidecar files: _assessment, _episodes, _feedback, _habituation)
 ```
-
-Step 5 also left a copy, `my-writing.fish.md`, in the directory you ran `eat`
-from. That is by design: `eat` without `--state-dir` writes a copy of the
-portrait to the current directory. With `--state-dir`, it writes only into
-that directory.
 
 ### One fish per `--state-dir`
 
